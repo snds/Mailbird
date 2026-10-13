@@ -75,7 +75,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **0 · Foundation** ✅ | Adaptive shell, tokens, shadcn + Material Symbols pipeline, Tauri desktop shell, capability matrix |
 | **1 · Mail MVP** ✅ | IMAP/SMTP adapters, local store + FTS5 search, unified inbox lanes, composer, undo send, snooze, archive, tracker-safe HTML, keychain ([ADR-0007](docs/decisions/0007-mail-engine.md)) |
 | **1b · Mail depth** ✅ | Conversations, attachments, IMAP IDLE push, progressive backfill, JMAP sync + send, swipe gestures ([ADR-0008](docs/decisions/0008-mail-depth.md)) |
-| **1c · Mail polish** | JMAP push, Sent/Archive sync-back, rich-text composer, attachment previews |
+| **1c · Mail polish** ✅ | JMAP push, Sent/Archive sync-back, rich-text composer, attachment previews ([ADR-0009](docs/decisions/0009-mail-polish.md)) |
 | **2 · Calendar + Contacts** | CalDAV/CardDAV, agenda/day/week views, natural-language quick add, contact merge |
 | **3 · Notes** | Tiptap editor, Markdown storage, Yjs sync relay, Apple Notes and Keep import |
 | **4 · Big providers** | Gmail API + Google verification, Microsoft Graph |

@@ -34,6 +34,8 @@ export interface CoreClient {
   unsnoozeThread(threadId: string): Promise<void>
   /** Save to Downloads and open it. Returns where it was saved, if anywhere. */
   openAttachment(id: string): Promise<string | null>
+  /** The decoded bytes, for in-app preview. */
+  attachmentData(id: string): Promise<ArrayBuffer>
   queueSend(draft: Draft, undoSecs: number): Promise<OutboxItem>
   cancelSend(id: string): Promise<Draft>
   listOutbox(): Promise<OutboxItem[]>
@@ -64,6 +66,7 @@ async function createTauriClient(): Promise<CoreClient> {
     snoozeThread: (threadId, until) => invoke("snooze_thread", { threadId, until }),
     unsnoozeThread: (threadId) => invoke("unsnooze_thread", { threadId }),
     openAttachment: (id) => invoke("open_attachment", { id }),
+    attachmentData: (id) => invoke<ArrayBuffer>("attachment_data", { id }),
     queueSend: (draft, undoSecs) => invoke("queue_send", { draft, undoSecs }),
     cancelSend: (id) => invoke("cancel_send", { id }),
     listOutbox: () => invoke("list_outbox"),

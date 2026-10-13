@@ -120,6 +120,14 @@ pub fn unsnooze_thread(app: AppHandle, state: State<'_, Shared>, thread_id: Stri
     Ok(())
 }
 
+/// An attachment's bytes for in-app preview. Sent as a raw IPC response
+/// (an ArrayBuffer in the UI), not JSON, so a 10 MB PDF isn't a 13 MB string.
+#[tauri::command]
+pub fn attachment_data(state: State<'_, Shared>, id: String) -> Res<tauri::ipc::Response> {
+    let (_, bytes) = with_store(&state, |s| s.attachment(&id))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Save an attachment to Downloads and open it with the default app.
 /// Returns the saved path so the UI can say where it went.
 #[tauri::command]

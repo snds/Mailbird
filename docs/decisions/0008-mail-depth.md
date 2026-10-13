@@ -86,6 +86,8 @@ Rows use Apple Mail's grammar: swipe left to archive, swipe right to toggle read
 
 ## Not yet
 
+_Phase 1c delivered JMAP push, Sent/Archive sync-back, the rich-text composer, and attachment previews. See [ADR-0009](0009-mail-polish.md)._
+
 - JMAP push (EventSource).
 - Syncing Sent and Archive back from the server.
 - CONDSTORE/QRESYNC for cheaper IMAP flag sync.

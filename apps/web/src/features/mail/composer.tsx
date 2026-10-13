@@ -13,6 +13,9 @@ import type { Draft, OutgoingAttachment } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 
 import { UNDO_SECONDS, formatRecipients, formatSize, parseRecipients } from "./format"
+import { FormatBar, RichEditor } from "./rich-editor"
+import { useRichEditor } from "./use-rich-editor"
+import { htmlToText, textToHtml } from "./rich-text"
 
 /** Most providers reject messages over 25 MB; base64 adds about a third. */
 const MAX_ATTACHMENTS = 25 * 1024 * 1024
@@ -32,6 +35,11 @@ function readFile(file: File): Promise<OutgoingAttachment> {
 }
 
 /** Mounted once at the app root; opens whenever `useUi().composer` is set. */
+/** The form marks its first field (To, or the body for replies); the dialog focuses it once open. */
+const firstField = () => document.querySelector<HTMLElement>("[data-composer-focus]") ?? true
+/** Undo can reopen the composer while its close is still finishing; don't hand focus back to the page then. */
+const returnFocus = () => useUi.getState().composer === null
+
 export function Composer() {
   const draft = useUi((s) => s.composer)
   const close = useUi((s) => s.closeComposer)
@@ -43,7 +51,7 @@ export function Composer() {
   if (tabletUp) {
     return (
       <Dialog open={open} onOpenChange={(o) => !o && close()}>
-        <DialogContent className="flex max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-0 p-0 sm:max-w-2xl" showCloseButton={false}>
+        <DialogContent className="flex max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-0 p-0 sm:max-w-2xl" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
           <DialogTitle className="sr-only">New message</DialogTitle>
           {body}
         </DialogContent>
@@ -53,7 +61,7 @@ export function Composer() {
   return (
     <Sheet open={open} onOpenChange={(o) => !o && close()}>
       {/* Full-screen on phones, like Apple Mail and Gmail. */}
-      <SheetContent side="bottom" className="gap-0 rounded-none border-0 pt-[env(safe-area-inset-top)] data-[side=bottom]:h-dvh" showCloseButton={false}>
+      <SheetContent side="bottom" className="gap-0 rounded-none border-0 pt-[env(safe-area-inset-top)] data-[side=bottom]:h-dvh" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
         <SheetTitle className="sr-only">New message</SheetTitle>
         {body}
       </SheetContent>
@@ -85,11 +93,36 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
   const [cc, setCc] = useState(formatRecipients(initial.cc))
   const [showCc, setShowCc] = useState((initial.cc?.length ?? 0) > 0)
   const [subject, setSubject] = useState(initial.subject ?? "")
-  const [body, setBody] = useState(initial.body ?? "")
+  const editor = useRichEditor({
+    html: initial.bodyHtml ?? textToHtml(initial.body ?? ""),
+    placeholder: "Write your message",
+    // Replies (and reopened drafts) start in the body, above any quote; new mail and forwards start in To.
+    focusFirst: !!initial.to?.length,
+  })
   const [files, setFiles] = useState<OutgoingAttachment[]>(initial.attachments ?? [])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  // Opened from a toast action (Undo, Edit), the composer races Sonner, which
+  // hands focus back to whatever had it before the toast as the toast goes
+  // away. The dialog is modal, so for its first second any focus landing
+  // outside it is that hand-back: take it back.
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      const dialog = formRef.current?.closest("[role=dialog]")
+      const target = e.target instanceof Element ? e.target : null
+      if (!dialog || !target || dialog.contains(target) || target.closest("[data-sonner-toaster]")) return
+      dialog.querySelector<HTMLElement>("[data-composer-focus]")?.focus()
+    }
+    document.addEventListener("focusin", onFocusIn)
+    const stop = setTimeout(() => document.removeEventListener("focusin", onFocusIn), 1000)
+    return () => {
+      clearTimeout(stop)
+      document.removeEventListener("focusin", onFocusIn)
+    }
+  }, [])
   const totalBytes = files.reduce((n, f) => n + bytesOf(f), 0)
 
   const addFiles = async (list: FileList | null) => {
@@ -105,12 +138,14 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
   const send = async () => {
     setError(null)
     setSending(true)
+    const html = editor.isEmpty ? null : editor.getHTML()
     const draft: Draft = {
       accountId,
       to: parseRecipients(to),
       cc: showCc ? parseRecipients(cc) : [],
       subject: subject.trim(),
-      body,
+      body: html ? htmlToText(html) : "",
+      bodyHtml: html,
       inReplyTo: initial.inReplyTo ?? null,
       references: initial.references ?? [],
       attachments: files,
@@ -141,6 +176,7 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
 
   return (
     <form
+      ref={formRef}
       className="flex min-h-0 flex-1 flex-col"
       onSubmit={(e) => (e.preventDefault(), void send())}
       onKeyDown={(e) => {
@@ -179,7 +215,7 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
         </Row>
       )}
       <Row label="To" htmlFor="composer-to">
-        <input id="composer-to" className={bare} value={to} onChange={(e) => setTo(e.target.value)} autoFocus={!initial.to?.length} inputMode="email" autoComplete="email" />
+        <input id="composer-to" className={bare} value={to} onChange={(e) => setTo(e.target.value)} data-composer-focus={initial.to?.length ? undefined : ""} inputMode="email" autoComplete="email" />
         {!showCc && (
           <Button type="button" variant="ghost" size="sm" onClick={() => setShowCc(true)}>
             Cc
@@ -201,14 +237,7 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
         </p>
       )}
 
-      <textarea
-        aria-label="Message"
-        className="min-h-48 flex-1 resize-none bg-transparent px-4 py-3 text-[15px] leading-relaxed outline-none"
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        autoFocus={!!initial.to?.length}
-        onFocus={(e) => initial.inReplyTo && e.currentTarget.setSelectionRange(0, 0)}
-      />
+      <RichEditor editor={editor} />
       {files.length > 0 && (
         <ul className="flex flex-wrap gap-2 border-t px-4 py-2" aria-label="Attachments">
           {files.map((f, i) => (
@@ -223,6 +252,7 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
           ))}
         </ul>
       )}
+      <FormatBar editor={editor} />
       <footer className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground">
         <input ref={picker} type="file" multiple hidden onChange={(e) => (void addFiles(e.target.files), (e.target.value = ""))} />
         <Button type="button" variant="ghost" size="icon" aria-label="Attach files" onClick={() => picker.current?.click()}>

@@ -148,8 +148,60 @@ pub async fn sync_inbox(
     cursor: SyncCursor,
     ops: &[PendingOp],
 ) -> Result<SyncBatch> {
+    let plan = MailboxPlan { store: crate::store::INBOX, cursor, ops: ops.to_vec() };
+    Ok(sync_account(config, password, vec![plan]).await?.remove(0))
+}
+
+/// One store mailbox to sync, with where to resume and what to push.
+#[derive(Debug, Clone)]
+pub struct MailboxPlan {
+    /// `store::INBOX`, `store::ARCHIVE`, or `store::SENT`.
+    pub store: &'static str,
+    pub cursor: SyncCursor,
+    pub ops: Vec<PendingOp>,
+}
+
+/// The server mailboxes that play each role. Names vary ("Sent Items",
+/// "[Gmail]/Sent Mail"), so roles come from RFC 6154 special-use flags.
+struct Specials {
+    archive: Option<String>,
+    sent: Option<String>,
+}
+
+/// One pass over several mailboxes on one connection. Mailboxes the server
+/// doesn't have (no `\Archive`) are skipped and return no batch.
+pub async fn sync_account(config: &AccountConfig, password: &str, plans: Vec<MailboxPlan>) -> Result<Vec<SyncBatch>> {
     let mut session = imap_session(&config.imap, &config.username, password).await?;
-    let result = sync_with(&mut session, cursor, ops).await;
+    let result = async {
+        let specials = Specials {
+            archive: special_mailbox(&mut session, NameAttribute::Archive).await?,
+            sent: special_mailbox(&mut session, NameAttribute::Sent).await?,
+        };
+        let mut work = Vec::new();
+        for plan in plans {
+            let server = match plan.store {
+                crate::store::INBOX => Some(INBOX.to_owned()),
+                crate::store::ARCHIVE => specials.archive.clone(),
+                crate::store::SENT => specials.sent.clone(),
+                other => Some(other.to_owned()),
+            };
+            if let Some(server) = server {
+                work.push((server, plan));
+            }
+        }
+        // Push every mailbox's changes before fetching any, so a move made in
+        // one mailbox (unarchive) is already visible when its destination syncs.
+        let mut pushed = Vec::new();
+        for (server, plan) in &work {
+            pushed.push(push_ops(&mut session, server, plan, &specials).await?);
+        }
+        let mut batches = Vec::new();
+        for ((server, plan), push) in work.into_iter().zip(pushed) {
+            batches.push(sync_with(&mut session, &server, plan, push).await?);
+        }
+        Ok(batches)
+    }
+    .await;
     let _ = session.logout().await;
     result
 }
@@ -189,31 +241,49 @@ pub async fn wait_for_change(config: &AccountConfig, password: &str, timeout: Du
     Ok(change)
 }
 
-async fn sync_with(session: &mut Session, cursor: SyncCursor, ops: &[PendingOp]) -> Result<SyncBatch> {
-    let mailbox = session.select(INBOX).await.map_err(imap_err)?;
+/// What pushing one mailbox's changes did.
+struct Pushed {
+    uid_validity: u32,
+    applied_ops: Vec<i64>,
+    moved_out: Vec<u32>,
+}
+
+/// Push one mailbox's local changes. After a UIDVALIDITY change the queued
+/// UIDs point at the wrong messages, so nothing is pushed (or confirmed).
+async fn push_ops(session: &mut Session, server_mailbox: &str, plan: &MailboxPlan, specials: &Specials) -> Result<Pushed> {
+    let mailbox = session.select(server_mailbox).await.map_err(imap_err)?;
     let uid_validity = mailbox
         .uid_validity
         .ok_or_else(|| Error::Network("the server didn't report UIDVALIDITY".into()))?;
-    let same_mailbox = cursor.uid_validity == Some(uid_validity);
-
-    // Push local changes first, so the flags we read back include them.
-    // After a UIDVALIDITY change the queued UIDs point at the wrong messages.
-    let mut applied_ops = Vec::new();
-    if same_mailbox && !ops.is_empty() {
-        let archive = special_mailbox(session, NameAttribute::Archive).await?;
-        for op in ops {
-            push_op(session, op, archive.as_deref()).await?;
-            applied_ops.push(op.id);
+    let mut pushed = Pushed { uid_validity, applied_ops: Vec::new(), moved_out: Vec::new() };
+    if plan.cursor.uid_validity == Some(uid_validity) {
+        for op in &plan.ops {
+            if push_op(session, op, specials).await? {
+                pushed.moved_out.push(op.uid);
+            }
+            pushed.applied_ops.push(op.id);
         }
     }
+    Ok(pushed)
+}
+
+async fn sync_with(session: &mut Session, server_mailbox: &str, plan: MailboxPlan, pushed: Pushed) -> Result<SyncBatch> {
+    let MailboxPlan { store: store_mailbox, cursor, .. } = plan;
+    session.select(server_mailbox).await.map_err(imap_err)?;
+    let Pushed { uid_validity, applied_ops, moved_out } = pushed;
+    let same_mailbox = cursor.uid_validity == Some(uid_validity);
 
     let mut server_uids: Vec<u32> = session.uid_search("ALL").await.map_err(imap_err)?.into_iter().collect();
     server_uids.sort_unstable();
 
+    // Moved mail is gone from this mailbox; don't fetch it back.
+    server_uids.retain(|u| !moved_out.contains(u));
     let last_uid = if same_mailbox { cursor.last_uid } else { 0 };
     let mut wanted: Vec<u32> = server_uids.iter().copied().filter(|u| *u > last_uid).collect();
-    if last_uid == 0 && wanted.len() > INITIAL_SYNC_LIMIT {
-        wanted = wanted.split_off(wanted.len() - INITIAL_SYNC_LIMIT);
+    // The inbox matters most on first launch; Sent and Archive start smaller.
+    let initial = if store_mailbox == crate::store::INBOX { INITIAL_SYNC_LIMIT } else { BACKFILL_CHUNK };
+    if last_uid == 0 && wanted.len() > initial {
+        wanted = wanted.split_off(wanted.len() - initial);
     }
 
     // Backfill: the next chunk of older mail below what we hold, newest first.
@@ -265,7 +335,7 @@ async fn sync_with(session: &mut Session, cursor: SyncCursor, ops: &[PendingOp])
         }
     }
 
-    Ok(SyncBatch { mailbox: INBOX.into(), uid_validity, new_messages, flags, server_uids, applied_ops, more_older })
+    Ok(SyncBatch { mailbox: store_mailbox.into(), uid_validity, new_messages, flags, server_uids, applied_ops, more_older, moved_out })
 }
 
 fn flags_of(f: &async_imap::types::Fetch) -> (bool, bool) {
@@ -281,17 +351,22 @@ fn flags_of(f: &async_imap::types::Fetch) -> (bool, bool) {
     (seen, flagged)
 }
 
-async fn push_op(session: &mut Session, op: &PendingOp, archive: Option<&str>) -> Result<()> {
+/// Push one local change. Returns true when the message moved out of the
+/// selected mailbox.
+async fn push_op(session: &mut Session, op: &PendingOp, specials: &Specials) -> Result<bool> {
     let store = |change: &'static str| format!("{change}FLAGS.SILENT");
     let (query, flag) = match op.kind {
         OpKind::Seen(on) => (store(if on { "+" } else { "-" }), "\\Seen"),
         OpKind::Flagged(on) => (store(if on { "+" } else { "-" }), "\\Flagged"),
-        OpKind::Archive => {
+        OpKind::Archive | OpKind::Unarchive => {
+            let target = match op.kind {
+                OpKind::Archive => specials.archive.as_deref(),
+                _ => Some(INBOX),
+            };
             // No \Archive mailbox on this server: archiving stays local-only.
-            if let Some(target) = archive {
-                session.uid_mv(op.uid.to_string(), target).await.map_err(imap_err)?;
-            }
-            return Ok(());
+            let Some(target) = target else { return Ok(false) };
+            session.uid_mv(op.uid.to_string(), target).await.map_err(imap_err)?;
+            return Ok(true);
         }
     };
     let _: Vec<_> = session
@@ -301,7 +376,7 @@ async fn push_op(session: &mut Session, op: &PendingOp, archive: Option<&str>) -
         .try_collect()
         .await
         .map_err(imap_err)?;
-    Ok(())
+    Ok(false)
 }
 
 /// Find a special-use mailbox (RFC 6154), e.g. the server's Archive or Sent.
@@ -355,7 +430,14 @@ fn mailbox(a: &Address) -> Result<Mailbox> {
 /// Build the RFC 5322 message for a draft.
 pub fn build_message(config: &AccountConfig, draft: &Draft) -> Result<Message> {
     let from = mailbox(&Address { name: Some(config.display_name.clone()), email: config.address.clone() })?;
-    let mut b = Message::builder().from(from).subject(draft.subject.clone());
+    // Our own Message-ID, so replies thread on it and the server's Sent copy
+    // matches the local one. The domain is the sender's, never this
+    // computer's hostname (lettre's default), which would leak to recipients.
+    let domain = config.address.rsplit_once('@').map(|(_, d)| d).filter(|d| !d.is_empty()).unwrap_or("localhost");
+    let mut b = Message::builder()
+        .from(from)
+        .subject(draft.subject.clone())
+        .message_id(Some(format!("<{}@{domain}>", uuid::Uuid::new_v4())));
     for to in &draft.to {
         b = b.to(mailbox(to)?);
     }
@@ -371,13 +453,22 @@ pub fn build_message(config: &AccountConfig, draft: &Draft) -> Result<Message> {
         }
         b = b.in_reply_to(bracket(parent)).references(chain.join(" "));
     }
-    if draft.attachments.is_empty() {
-        return b
-            .header(ContentType::TEXT_PLAIN)
-            .body(draft.body.clone())
-            .map_err(|e| Error::Invalid(e.to_string()));
+    let html = draft.body_html.as_deref().filter(|h| !h.trim().is_empty()).map(html_document);
+    match (&html, draft.attachments.is_empty()) {
+        (None, true) => {
+            return b.header(ContentType::TEXT_PLAIN).body(draft.body.clone()).map_err(|e| Error::Invalid(e.to_string()));
+        }
+        (Some(html), true) => {
+            return b
+                .multipart(MultiPart::alternative_plain_html(draft.body.clone(), html.clone()))
+                .map_err(|e| Error::Invalid(e.to_string()));
+        }
+        _ => {}
     }
-    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone()));
+    let mut parts = match html {
+        Some(html) => MultiPart::mixed().multipart(MultiPart::alternative_plain_html(draft.body.clone(), html)),
+        None => MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone())),
+    };
     for a in &draft.attachments {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(a.data_base64.as_bytes())
@@ -386,6 +477,18 @@ pub fn build_message(config: &AccountConfig, draft: &Draft) -> Result<Message> {
         parts = parts.singlepart(Attachment::new(a.filename.clone()).body(bytes, ct));
     }
     b.multipart(parts).map_err(|e| Error::Invalid(e.to_string()))
+}
+
+/// Wraps the composer's fragment in a document with a charset and quote
+/// styling that survives clients which ignore `<style>` (inline styles only).
+fn html_document(fragment: &str) -> String {
+    let fragment = fragment.replace(
+        "<blockquote>",
+        r#"<blockquote style="margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex">"#,
+    );
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"></head><body style=\"font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:15px;line-height:1.5\">{fragment}</body></html>"
+    )
 }
 
 /// Send a draft, then file a copy in the server's Sent mailbox.
@@ -444,12 +547,15 @@ mod tests {
             cc: vec![],
             subject: "Re: Photos".into(),
             body: "Love them".into(),
+            body_html: None,
             in_reply_to: Some("abc@example.com".into()),
             references: vec!["root@example.com".into()],
             attachments: vec![],
         };
         let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
         assert!(raw.contains("From: Sean <sean@example.com>"));
+        let id_line = raw.lines().find(|l| l.starts_with("Message-ID: ")).expect("has a Message-ID");
+        assert!(id_line.ends_with("@example.com>"), "uses the sender's domain, not the hostname: {id_line}");
         assert!(raw.contains("To: Ana <ana@example.com>"));
         assert!(raw.contains("In-Reply-To: <abc@example.com>"));
         assert!(raw.contains("References: <root@example.com> <abc@example.com>"));
@@ -467,6 +573,7 @@ mod tests {
             cc: vec![],
             subject: String::new(),
             body: String::new(),
+            body_html: None,
             in_reply_to: None,
             references: vec![],
             attachments: vec![],
@@ -482,6 +589,7 @@ mod tests {
             cc: vec![],
             subject: "Tickets".into(),
             body: "Attached.".into(),
+            body_html: None,
             in_reply_to: None,
             references: vec![],
             attachments: vec![crate::OutgoingAttachment {
@@ -496,6 +604,39 @@ mod tests {
         assert_eq!(parsed.attachments.len(), 1);
         assert_eq!(parsed.attachments[0].filename, "tickets.pdf");
         assert_eq!(crate::mime::attachment_bytes(&raw, 0).unwrap(), b"%PDF-1.7 hello");
+    }
+
+    #[test]
+    fn rich_bodies_go_out_as_alternative_parts() {
+        let mut draft = Draft {
+            account_id: "a".into(),
+            to: vec![Address { name: None, email: "ana@example.com".into() }],
+            cc: vec![],
+            subject: "Plan".into(),
+            body: "Bring **snacks**".into(),
+            body_html: Some("<p>Bring <strong>snacks</strong></p><blockquote><p>old</p></blockquote>".into()),
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![],
+        };
+        let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
+        assert!(raw.contains("multipart/alternative"));
+        let parsed = crate::mime::parse(raw.as_bytes()).unwrap();
+        assert_eq!(parsed.body_text.trim(), "Bring **snacks**");
+        let html = parsed.body_html.expect("has an HTML part");
+        assert!(html.contains("<strong>snacks</strong>"));
+        assert!(html.contains("border-left"), "quotes are styled inline");
+
+        // With a file attached, the alternative nests inside multipart/mixed.
+        draft.attachments.push(crate::OutgoingAttachment {
+            filename: "a.txt".into(),
+            mime_type: "text/plain".into(),
+            data_base64: base64::engine::general_purpose::STANDARD.encode(b"hi"),
+        });
+        let raw = build_message(&config(), &draft).unwrap().formatted();
+        let parsed = crate::mime::parse(&raw).unwrap();
+        assert!(parsed.body_html.unwrap().contains("<strong>snacks</strong>"));
+        assert_eq!(parsed.attachments.len(), 1);
     }
 
     #[tokio::test]

@@ -66,11 +66,24 @@ async fn server_flags(s: &mut async_imap::Session<TcpStream>, mailbox: &str) -> 
         .collect()
 }
 
+/// Sync INBOX, Archive, and Sent like the shell does. Returns new INBOX mail.
 async fn sync(store: &Store, account: &str) -> usize {
-    let cursor = store.sync_cursor(account, net::INBOX).unwrap();
-    let ops = store.pending_ops(account, net::INBOX).unwrap();
-    let batch = net::sync_inbox(&config(), PASS, cursor, &ops).await.unwrap();
-    store.apply_sync(account, &batch).unwrap()
+    let plans = [pim_core::store::INBOX, pim_core::store::ARCHIVE, pim_core::store::SENT]
+        .into_iter()
+        .map(|m| net::MailboxPlan {
+            store: m,
+            cursor: store.sync_cursor(account, m).unwrap(),
+            ops: store.pending_ops(account, m).unwrap(),
+        })
+        .collect();
+    let mut new_in_inbox = 0;
+    for batch in net::sync_account(&config(), PASS, plans).await.unwrap() {
+        let n = store.apply_sync(account, &batch).unwrap();
+        if batch.mailbox == pim_core::store::INBOX {
+            new_in_inbox += n;
+        }
+    }
+    new_in_inbox
 }
 
 fn lane(store: &Store, lane: Lane) -> Vec<pim_core::MessageSummary> {
@@ -115,7 +128,19 @@ async fn full_round_trip() {
     assert!(find("Third note").is_none(), "archived mail left INBOX");
     let archived = server_flags(&mut admin, "Archive").await;
     assert_eq!(archived.len(), 1, "and landed in the \\Archive mailbox");
-    assert_eq!(lane(&store, Lane::Archive).len(), 1, "local copy stays in Archive");
+    let archive_lane = lane(&store, Lane::Archive);
+    assert_eq!(archive_lane.len(), 1, "it comes back through the Archive mailbox sync");
+    assert_eq!(archive_lane[0].mailbox, pim_core::store::ARCHIVE);
+
+    // Unarchive moves it back to INBOX on the server, with no duplicate locally.
+    store.set_thread_archived(&archive_lane[0].thread_id, false).unwrap();
+    sync(&store, &account).await;
+    assert!(server_flags(&mut admin, "INBOX").await.iter().any(|(s, _)| s == "Third note"), "back in the server INBOX");
+    assert!(server_flags(&mut admin, "Archive").await.is_empty());
+    assert_eq!(lane(&store, Lane::Inbox).iter().filter(|m| m.subject == "Third note").count(), 1);
+    let t = lane(&store, Lane::Inbox).into_iter().find(|m| m.subject == "Third note").unwrap().thread_id;
+    store.set_thread_archived(&t, true).unwrap();
+    sync(&store, &account).await;
 
     // Changes made elsewhere come down: new mail, a flag set by another client.
     append(&mut admin, "Fourth note", None).await;
@@ -139,6 +164,7 @@ async fn full_round_trip() {
         cc: vec![],
         subject: "Re: First note".into(),
         body: "Thanks!".into(),
+        body_html: None,
         in_reply_to: Some("First-note@example.com".into()),
         references: vec![],
         attachments: vec![],
@@ -148,6 +174,13 @@ async fn full_round_trip() {
     let sent = server_flags(&mut admin, "Sent").await;
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].0, "Re: First note");
+    // The shell keeps a local copy; the synced server copy replaces it and threads.
+    store.insert_local(&account, pim_core::store::SENT, &raw, true).unwrap();
+    sync(&store, &account).await;
+    let first = lane(&store, Lane::Inbox).into_iter().find(|m| m.subject == "First note").unwrap();
+    let in_thread: Vec<_> = store.thread(&first.thread_id).unwrap().into_iter().filter(|m| m.summary.mailbox == pim_core::store::SENT).collect();
+    assert_eq!(in_thread.len(), 1, "one Sent copy in the conversation");
+    assert!(store.sync_cursor(&account, pim_core::store::SENT).unwrap().oldest_uid.is_some(), "and it's the server's");
     if let Ok(dir) = std::env::var("MAILBIRD_IT_SMTP_OUT") {
         let rcpts = std::fs::read_to_string(format!("{dir}/rcpts.txt")).unwrap();
         assert!(rcpts.lines().any(|l| l == "ana@example.com"), "SMTP sink received it");
@@ -169,6 +202,7 @@ async fn full_round_trip() {
             data_base64: base64::engine::general_purpose::STANDARD.encode(b"%PDF-1.7 ferry"),
         }],
         subject: "Itinerary".into(),
+        body_html: Some("<p>Your <strong>itinerary</strong></p>".into()),
         ..draft
     };
     net::send(&config(), PASS, &with_file).await.unwrap();
@@ -178,6 +212,7 @@ async fn full_round_trip() {
     let parsed = mime::parse(raw).unwrap();
     assert_eq!(parsed.attachments[0].filename, "itinerary.pdf");
     assert_eq!(mime::attachment_bytes(raw, 0).unwrap(), b"%PDF-1.7 ferry");
+    assert!(parsed.body_html.unwrap().contains("<strong>itinerary</strong>"), "the rich body travels with the file");
 
     // Backfill: a big mailbox arrives newest-first, then older chunks.
     clear(&mut admin, "INBOX").await;

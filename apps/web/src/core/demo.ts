@@ -31,7 +31,8 @@ function swatch(r: number, g: number, b: number): string {
   return c.toDataURL("image/png").split(",")[1] ?? ""
 }
 
-const PDF = btoa("%PDF-1.4\n% Sample attachment from the Mailbird demo\n")
+/** A one-page PDF (a sample ferry booking), so the PDF preview has something real to show. */
+const PDF = "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA0MjAgMjk3XSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAxNTggPj4Kc3RyZWFtCkJUIC9GMSAyMCBUZiAzNiAyNDAgVGQgKEJvb2tpbmcgY29uZmlybWVkKSBUaiAvRjEgMTIgVGYgMCAtMzIgVGQgKFNhdHVyZGF5IDA4OjE1IC0gUGllciAzIC0gUmVmIEZYLTIyMTApIFRqIDAgLTIwIFRkIChWZWhpY2xlIHVuZGVyIDUgbSwgdHdvIHBhc3NlbmdlcnMpIFRqIEVUCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwNDUwIDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNTIwCiUlRU9GCg=="
 
 interface DemoMessage extends MessageDetail {
   /** Attachment payloads (base64) for openAttachment. */
@@ -85,7 +86,10 @@ function seed(): { accounts: Account[]; messages: DemoMessage[] } {
         0.3 * HOUR, { threadId: "t-audit", flagged: true }),
       msg("personal", { name: "Ferry Line", email: "no-reply@ferry.example" }, "Your booking is confirmed",
         "Saturday 08:15 crossing, vehicle under 5 m, two passengers. Arrive 30 minutes before departure. Your confirmation is attached.",
-        1.6 * HOUR, withFiles([file("att-ferry", "booking-confirmation.pdf", "application/pdf", PDF)])),
+        1.6 * HOUR, withFiles([
+          file("att-ferry", "booking-confirmation.pdf", "application/pdf", PDF),
+          file("att-ferry-txt", "what-to-bring.txt", "text/plain", btoa("Passports\nBooking reference FX-2210\nSnacks for the crossing\n")),
+        ])),
       msg("personal", me("personal"), "Cabin weekend", "Who's in for the cabin on the 24th? Ferry is at 8:15.", 2 * 24 * HOUR, { threadId: "t-cabin", seen: true, mailbox: SENT, to: [marcus] }),
       msg("personal", marcus, "Re: Cabin weekend", "Count me in. I'll bring the board games and the good coffee.\n\n— M", 20 * HOUR, { threadId: "t-cabin", seen: true }),
       msg("personal", { name: "Design Systems Weekly", email: "digest@dsweekly.example" }, "Issue 212: Variable fonts in production",
@@ -159,7 +163,7 @@ export function createDemoClient(): CoreClient {
           from: { name: account?.displayName ?? "Me", email: account?.address ?? "" },
           subject: item.draft.subject, preview: item.draft.body.replace(/\s+/g, " ").slice(0, 160),
           date: t, sortAt: t, seen: true, flagged: false, archived: false, snoozedUntil: null, mailbox: SENT,
-          to: item.draft.to, cc: item.draft.cc, messageId: `${id}@demo.example`, bodyText: item.draft.body, bodyHtml: null,
+          to: item.draft.to, cc: item.draft.cc, messageId: `${id}@demo.example`, bodyText: item.draft.body, bodyHtml: item.draft.bodyHtml ?? null,
           attachments: (item.draft.attachments ?? []).map((a, i) => ({ id: `${id}-a${i}`, filename: a.filename, mimeType: a.mimeType, size: Math.floor((a.dataBase64.length * 3) / 4), inline: false })),
           references: [...(item.draft.references ?? [])], files: Object.fromEntries((item.draft.attachments ?? []).map((a, i) => [`${id}-a${i}`, a.dataBase64])),
         })
@@ -246,6 +250,12 @@ export function createDemoClient(): CoreClient {
       a.download = info.filename
       a.click()
       return null
+    },
+
+    attachmentData: async (id) => {
+      const m = state.messages.find((x) => id in x.files)
+      if (!m) throw new Error("that attachment is no longer here")
+      return Uint8Array.from(atob(m.files[id]!), (c) => c.charCodeAt(0)).buffer
     },
 
     queueSend: async (draft: Draft, undoSecs) => {
