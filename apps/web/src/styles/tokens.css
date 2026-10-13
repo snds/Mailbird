@@ -1,0 +1,155 @@
+/*
+ * Design tokens — three tiers.
+ *
+ *   1. Global (primitive)  --g-*      Raw values. Never referenced by components.
+ *   2. Semantic (alias)    --*        shadcn's contract (background, primary, ring…)
+ *                                     plus app-level roles (vertical accents, panes).
+ *   3. Component           --c-*      Per-component knobs that alias semantic tokens.
+ *
+ * Light/dark only swap tier 2. Tier 1 is theme-agnostic; tier 3 follows tier 2.
+ */
+
+/* ── Tier 1 · Global primitives ─────────────────────────────────────────── */
+:root {
+  /* Neutral ramp, slightly cool so long reading sessions feel calm. */
+  --g-neutral-0: oklch(1 0 0);
+  --g-neutral-25: oklch(0.987 0.002 260);
+  --g-neutral-50: oklch(0.974 0.003 260);
+  --g-neutral-100: oklch(0.948 0.004 260);
+  --g-neutral-200: oklch(0.91 0.006 260);
+  --g-neutral-300: oklch(0.85 0.008 260);
+  --g-neutral-400: oklch(0.71 0.01 260);
+  --g-neutral-500: oklch(0.556 0.012 260);
+  --g-neutral-600: oklch(0.44 0.012 260);
+  --g-neutral-700: oklch(0.34 0.012 260);
+  --g-neutral-800: oklch(0.26 0.01 260);
+  --g-neutral-850: oklch(0.22 0.009 260);
+  --g-neutral-900: oklch(0.185 0.008 260);
+  --g-neutral-950: oklch(0.145 0.006 260);
+
+  /* Vertical hues. One hue per app area — the same wayfinding Apple uses
+     (Mail blue, Calendar red, Contacts green-grey, Notes yellow). */
+  --g-blue-500: oklch(0.6 0.19 255);
+  --g-blue-400: oklch(0.7 0.15 255);
+  --g-coral-500: oklch(0.63 0.2 25);
+  --g-coral-400: oklch(0.72 0.16 25);
+  --g-green-500: oklch(0.62 0.15 160);
+  --g-green-400: oklch(0.72 0.13 160);
+  --g-amber-500: oklch(0.75 0.16 75);
+  --g-amber-400: oklch(0.82 0.14 80);
+
+  --g-red-500: oklch(0.577 0.245 27.3);
+  --g-red-400: oklch(0.704 0.191 22.2);
+
+  --g-radius-base: 0.625rem;
+  --g-duration-fast: 120ms;
+  --g-duration-base: 200ms;
+  --g-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── Tier 2 · Semantic (light) ──────────────────────────────────────────── */
+:root {
+  --background: var(--g-neutral-0);
+  --foreground: var(--g-neutral-950);
+  --card: var(--g-neutral-0);
+  --card-foreground: var(--g-neutral-950);
+  --popover: var(--g-neutral-0);
+  --popover-foreground: var(--g-neutral-950);
+  --primary: var(--g-neutral-900);
+  --primary-foreground: var(--g-neutral-25);
+  --secondary: var(--g-neutral-100);
+  --secondary-foreground: var(--g-neutral-900);
+  --muted: var(--g-neutral-100);
+  --muted-foreground: var(--g-neutral-500);
+  --accent: var(--g-neutral-100);
+  --accent-foreground: var(--g-neutral-900);
+  --destructive: var(--g-red-500);
+  --border: var(--g-neutral-200);
+  --input: var(--g-neutral-200);
+  --ring: var(--g-neutral-400);
+  --radius: var(--g-radius-base);
+
+  /* App roles */
+  --surface-chrome: var(--g-neutral-50); /* nav rail, tab bar, list pane */
+  --surface-canvas: var(--g-neutral-0); /* reading / editing pane */
+  --surface-selected: var(--g-neutral-100);
+  --vertical-mail: var(--g-blue-500);
+  --vertical-calendar: var(--g-coral-500);
+  --vertical-contacts: var(--g-green-500);
+  --vertical-notes: var(--g-amber-500);
+  --unread: var(--g-blue-500);
+
+  /* Sidebar contract (used by shadcn sidebar if added later) */
+  --sidebar: var(--surface-chrome);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+/* ── Tier 2 · Semantic (dark) ───────────────────────────────────────────── */
+.dark {
+  --background: var(--g-neutral-950);
+  --foreground: var(--g-neutral-25);
+  --card: var(--g-neutral-900);
+  --card-foreground: var(--g-neutral-25);
+  --popover: var(--g-neutral-900);
+  --popover-foreground: var(--g-neutral-25);
+  --primary: var(--g-neutral-100);
+  --primary-foreground: var(--g-neutral-900);
+  --secondary: var(--g-neutral-800);
+  --secondary-foreground: var(--g-neutral-25);
+  --muted: var(--g-neutral-800);
+  --muted-foreground: var(--g-neutral-400);
+  --accent: var(--g-neutral-800);
+  --accent-foreground: var(--g-neutral-25);
+  --destructive: var(--g-red-400);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: var(--g-neutral-500);
+
+  --surface-chrome: var(--g-neutral-900);
+  --surface-canvas: var(--g-neutral-950);
+  --surface-selected: var(--g-neutral-800);
+  --vertical-mail: var(--g-blue-400);
+  --vertical-calendar: var(--g-coral-400);
+  --vertical-contacts: var(--g-green-400);
+  --vertical-notes: var(--g-amber-400);
+  --unread: var(--g-blue-400);
+}
+
+/* ── Tier 3 · Component ─────────────────────────────────────────────────── */
+:root {
+  /* App shell */
+  --c-shell-rail-width: 4.5rem;
+  --c-shell-tabbar-height: 4rem;
+  --c-shell-list-width: 22rem;
+  --c-shell-active-indicator: var(--accent);
+
+  /* Nav item: icon axes animate between states (see Icon) */
+  --c-nav-icon-fill-rest: 0;
+  --c-nav-icon-fill-active: 1;
+  --c-nav-icon-wght-rest: 400;
+  --c-nav-icon-wght-active: 500;
+
+  /* List row (message, contact, note) */
+  --c-list-row-padding-x: 1rem;
+  --c-list-row-padding-y: 0.75rem;
+  --c-list-row-gap: 0.75rem;
+  --c-list-row-selected: var(--surface-selected);
+  --c-list-row-unread-dot: var(--unread);
+
+  /* Icon defaults (Material Symbols axes) */
+  --c-icon-fill: 0;
+  --c-icon-wght: 400;
+  --c-icon-grad: 0;
+  --c-icon-opsz: 20;
+}
+
+/* Dark surfaces look heavier, so grade icons down slightly (Material guidance). */
+.dark {
+  --c-icon-grad: -25;
+}
