@@ -14,7 +14,7 @@ const CAPABILITIES: Record<Provider, Capabilities> = {
   google: { mail: true, calendar: true, contacts: true, notes: "import_only", mail_organization: "labels", contact_groups: true, server_side_scheduling: true, push: true, auth: "o_auth2" },
   microsoft: { mail: true, calendar: true, contacts: true, notes: "unsupported", mail_organization: "folders", contact_groups: true, server_side_scheduling: true, push: true, auth: "o_auth2" },
   i_cloud: { mail: true, calendar: true, contacts: true, notes: "import_only", mail_organization: "folders", contact_groups: true, server_side_scheduling: false, push: true, auth: "app_password" },
-  jmap: { mail: true, calendar: true, contacts: true, notes: "unsupported", mail_organization: "labels", contact_groups: true, server_side_scheduling: false, push: true, auth: "o_auth2" },
+  jmap: { mail: true, calendar: true, contacts: true, notes: "unsupported", mail_organization: "labels", contact_groups: true, server_side_scheduling: false, push: true, auth: "password" },
   generic: { mail: true, calendar: false, contacts: false, notes: "unsupported", mail_organization: "folders", contact_groups: false, server_side_scheduling: false, push: false, auth: "password" },
   local: { mail: false, calendar: true, contacts: true, notes: "native", mail_organization: null, contact_groups: true, server_side_scheduling: false, push: false, auth: "none" },
 }

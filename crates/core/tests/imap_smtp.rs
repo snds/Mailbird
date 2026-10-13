@@ -27,6 +27,7 @@ fn config() -> AccountConfig {
         provider: Provider::Generic,
         imap: ServerConfig { host: "127.0.0.1".into(), port: 1143, security: Security::Plain },
         smtp: ServerConfig { host: "127.0.0.1".into(), port: 2525, security: Security::Plain },
+        jmap: None,
     }
 }
 

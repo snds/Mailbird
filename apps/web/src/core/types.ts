@@ -24,13 +24,23 @@ export interface ServerConfig {
   security: Security
 }
 
+export interface JmapConfig {
+  /** The session resource, e.g. https://api.fastmail.com/jmap/session */
+  sessionUrl: string
+  /** Send the secret as an API token (Bearer) instead of username + password. */
+  bearer: boolean
+}
+
 export interface AccountConfig {
   displayName: string
   address: string
   username: string
   provider: Provider
+  /** Used when `jmap` is absent. */
   imap: ServerConfig
   smtp: ServerConfig
+  /** When set, mail syncs and sends over JMAP instead of IMAP/SMTP. */
+  jmap?: JmapConfig | null
 }
 
 export interface Account extends AccountConfig {

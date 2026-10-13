@@ -25,8 +25,20 @@ pub struct ServerConfig {
     pub security: Security,
 }
 
-/// Everything needed to reach an IMAP/SMTP account, minus the password.
-/// Passwords live in the OS keychain, never in the database.
+/// How to reach a JMAP server (RFC 8620/8621).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JmapConfig {
+    /// The session resource, e.g. `https://api.fastmail.com/jmap/session`.
+    pub session_url: String,
+    /// Send the secret as an API token (`Bearer`), as Fastmail requires,
+    /// instead of username + password (`Basic`).
+    #[serde(default)]
+    pub bearer: bool,
+}
+
+/// Everything needed to reach an account, minus the password or token.
+/// Secrets live in the OS keychain, never in the database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountConfig {
@@ -34,8 +46,12 @@ pub struct AccountConfig {
     pub address: String,
     pub username: String,
     pub provider: Provider,
+    /// Used when `jmap` is absent.
     pub imap: ServerConfig,
     pub smtp: ServerConfig,
+    /// When set, mail syncs and sends over JMAP instead of IMAP/SMTP.
+    #[serde(default)]
+    pub jmap: Option<JmapConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,4 +252,50 @@ pub enum OpKind {
     Seen(bool),
     Flagged(bool),
     Archive,
+}
+
+// ── Server-id sync (JMAP) ────────────────────────────────────────────────
+// IMAP addresses messages by numeric UID; JMAP by opaque string id. The
+// store keeps both, and these types carry the string-id flavor.
+
+/// Where a JMAP sync should pick up.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RemoteCursor {
+    /// The server's `Email` state string from the last pass.
+    pub state: Option<String>,
+    /// Ids already stored for this mailbox.
+    pub known: std::collections::HashSet<String>,
+}
+
+/// A local change that still has to reach a JMAP server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteOp {
+    pub id: i64,
+    pub remote_id: String,
+    pub kind: OpKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteMessage {
+    pub remote_id: String,
+    pub seen: bool,
+    pub flagged: bool,
+    pub raw: Vec<u8>,
+}
+
+/// The result of one JMAP sync pass for one mailbox.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RemoteBatch {
+    pub mailbox: String,
+    /// New `Email` state to resume from next time.
+    pub state: String,
+    /// The old state was too old to diff; local copies were replaced.
+    pub reset: bool,
+    pub new_messages: Vec<RemoteMessage>,
+    /// Current flags for already-known ids: (id, seen, flagged).
+    pub flags: Vec<(String, bool, bool)>,
+    /// Ids that left the mailbox or were destroyed.
+    pub removed: Vec<String>,
+    pub applied_ops: Vec<i64>,
+    pub more_older: bool,
 }

@@ -52,6 +52,27 @@ jobs:
         if: failure()
         run: sudo tail -n 50 /tmp/mbtest/dovecot.log /tmp/mbtest/smtpd.log
 
+  # Real JMAP server (Stalwart, AGPL, test-only): sync, Email/changes, archive
+  # move, and EmailSubmission send. The server binary is cached between runs.
+  jmap-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Cache Stalwart binary
+        uses: actions/cache@v4
+        with:
+          path: /tmp/mbjmap/bin
+          key: stalwart-bin-${{ runner.os }}-${{ hashFiles('tools/test-mail-servers/start-jmap.sh') }}
+      - name: Start Stalwart
+        run: tools/test-mail-servers/start-jmap.sh
+        timeout-minutes: 45
+      - run: cargo test -p pim-core --test jmap -- --ignored
+      - name: Server log on failure
+        if: failure()
+        run: tail -n 80 /tmp/mbjmap/stalwart.log
+
   shell:
     runs-on: ubuntu-latest
     steps:

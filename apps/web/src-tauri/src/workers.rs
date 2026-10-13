@@ -57,7 +57,8 @@ pub fn start(app: AppHandle, state: Shared) {
         loop {
             tick.tick().await;
             let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
-            for account in accounts {
+            // JMAP accounts sync on the interval; JMAP push (EventSource) comes later.
+            for account in accounts.into_iter().filter(|a| a.config.jmap.is_none()) {
                 let fresh = state.idling.lock().map(|mut set| set.insert(account.id.clone())).unwrap_or(false);
                 if fresh {
                     let (app, state) = (app.clone(), state.clone());
@@ -116,9 +117,11 @@ async fn send_due(app: &AppHandle, state: &Shared) {
             None => Err("the sending account was removed".to_string()),
             Some(account) => match secrets::get(&account.id) {
                 Err(e) => Err(e),
-                Ok(password) => net::send(&account.config, &password, &item.draft)
-                    .await
-                    .map_err(|e| e.to_string()),
+                Ok(password) => match account.config.jmap {
+                    Some(_) => net::jmap::send(&account.config, &password, &item.draft).await,
+                    None => net::send(&account.config, &password, &item.draft).await,
+                }
+                .map_err(|e| e.to_string()),
             },
         };
         if let Ok(s) = state.store.lock() {
@@ -157,32 +160,47 @@ async fn sync_pass(app: &AppHandle, state: &Shared) -> bool {
     let _guard = state.sync_lock.lock().await;
     let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
     for account in accounts {
-        let prepared = state.store.lock().ok().and_then(|s| {
-            Some((s.sync_cursor(&account.id, net::INBOX).ok()?, s.pending_ops(&account.id, net::INBOX).ok()?))
-        });
-        let Some((cursor, ops)) = prepared else { continue };
-
         let result = match secrets::get(&account.id) {
             Err(e) => Err(e),
-            Ok(password) => net::sync_inbox(&account.config, &password, cursor, &ops)
-                .await
-                .map_err(|e| e.to_string()),
+            Ok(password) if account.config.jmap.is_some() => sync_jmap(state, &account, &password).await,
+            Ok(password) => sync_imap(state, &account, &password).await,
         };
-
         if let Ok(s) = state.store.lock() {
-            match &result {
-                Ok(batch) => {
-                    more_older |= batch.more_older;
-                    let applied = s.apply_sync(&account.id, batch);
-                    let _ = s.record_sync_result(&account.id, applied.as_ref().err().map(|e| e.to_string()).as_deref());
-                }
-                Err(e) => {
-                    let _ = s.record_sync_result(&account.id, Some(e));
-                }
-            }
+            let _ = s.record_sync_result(&account.id, result.as_ref().err().map(String::as_str));
         }
+        more_older |= result.unwrap_or(false);
     }
     let _ = app.emit(events::MAIL_CHANGED, ());
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
     more_older
+}
+
+/// One IMAP pass for one account. Returns whether older mail remains.
+async fn sync_imap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
+    let (cursor, ops) = {
+        let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+        (
+            s.sync_cursor(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+            s.pending_ops(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+        )
+    };
+    let batch = net::sync_inbox(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
+    let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+    s.apply_sync(&account.id, &batch).map_err(|e| e.to_string())?;
+    Ok(batch.more_older)
+}
+
+/// One JMAP pass for one account. Returns whether older mail remains.
+async fn sync_jmap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
+    let (cursor, ops) = {
+        let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+        (
+            s.remote_cursor(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+            s.pending_remote_ops(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+        )
+    };
+    let batch = net::jmap::sync_inbox(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
+    let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+    s.apply_remote(&account.id, &batch).map_err(|e| e.to_string())?;
+    Ok(batch.more_older)
 }

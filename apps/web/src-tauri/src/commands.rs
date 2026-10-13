@@ -38,7 +38,11 @@ pub async fn add_account(
     if !matches!(config.provider.capabilities().auth, pim_core::AuthMethod::AppPassword | pim_core::AuthMethod::Password) {
         return Err("this provider needs browser sign-in, which is coming in a later release".into());
     }
-    net::verify(&config, &password).await.map_err(|e| e.to_string())?;
+    match config.jmap {
+        Some(_) => net::jmap::verify(&config, &password).await,
+        None => net::verify(&config, &password).await,
+    }
+    .map_err(|e| e.to_string())?;
     let account = with_store(&state, |s| s.add_account(&config))?;
     if let Err(e) = secrets::set(&account.id, &password) {
         let _ = with_store(&state, |s| s.remove_account(&account.id));

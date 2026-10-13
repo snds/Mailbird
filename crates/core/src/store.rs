@@ -20,13 +20,13 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use crate::{
     Account, AccountConfig, Address, AttachmentInfo, Draft, Error, Lane,
     MessageDetail, MessageQuery, MessageSummary, OpKind, OutboxItem, OutboxState, PendingOp,
-    Result, SyncBatch, SyncCursor, mime, now,
+    RemoteBatch, RemoteCursor, RemoteOp, Result, SyncBatch, SyncCursor, mime, now,
 };
 
 /// Mailbox name for local copies of sent mail.
 pub const SENT: &str = "Sent";
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -138,6 +138,14 @@ CREATE TABLE attachments (
 CREATE INDEX attachments_message ON attachments (message_id);
 "#;
 
+/// Version 3: string server ids (JMAP) beside IMAP UIDs, and the server's
+/// state string for resuming a JMAP sync.
+const MIGRATE_V3: &str = r#"
+ALTER TABLE messages ADD COLUMN remote_id TEXT;
+CREATE UNIQUE INDEX messages_remote ON messages (account_id, mailbox, remote_id) WHERE remote_id IS NOT NULL;
+ALTER TABLE sync_state ADD COLUMN state TEXT;
+"#;
+
 /// Inline images larger than this stay out of the HTML (kept as attachments).
 const MAX_INLINE_IMAGE: u64 = 3 * 1024 * 1024;
 
@@ -169,6 +177,9 @@ impl Store {
         }
         if version < 2 {
             tx.execute_batch(MIGRATE_V2)?;
+        }
+        if version < 3 {
+            tx.execute_batch(MIGRATE_V3)?;
         }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
@@ -566,10 +577,13 @@ impl Store {
     }
 
     fn queue_op(&self, message_id: &str, kind: &str) -> Result<()> {
-        // Sent copies aren't on an IMAP mailbox we sync; nothing to push.
-        let uid: Option<u32> =
-            self.db.query_row("SELECT uid FROM messages WHERE id = ?1", [message_id], |r| r.get(0))?;
-        if uid.is_none() {
+        // Sent copies aren't on a server mailbox we sync; nothing to push.
+        let on_server: bool = self.db.query_row(
+            "SELECT uid IS NOT NULL OR remote_id IS NOT NULL FROM messages WHERE id = ?1",
+            [message_id],
+            |r| r.get(0),
+        )?;
+        if !on_server {
             return Ok(());
         }
         // A newer op on the same flag replaces the older one (seen then unseen = unseen).
@@ -611,19 +625,27 @@ impl Store {
         Ok(cursor)
     }
 
-    /// Local changes for one mailbox that still need to reach the server.
+    /// Local changes for one IMAP mailbox that still need to reach the server.
     pub fn pending_ops(&self, account_id: &str, mailbox: &str) -> Result<Vec<PendingOp>> {
-        let mut stmt = self.db.prepare(
-            "SELECT o.id, m.uid, o.kind FROM pending_ops o JOIN messages m ON m.id = o.message_id
-             WHERE m.account_id = ?1 AND m.mailbox = ?2 AND m.uid IS NOT NULL ORDER BY o.id",
-        )?;
+        Ok(self
+            .ops_where(account_id, mailbox, "m.uid")?
+            .into_iter()
+            .map(|(id, uid, kind): (i64, u32, OpKind)| PendingOp { id, uid, kind })
+            .collect())
+    }
+
+    /// Pending ops joined to the message's server key (`m.uid` or `m.remote_id`).
+    fn ops_where<K: rusqlite::types::FromSql>(&self, account_id: &str, mailbox: &str, key: &str) -> Result<Vec<(i64, K, OpKind)>> {
+        let mut stmt = self.db.prepare(&format!(
+            "SELECT o.id, {key}, o.kind FROM pending_ops o JOIN messages m ON m.id = o.message_id
+             WHERE m.account_id = ?1 AND m.mailbox = ?2 AND {key} IS NOT NULL ORDER BY o.id"
+        ))?;
         let rows = stmt.query_map(params![account_id, mailbox], |r| {
-            let kind: String = r.get(2)?;
-            Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?, kind))
+            Ok((r.get::<_, i64>(0)?, r.get::<_, K>(1)?, r.get::<_, String>(2)?))
         })?;
         let mut ops = Vec::new();
         for row in rows {
-            let (id, uid, kind) = row?;
+            let (id, key, kind) = row?;
             let kind = match kind.as_str() {
                 "seen" => OpKind::Seen(true),
                 "unseen" => OpKind::Seen(false),
@@ -632,7 +654,7 @@ impl Store {
                 "archive" => OpKind::Archive,
                 _ => continue,
             };
-            ops.push(PendingOp { id, uid, kind });
+            ops.push((id, key, kind));
         }
         Ok(ops)
     }
@@ -656,7 +678,7 @@ impl Store {
 
         let mut inserted = 0;
         for m in &batch.new_messages {
-            if insert_message(&tx, account_id, &batch.mailbox, Some(m.uid), &m.raw, m.seen, m.flagged)?.is_some() {
+            if insert_message(&tx, account_id, &batch.mailbox, ServerKey::Uid(m.uid), &m.raw, m.seen, m.flagged)?.is_some() {
                 inserted += 1;
             }
         }
@@ -713,11 +735,85 @@ impl Store {
         Ok(inserted)
     }
 
+    // ── Server-id sync (JMAP) ─────────────────────────────────────────────
+
+    pub fn remote_cursor(&self, account_id: &str, mailbox: &str) -> Result<RemoteCursor> {
+        let state: Option<String> = self
+            .db
+            .query_row(
+                "SELECT state FROM sync_state WHERE account_id = ?1 AND mailbox = ?2",
+                params![account_id, mailbox],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        let mut stmt = self.db.prepare(
+            "SELECT remote_id FROM messages WHERE account_id = ?1 AND mailbox = ?2 AND remote_id IS NOT NULL",
+        )?;
+        let known = stmt
+            .query_map(params![account_id, mailbox], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(RemoteCursor { state, known })
+    }
+
+    pub fn pending_remote_ops(&self, account_id: &str, mailbox: &str) -> Result<Vec<RemoteOp>> {
+        Ok(self
+            .ops_where(account_id, mailbox, "m.remote_id")?
+            .into_iter()
+            .map(|(id, remote_id, kind)| RemoteOp { id, remote_id, kind })
+            .collect())
+    }
+
+    /// Apply one JMAP sync pass atomically. Returns the number of new messages.
+    pub fn apply_remote(&self, account_id: &str, batch: &RemoteBatch) -> Result<usize> {
+        let tx = self.db.unchecked_transaction()?;
+        if batch.reset {
+            tx.execute(
+                "DELETE FROM messages WHERE account_id = ?1 AND mailbox = ?2 AND remote_id IS NOT NULL AND archived = 0",
+                params![account_id, batch.mailbox],
+            )?;
+        }
+        for op in &batch.applied_ops {
+            tx.execute("DELETE FROM pending_ops WHERE id = ?1", [op])?;
+        }
+        let mut inserted = 0;
+        for m in &batch.new_messages {
+            if insert_message(&tx, account_id, &batch.mailbox, ServerKey::Remote(&m.remote_id), &m.raw, m.seen, m.flagged)?.is_some() {
+                inserted += 1;
+            }
+        }
+        for (remote_id, seen, flagged) in &batch.flags {
+            tx.execute(
+                "UPDATE messages SET
+                   seen = CASE WHEN EXISTS (SELECT 1 FROM pending_ops o WHERE o.message_id = messages.id
+                          AND o.kind IN ('seen','unseen')) THEN seen ELSE ?4 END,
+                   flagged = CASE WHEN EXISTS (SELECT 1 FROM pending_ops o WHERE o.message_id = messages.id
+                          AND o.kind IN ('flag','unflag')) THEN flagged ELSE ?5 END
+                 WHERE account_id = ?1 AND mailbox = ?2 AND remote_id = ?3",
+                params![account_id, batch.mailbox, remote_id, seen, flagged],
+            )?;
+        }
+        // Gone from the server mailbox; a copy we archived ourselves stays.
+        for remote_id in &batch.removed {
+            tx.execute(
+                "DELETE FROM messages WHERE account_id = ?1 AND mailbox = ?2 AND remote_id = ?3 AND archived = 0",
+                params![account_id, batch.mailbox, remote_id],
+            )?;
+        }
+        tx.execute(
+            "INSERT INTO sync_state (account_id, mailbox, uid_validity, last_uid, state) VALUES (?1, ?2, 0, 0, ?3)
+             ON CONFLICT (account_id, mailbox) DO UPDATE SET state = ?3",
+            params![account_id, batch.mailbox, batch.state],
+        )?;
+        tx.commit()?;
+        Ok(inserted)
+    }
+
     /// Store a message that didn't come through IMAP sync: a copy of mail
     /// sent from this device (mailbox [`SENT`]), demo data, or imports.
     pub fn insert_local(&self, account_id: &str, mailbox: &str, raw: &[u8], seen: bool) -> Result<String> {
         let tx = self.db.unchecked_transaction()?;
-        let id = insert_message(&tx, account_id, mailbox, None, raw, seen, false)?
+        let id = insert_message(&tx, account_id, mailbox, ServerKey::Local, raw, seen, false)?
             .expect("local inserts have no UID to conflict on");
         tx.commit()?;
         Ok(id)
@@ -822,13 +918,22 @@ const MAX_OUTGOING_ATTACHMENTS: usize = 25 * 1024 * 1024;
 
 // ── Inserting + threading ────────────────────────────────────────────────
 
+/// How the server identifies a message: IMAP by UID, JMAP by string id.
+/// Local-only mail (sent copies, imports) has neither.
+#[derive(Clone, Copy)]
+enum ServerKey<'a> {
+    Uid(u32),
+    Remote(&'a str),
+    Local,
+}
+
 /// Insert one message with its attachments and thread. Returns the new id,
-/// or `None` if this (account, mailbox, uid) is already stored.
+/// or `None` if the server key is already stored for this mailbox.
 fn insert_message(
     tx: &Connection,
     account_id: &str,
     mailbox: &str,
-    uid: Option<u32>,
+    key: ServerKey<'_>,
     raw: &[u8],
     seen: bool,
     flagged: bool,
@@ -848,18 +953,23 @@ fn insert_message(
         references: vec![],
         attachments: vec![],
     });
+    let (uid, remote_id) = match key {
+        ServerKey::Uid(u) => (Some(u), None),
+        ServerKey::Remote(r) => (None, Some(r)),
+        ServerKey::Local => (None, None),
+    };
     let id = uuid::Uuid::new_v4().to_string();
     let date = p.date.unwrap_or_else(now);
     let has_files = p.attachments.iter().any(|a| !a.inline);
     let n = tx.execute(
         "INSERT OR IGNORE INTO messages (id, account_id, mailbox, uid, message_id, from_name, from_email,
            to_json, cc_json, subject, preview, body_text, body_html, date, sort_at, seen, flagged,
-           thread_id, has_attachments, raw)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18)",
+           thread_id, has_attachments, raw, remote_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18, ?19)",
         params![
             id, account_id, mailbox, uid, p.message_id, p.from.name, p.from.email, json(&p.to),
             json(&p.cc), p.subject, p.preview, p.body_text, p.body_html, date, seen, flagged,
-            has_files, raw
+            has_files, raw, remote_id
         ],
     )?;
     if n == 0 {
@@ -1035,6 +1145,7 @@ mod tests {
                 provider: Provider::Generic,
                 imap: server.clone(),
                 smtp: ServerConfig { port: 25, ..server },
+                jmap: None,
             })
             .unwrap();
         (s, a.id)
@@ -1392,6 +1503,53 @@ Content-Type: multipart/related; boundary=\"b1\"\r\n\r\n\
             "--b1\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"tickets.pdf\"\r\nContent-Transfer-Encoding: base64\r\n\r\nSGVsbG8gUERG\r\n", "");
         s.apply_sync(&acct, &batch(7, vec![fetched_raw(1, inline_only.into_bytes())], vec![1])).unwrap();
         assert!(!inbox(&s)[0].has_attachments);
+    }
+
+    // ── Server-id (JMAP) sync ────────────────────────────────────────────
+
+    fn remote(id: &str, raw: Vec<u8>) -> crate::RemoteMessage {
+        crate::RemoteMessage { remote_id: id.into(), seen: false, flagged: false, raw }
+    }
+
+    #[test]
+    fn remote_sync_inserts_updates_and_removes_by_server_id() {
+        let (s, acct) = store_with_account();
+        let b = RemoteBatch {
+            mailbox: "INBOX".into(),
+            state: "s1".into(),
+            new_messages: vec![remote("M1", raw("One", "x")), remote("M2", raw("Two", "y"))],
+            ..Default::default()
+        };
+        assert_eq!(s.apply_remote(&acct, &b).unwrap(), 2);
+        assert_eq!(s.apply_remote(&acct, &b).unwrap(), 0, "same ids are not stored twice");
+        let c = s.remote_cursor(&acct, "INBOX").unwrap();
+        assert_eq!(c.state.as_deref(), Some("s1"));
+        assert_eq!(c.known.len(), 2);
+
+        // Local change → op keyed by server id; server flags don't clobber it.
+        let one = inbox(&s).into_iter().find(|m| m.subject == "One").unwrap();
+        s.set_thread_seen(&one.thread_id, true).unwrap();
+        let ops = s.pending_remote_ops(&acct, "INBOX").unwrap();
+        assert_eq!((ops.len(), ops[0].remote_id.as_str(), ops[0].kind), (1, "M1", OpKind::Seen(true)));
+        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s2".into(), flags: vec![("M1".into(), false, true)], ..Default::default() }).unwrap();
+        let after = s.message(&one.id).unwrap().summary;
+        assert!(after.seen && after.flagged, "pending seen kept, server flag applied");
+
+        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s3".into(), removed: vec!["M2".into()], applied_ops: vec![ops[0].id], ..Default::default() }).unwrap();
+        assert_eq!(inbox(&s).len(), 1);
+        assert!(s.pending_remote_ops(&acct, "INBOX").unwrap().is_empty());
+        assert!(s.pending_ops(&acct, "INBOX").unwrap().is_empty(), "IMAP ops never see JMAP rows");
+    }
+
+    #[test]
+    fn remote_reset_replaces_server_copies_but_keeps_local_archive() {
+        let (s, acct) = store_with_account();
+        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s1".into(), new_messages: vec![remote("M1", raw("Keep", "x")), remote("M2", raw("Old", "y"))], ..Default::default() }).unwrap();
+        let keep = inbox(&s).into_iter().find(|m| m.subject == "Keep").unwrap();
+        s.set_thread_archived(&keep.thread_id, true).unwrap();
+        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s9".into(), reset: true, new_messages: vec![remote("M3", raw("New", "z"))], ..Default::default() }).unwrap();
+        assert_eq!(inbox(&s).iter().map(|m| m.subject.as_str()).collect::<Vec<_>>(), ["New"]);
+        assert_eq!(lane(&s, Lane::Archive).len(), 1);
     }
 
     // ── Migration ────────────────────────────────────────────────────────

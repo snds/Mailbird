@@ -55,7 +55,7 @@ All three come from `AppShell` + `MasterDetail` (`apps/web/src/app/shell.tsx`, `
 ## Data and sync
 
 - **Local store:** SQLite (rusqlite, bundled) per device, with FTS5 for full-text search. Tantivy is deferred ([ADR-0007](decisions/0007-mail-engine.md)).
-- **Mail:** provider adapters sync into the local store. Local changes queue as ops and are pushed first. Snooze, undo send, and send-later use the server where supported, and a local scheduler otherwise (`server_side_scheduling`). Details: [ADR-0007](decisions/0007-mail-engine.md).
+- **Mail:** provider adapters (IMAP/SMTP and JMAP) sync into the local store. Lists are grouped into conversations, and attachments are decoded on demand from the stored raw message ([ADR-0008](decisions/0008-mail-depth.md)). Local changes queue as ops and are pushed first. Snooze, undo send, and send-later use the server where supported, and a local scheduler otherwise (`server_side_scheduling`). Details: [ADR-0007](decisions/0007-mail-engine.md).
 - **UI data flow:** the web app talks to one `CoreClient` (`apps/web/src/core/client.ts`). It runs over Tauri IPC natively and over an in-memory demo in the browser. TanStack Query caches the results, and core events (`mail:changed`, `outbox:changed`, `accounts:changed`) invalidate the cache, so nothing polls.
 - **Calendar and contacts:** CalDAV/CardDAV via `libdav`, Graph, and the Google APIs. iCalendar and vCard parsing uses `calcard`.
 - **Notes:** Markdown at rest. Yjs CRDT for multi-device sync through our own optional, self-hostable relay. Import from Apple Notes (Markdown export) and Google Keep (Takeout) ([ADR-0005](decisions/0005-notes.md)).
@@ -68,7 +68,7 @@ apps/web/               React app (Vite) — the UI for every platform
 apps/web/src-tauri/     Tauri 2 shell (desktop now, mobile next)
 crates/core/            pim-core — store, MIME, IMAP/SMTP adapters, capability matrix
 tools/shadcn-material/  shadcn → Material Symbols transform
-tools/test-mail-servers/ local Dovecot + SMTP sink for integration tests
+tools/test-mail-servers/ local Dovecot + SMTP sink, and Stalwart (JMAP), for integration tests
 docs/                   research, stack, decisions (ADRs)
 ```
 
@@ -83,3 +83,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0005](decisions/0005-notes.md) | Notes as Markdown + Yjs; import instead of Keep/Apple sync |
 | [0006](decisions/0006-product-name.md) | "Mailbird" is a working name only; rename before release |
 | [0007](decisions/0007-mail-engine.md) | Mail engine: store/net split, FTS5, local snooze, outbox undo, safe HTML |
+| [0008](decisions/0008-mail-depth.md) | Conversations, attachments, IDLE, backfill, JMAP, swipe gestures |

@@ -33,9 +33,11 @@ pub const BACKFILL_CHUNK: usize = 200;
 /// RFC 2177: clients must re-issue IDLE at least every 29 minutes.
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(25 * 60);
 const FETCH_CHUNK: usize = 50;
-const TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const TIMEOUT: Duration = Duration::from_secs(30);
 
 pub const INBOX: &str = "INBOX";
+
+pub mod jmap;
 
 trait Io: AsyncRead + AsyncWrite + Unpin + Send + Debug {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Debug> Io for T {}
@@ -48,14 +50,18 @@ fn is_local(host: &str) -> bool {
     matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
-fn tls_connector() -> TlsConnector {
+/// One TLS setup for every protocol: rustls with ring and the Mozilla roots.
+fn tls_config() -> rustls::ClientConfig {
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+    rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
         .with_safe_default_protocol_versions()
         .expect("ring supports the default TLS versions")
         .with_root_certificates(roots)
-        .with_no_client_auth();
-    TlsConnector::from(Arc::new(config))
+        .with_no_client_auth()
+}
+
+fn tls_connector() -> TlsConnector {
+    TlsConnector::from(Arc::new(tls_config()))
 }
 
 async fn timed<T>(what: &str, f: impl Future<Output = Result<T>>) -> Result<T> {
@@ -426,6 +432,7 @@ mod tests {
             provider: Provider::Generic,
             imap: server.clone(),
             smtp: ServerConfig { port: 465, ..server },
+            jmap: None,
         }
     }
 

@@ -124,7 +124,8 @@ impl Provider {
                 contact_groups: true,
                 server_side_scheduling: false,
                 push: true,
-                auth: AuthMethod::OAuth2,
+                // Fastmail: an API token; Stalwart and others: the account password.
+                auth: AuthMethod::Password,
             },
             Provider::Generic => Capabilities {
                 mail: true,
