@@ -1,6 +1,6 @@
 //! Turning raw RFC 5322 messages into the fields the store keeps.
 
-use mail_parser::{Address as MpAddress, MessageParser};
+use mail_parser::{Address as MpAddress, HeaderValue, MessageParser, MimeHeaders};
 
 use crate::{Address, Error, Result};
 
@@ -18,6 +18,23 @@ pub struct Parsed {
     pub body_text: String,
     /// Only set when the message actually has an HTML part.
     pub body_html: Option<String>,
+    /// Threading headers, without angle brackets.
+    pub in_reply_to: Option<String>,
+    pub references: Vec<String>,
+    pub attachments: Vec<ParsedAttachment>,
+}
+
+/// An attachment's metadata. `index` is its position in the message's
+/// attachment list, which is how its bytes are found again later.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedAttachment {
+    pub index: u32,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: u64,
+    pub content_id: Option<String>,
+    /// Shown in the body (an embedded image) rather than as a file.
+    pub inline: bool,
 }
 
 const PREVIEW_CHARS: usize = 160;
@@ -54,7 +71,69 @@ pub fn parse(raw: &[u8]) -> Result<Parsed> {
         preview: preview(&body_text),
         body_text,
         body_html,
+        in_reply_to: ids(msg.in_reply_to()).into_iter().next(),
+        references: ids(msg.references()),
+        attachments: msg
+            .attachments()
+            .enumerate()
+            .map(|(i, part)| {
+                let mime_type = part
+                    .content_type()
+                    .map(|ct| match ct.subtype() {
+                        Some(sub) => format!("{}/{}", ct.ctype(), sub),
+                        None => ct.ctype().to_owned(),
+                    })
+                    .unwrap_or_else(|| "application/octet-stream".into())
+                    .to_ascii_lowercase();
+                let content_id = part.content_id().map(|c| strip_brackets(c).to_owned());
+                let inline = part.content_disposition().is_some_and(|d| d.is_inline())
+                    || (content_id.is_some() && part.content_disposition().is_none_or(|d| !d.is_attachment()));
+                ParsedAttachment {
+                    index: i as u32,
+                    filename: part
+                        .attachment_name()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| default_name(i, &mime_type)),
+                    size: part.len() as u64,
+                    mime_type,
+                    content_id,
+                    inline,
+                }
+            })
+            .collect(),
     })
+}
+
+fn strip_brackets(id: &str) -> &str {
+    id.trim().trim_start_matches('<').trim_end_matches('>')
+}
+
+fn ids(v: &HeaderValue<'_>) -> Vec<String> {
+    let raw: Vec<&str> = match v {
+        HeaderValue::Text(t) => vec![t.as_ref()],
+        HeaderValue::TextList(l) => l.iter().map(|t| t.as_ref()).collect(),
+        _ => vec![],
+    };
+    raw.into_iter()
+        .flat_map(|s| s.split_whitespace())
+        .map(strip_brackets)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn default_name(i: usize, mime: &str) -> String {
+    let ext = mime.rsplit('/').next().filter(|e| e.len() <= 5 && e.chars().all(|c| c.is_ascii_alphanumeric()));
+    match ext {
+        Some(ext) => format!("attachment-{}.{ext}", i + 1),
+        None => format!("attachment-{}", i + 1),
+    }
+}
+
+/// The decoded bytes of one attachment, found by its index.
+pub fn attachment_bytes(raw: &[u8], index: u32) -> Option<Vec<u8>> {
+    let msg = MessageParser::default().parse(raw)?;
+    msg.attachments().nth(index as usize).map(|p| p.contents().to_vec())
 }
 
 fn addresses(list: Option<&MpAddress<'_>>) -> Vec<Address> {
@@ -139,6 +218,54 @@ Hi,\r\n\r\nThree surface tokens collapse in dark mode.\r\n\r\n> earlier quoted t
         let p = parse(raw).unwrap();
         assert!(p.body_text.contains("Hello"));
         assert!(p.body_html.as_deref().unwrap().contains("<b>there</b>"));
+    }
+
+    const WITH_ATTACHMENTS: &[u8] = b"From: a@example.com\r\n\
+Subject: Photos\r\n\
+Message-ID: <child@example.com>\r\n\
+In-Reply-To: <parent@example.com>\r\n\
+References: <root@example.com> <parent@example.com>\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=\"b1\"\r\n\
+\r\n\
+--b1\r\n\
+Content-Type: text/plain\r\n\
+\r\n\
+See attached.\r\n\
+--b1\r\n\
+Content-Type: application/pdf; name=\"itinerary.pdf\"\r\n\
+Content-Disposition: attachment; filename=\"itinerary.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+SGVsbG8gUERG\r\n\
+--b1\r\n\
+Content-Type: image/png\r\n\
+Content-ID: <logo@example.com>\r\n\
+Content-Disposition: inline\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+iVBORw0KGgo=\r\n\
+--b1--\r\n";
+
+    #[test]
+    fn reads_threading_headers() {
+        let p = parse(WITH_ATTACHMENTS).unwrap();
+        assert_eq!(p.in_reply_to.as_deref(), Some("parent@example.com"));
+        assert_eq!(p.references, ["root@example.com", "parent@example.com"]);
+    }
+
+    #[test]
+    fn lists_attachments_and_decodes_them() {
+        let p = parse(WITH_ATTACHMENTS).unwrap();
+        assert_eq!(p.attachments.len(), 2);
+        let pdf = &p.attachments[0];
+        assert_eq!((pdf.filename.as_str(), pdf.mime_type.as_str(), pdf.inline), ("itinerary.pdf", "application/pdf", false));
+        assert_eq!(attachment_bytes(WITH_ATTACHMENTS, 0).unwrap(), b"Hello PDF");
+        let logo = &p.attachments[1];
+        assert!(logo.inline);
+        assert_eq!(logo.content_id.as_deref(), Some("logo@example.com"));
+        assert_eq!(logo.filename, "attachment-2.png");
+        assert_eq!(p.body_text.trim(), "See attached.");
     }
 
     #[test]

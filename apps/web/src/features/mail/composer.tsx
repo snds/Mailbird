@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
@@ -9,10 +9,27 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
-import type { Draft } from "@/core/types"
+import type { Draft, OutgoingAttachment } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 
-import { UNDO_SECONDS, formatRecipients, parseRecipients } from "./format"
+import { UNDO_SECONDS, formatRecipients, formatSize, parseRecipients } from "./format"
+
+/** Most providers reject messages over 25 MB; base64 adds about a third. */
+const MAX_ATTACHMENTS = 25 * 1024 * 1024
+
+const bytesOf = (a: OutgoingAttachment) => Math.floor((a.dataBase64.length * 3) / 4)
+
+function readFile(file: File): Promise<OutgoingAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error(`couldn't read ${file.name}`))
+    reader.onload = () => {
+      const url = String(reader.result)
+      resolve({ filename: file.name, mimeType: file.type || "application/octet-stream", dataBase64: url.slice(url.indexOf(",") + 1) })
+    }
+    reader.readAsDataURL(file)
+  })
+}
 
 /** Mounted once at the app root; opens whenever `useUi().composer` is set. */
 export function Composer() {
@@ -69,8 +86,21 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
   const [showCc, setShowCc] = useState((initial.cc?.length ?? 0) > 0)
   const [subject, setSubject] = useState(initial.subject ?? "")
   const [body, setBody] = useState(initial.body ?? "")
+  const [files, setFiles] = useState<OutgoingAttachment[]>(initial.attachments ?? [])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
+  const totalBytes = files.reduce((n, f) => n + bytesOf(f), 0)
+
+  const addFiles = async (list: FileList | null) => {
+    if (!list?.length) return
+    try {
+      const read = await Promise.all([...list].map(readFile))
+      setFiles((prev) => [...prev, ...read])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const send = async () => {
     setError(null)
@@ -82,6 +112,8 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
       subject: subject.trim(),
       body,
       inReplyTo: initial.inReplyTo ?? null,
+      references: initial.references ?? [],
+      attachments: files,
     }
     try {
       const client = await getCoreClient()
@@ -117,13 +149,20 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
           void send()
         }
       }}
+      // Drop files anywhere on the composer to attach them.
+      onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return
+        e.preventDefault()
+        void addFiles(e.dataTransfer.files)
+      }}
     >
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
         </Button>
         <h2 className="flex-1 truncate text-center text-sm font-semibold">{subject.trim() || "New message"}</h2>
-        <Button type="submit" disabled={sending || accounts.length === 0} aria-keyshortcuts="Control+Enter Meta+Enter">
+        <Button type="submit" disabled={sending || accounts.length === 0 || totalBytes > MAX_ATTACHMENTS} aria-keyshortcuts="Control+Enter Meta+Enter">
           <Icon name="send" data-icon="inline-start" /> Send
         </Button>
       </header>
@@ -170,9 +209,33 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
         autoFocus={!!initial.to?.length}
         onFocus={(e) => initial.inReplyTo && e.currentTarget.setSelectionRange(0, 0)}
       />
-      <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground">
-        <Icon name="undo" className="size-4" />
-        You can undo for {UNDO_SECONDS} seconds after sending.
+      {files.length > 0 && (
+        <ul className="flex flex-wrap gap-2 border-t px-4 py-2" aria-label="Attachments">
+          {files.map((f, i) => (
+            <li key={`${f.filename}-${i}`} className="flex max-w-full items-center gap-1.5 rounded-lg border bg-muted/40 py-1 pr-1 pl-2 text-xs">
+              <Icon name="attach_file" className="size-4 text-muted-foreground" />
+              <span className="max-w-48 truncate font-medium">{f.filename}</span>
+              <span className="text-muted-foreground">{formatSize(bytesOf(f))}</span>
+              <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${f.filename}`} onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}>
+                <Icon name="close" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <footer className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground">
+        <input ref={picker} type="file" multiple hidden onChange={(e) => (void addFiles(e.target.files), (e.target.value = ""))} />
+        <Button type="button" variant="ghost" size="icon" aria-label="Attach files" onClick={() => picker.current?.click()}>
+          <Icon name="attach_file" />
+        </Button>
+        {totalBytes > MAX_ATTACHMENTS ? (
+          <span className="text-destructive">Attachments total {formatSize(totalBytes)} — over the 25 MB most servers accept.</span>
+        ) : (
+          <>
+            <Icon name="undo" className="size-4" />
+            You can undo for {UNDO_SECONDS} seconds after sending.
+          </>
+        )}
         {core?.kind === "demo" && <span className="ml-auto">Sample mode — nothing really leaves.</span>}
       </footer>
     </form>

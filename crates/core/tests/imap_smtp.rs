@@ -9,8 +9,10 @@
 #![cfg(feature = "net")]
 
 use futures::TryStreamExt;
+use base64::Engine;
 use pim_core::{
-    AccountConfig, Address, Draft, Error, Lane, MessageQuery, Provider, Security, ServerConfig, Store, net,
+    AccountConfig, Address, Draft, Error, Lane, MessageQuery, OutgoingAttachment, Provider, Security, ServerConfig,
+    Store, mime, net,
 };
 use tokio::net::TcpStream;
 
@@ -137,6 +139,8 @@ async fn full_round_trip() {
         subject: "Re: First note".into(),
         body: "Thanks!".into(),
         in_reply_to: Some("First-note@example.com".into()),
+        references: vec![],
+        attachments: vec![],
     };
     let raw = net::send(&config(), PASS, &draft).await.unwrap();
     assert!(String::from_utf8_lossy(&raw).contains("In-Reply-To: <First-note@example.com>"));
@@ -147,6 +151,57 @@ async fn full_round_trip() {
         let rcpts = std::fs::read_to_string(format!("{dir}/rcpts.txt")).unwrap();
         assert!(rcpts.lines().any(|l| l == "ana@example.com"), "SMTP sink received it");
     }
+
+    // IDLE: a change on the server wakes the waiting connection.
+    let waiter = tokio::spawn(async { net::wait_for_change(&config(), PASS, std::time::Duration::from_secs(20)).await });
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    append(&mut admin, "Fifth note", None).await;
+    let change = tokio::time::timeout(std::time::Duration::from_secs(10), waiter).await.expect("IDLE woke up").unwrap().unwrap();
+    assert_eq!(change, net::Change::Changed);
+    assert_eq!(sync(&store, &account).await, 1, "and the sync it triggers fetches the new mail");
+
+    // Attachments go out as multipart and survive the trip.
+    let with_file = Draft {
+        attachments: vec![OutgoingAttachment {
+            filename: "itinerary.pdf".into(),
+            mime_type: "application/pdf".into(),
+            data_base64: base64::engine::general_purpose::STANDARD.encode(b"%PDF-1.7 ferry"),
+        }],
+        subject: "Itinerary".into(),
+        ..draft
+    };
+    net::send(&config(), PASS, &with_file).await.unwrap();
+    admin.select("Sent").await.unwrap();
+    let sent: Vec<_> = admin.fetch("2", "BODY.PEEK[]").await.unwrap().try_collect().await.unwrap();
+    let raw = sent[0].body().unwrap();
+    let parsed = mime::parse(raw).unwrap();
+    assert_eq!(parsed.attachments[0].filename, "itinerary.pdf");
+    assert_eq!(mime::attachment_bytes(raw, 0).unwrap(), b"%PDF-1.7 ferry");
+
+    // Backfill: a big mailbox arrives newest-first, then older chunks.
+    clear(&mut admin, "INBOX").await;
+    let total = net::INITIAL_SYNC_LIMIT + 60;
+    for i in 0..total {
+        append(&mut admin, &format!("Bulk {i:04}"), Some("(\\Seen)")).await;
+    }
+    let fresh = Store::open_in_memory().unwrap();
+    let acct2 = fresh.add_account(&config()).unwrap().id;
+    let pass = |store: &Store, account: &str| {
+        let cursor = store.sync_cursor(account, net::INBOX).unwrap();
+        async move { net::sync_inbox(&config(), PASS, cursor, &[]).await.unwrap() }
+    };
+    let first = pass(&fresh, &acct2).await;
+    assert_eq!(first.new_messages.len(), net::INITIAL_SYNC_LIMIT);
+    assert!(first.more_older);
+    fresh.apply_sync(&acct2, &first).unwrap();
+    let all = |s: &Store| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(1000) }).unwrap();
+    assert!(all(&fresh).iter().any(|m| m.subject == format!("Bulk {:04}", total - 1)), "newest first");
+    let second = pass(&fresh, &acct2).await;
+    assert_eq!(second.new_messages.len(), 60);
+    assert!(!second.more_older);
+    fresh.apply_sync(&acct2, &second).unwrap();
+    assert_eq!(all(&fresh).len(), total);
+    assert!(pass(&fresh, &acct2).await.new_messages.is_empty(), "nothing left to fetch");
 
     let _ = admin.logout().await;
 }

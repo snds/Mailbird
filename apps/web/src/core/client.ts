@@ -24,12 +24,16 @@ export interface CoreClient {
   removeAccount(id: string): Promise<void>
   syncNow(): Promise<void>
   listMessages(query: MessageQuery): Promise<MessageSummary[]>
-  getMessage(id: string): Promise<MessageDetail>
-  setSeen(id: string, seen: boolean): Promise<void>
-  setFlagged(id: string, flagged: boolean): Promise<void>
-  setArchived(id: string, archived: boolean): Promise<void>
-  snooze(id: string, until: number): Promise<void>
-  unsnooze(id: string): Promise<void>
+  /** A whole conversation, oldest first. */
+  getThread(threadId: string): Promise<MessageDetail[]>
+  // Triage acts on conversations, like Gmail and Apple Mail.
+  setThreadSeen(threadId: string, seen: boolean): Promise<void>
+  setThreadFlagged(threadId: string, flagged: boolean): Promise<void>
+  setThreadArchived(threadId: string, archived: boolean): Promise<void>
+  snoozeThread(threadId: string, until: number): Promise<void>
+  unsnoozeThread(threadId: string): Promise<void>
+  /** Save to Downloads and open it. Returns where it was saved, if anywhere. */
+  openAttachment(id: string): Promise<string | null>
   queueSend(draft: Draft, undoSecs: number): Promise<OutboxItem>
   cancelSend(id: string): Promise<Draft>
   listOutbox(): Promise<OutboxItem[]>
@@ -53,12 +57,13 @@ async function createTauriClient(): Promise<CoreClient> {
     removeAccount: (id) => invoke("remove_account", { id }),
     syncNow: () => invoke("sync_now"),
     listMessages: (query) => invoke("list_messages", { query }),
-    getMessage: (id) => invoke("get_message", { id }),
-    setSeen: (id, seen) => invoke("set_seen", { id, seen }),
-    setFlagged: (id, flagged) => invoke("set_flagged", { id, flagged }),
-    setArchived: (id, archived) => invoke("set_archived", { id, archived }),
-    snooze: (id, until) => invoke("snooze", { id, until }),
-    unsnooze: (id) => invoke("unsnooze", { id }),
+    getThread: (threadId) => invoke("get_thread", { threadId }),
+    setThreadSeen: (threadId, seen) => invoke("set_thread_seen", { threadId, seen }),
+    setThreadFlagged: (threadId, flagged) => invoke("set_thread_flagged", { threadId, flagged }),
+    setThreadArchived: (threadId, archived) => invoke("set_thread_archived", { threadId, archived }),
+    snoozeThread: (threadId, until) => invoke("snooze_thread", { threadId, until }),
+    unsnoozeThread: (threadId) => invoke("unsnooze_thread", { threadId }),
+    openAttachment: (id) => invoke("open_attachment", { id }),
     queueSend: (draft, undoSecs) => invoke("queue_send", { draft, undoSecs }),
     cancelSend: (id) => invoke("cancel_send", { id }),
     listOutbox: () => invoke("list_outbox"),

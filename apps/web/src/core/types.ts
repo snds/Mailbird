@@ -51,19 +51,37 @@ export interface MessageQuery {
   limit?: number | null
 }
 
+/** A list row is a conversation: its newest matching message plus thread totals. */
 export interface MessageSummary {
   id: string
   accountId: string
+  threadId: string
+  /** Messages in the whole conversation, including your sent replies. */
+  threadCount: number
+  hasAttachments: boolean
   from: Address
   subject: string
   preview: string
   /** Seconds since the epoch. */
   date: number
   sortAt: number
+  /** In a list row: every message in the thread is read. */
   seen: boolean
+  /** In a list row: some message in the thread is starred. */
   flagged: boolean
   archived: boolean
   snoozedUntil: number | null
+  /** "INBOX", or "Sent" for copies of mail sent from this device. */
+  mailbox: string
+}
+
+export interface AttachmentInfo {
+  id: string
+  filename: string
+  mimeType: string
+  size: number
+  /** Embedded in the body (cid: image), not shown as a file. */
+  inline: boolean
 }
 
 export interface MessageDetail extends MessageSummary {
@@ -73,6 +91,15 @@ export interface MessageDetail extends MessageSummary {
   bodyText: string
   /** Untrusted. Only ever rendered inside a sandboxed iframe. */
   bodyHtml: string | null
+  attachments: AttachmentInfo[]
+  /** References + In-Reply-To, oldest first; a reply appends this message's id. */
+  references: string[]
+}
+
+export interface OutgoingAttachment {
+  filename: string
+  mimeType: string
+  dataBase64: string
 }
 
 export interface Draft {
@@ -82,6 +109,8 @@ export interface Draft {
   subject: string
   body: string
   inReplyTo?: string | null
+  references?: string[]
+  attachments?: OutgoingAttachment[]
 }
 
 export interface OutboxItem {

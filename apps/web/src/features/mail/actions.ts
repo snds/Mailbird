@@ -4,31 +4,33 @@ import { useMailAction } from "@/core/queries"
 import type { MessageSummary } from "@/core/types"
 
 /**
- * Triage actions shared by the toolbar and keyboard shortcuts. Every
- * destructive-feeling action toasts with Undo (principle: reversibility).
+ * Conversation triage shared by the toolbar, keyboard shortcuts, and swipe
+ * gestures. Anything that moves mail out of view toasts with Undo
+ * (principle: reversibility).
  */
 export function useTriage(onLeave: () => void) {
-  const seen = useMailAction<{ id: string; seen: boolean }>((c, a) => c.setSeen(a.id, a.seen))
-  const flag = useMailAction<{ id: string; flagged: boolean }>((c, a) => c.setFlagged(a.id, a.flagged))
-  const archive = useMailAction<{ id: string; archived: boolean }>((c, a) => c.setArchived(a.id, a.archived))
-  const snooze = useMailAction<{ id: string; until: number }>((c, a) => c.snooze(a.id, a.until))
-  const unsnooze = useMailAction<{ id: string }>((c, a) => c.unsnooze(a.id))
+  const seen = useMailAction<{ threadId: string; seen: boolean }>((c, a) => c.setThreadSeen(a.threadId, a.seen))
+  const flag = useMailAction<{ threadId: string; flagged: boolean }>((c, a) => c.setThreadFlagged(a.threadId, a.flagged))
+  const archive = useMailAction<{ threadId: string; archived: boolean }>((c, a) => c.setThreadArchived(a.threadId, a.archived))
+  const snooze = useMailAction<{ threadId: string; until: number }>((c, a) => c.snoozeThread(a.threadId, a.until))
+  const unsnooze = useMailAction<{ threadId: string }>((c, a) => c.unsnoozeThread(a.threadId))
 
   const fail = (e: unknown) => toast.error(String(e instanceof Error ? e.message : e))
 
   return {
-    markSeen: (m: MessageSummary, value: boolean) => seen.mutate({ id: m.id, seen: value }, { onError: fail }),
-    toggleFlag: (m: MessageSummary) => flag.mutate({ id: m.id, flagged: !m.flagged }, { onError: fail }),
+    markSeen: (m: MessageSummary, value: boolean) => seen.mutate({ threadId: m.threadId, seen: value }, { onError: fail }),
+    toggleSeen: (m: MessageSummary) => seen.mutate({ threadId: m.threadId, seen: !m.seen }, { onError: fail }),
+    toggleFlag: (m: MessageSummary) => flag.mutate({ threadId: m.threadId, flagged: !m.flagged }, { onError: fail }),
     toggleArchive: (m: MessageSummary) => {
       const archived = !m.archived
       archive.mutate(
-        { id: m.id, archived },
+        { threadId: m.threadId, archived },
         {
           onError: fail,
           onSuccess: () => {
             onLeave()
             toast(archived ? "Archived" : "Moved to Inbox", {
-              action: { label: "Undo", onClick: () => archive.mutate({ id: m.id, archived: !archived }) },
+              action: { label: "Undo", onClick: () => archive.mutate({ threadId: m.threadId, archived: !archived }) },
             })
           },
         },
@@ -36,17 +38,17 @@ export function useTriage(onLeave: () => void) {
     },
     snooze: (m: MessageSummary, until: number, label: string) =>
       snooze.mutate(
-        { id: m.id, until },
+        { threadId: m.threadId, until },
         {
           onError: fail,
           onSuccess: () => {
             onLeave()
             toast(`Snoozed until ${label.toLowerCase()}`, {
-              action: { label: "Undo", onClick: () => unsnooze.mutate({ id: m.id }) },
+              action: { label: "Undo", onClick: () => unsnooze.mutate({ threadId: m.threadId }) },
             })
           },
         },
       ),
-    unsnooze: (m: MessageSummary) => unsnooze.mutate({ id: m.id }, { onError: fail }),
+    unsnooze: (m: MessageSummary) => unsnooze.mutate({ threadId: m.threadId }, { onError: fail }),
   }
 }
