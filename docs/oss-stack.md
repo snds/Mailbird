@@ -22,14 +22,14 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | material-symbols | Icon font | 0.48 | Apache-2.0 | ✅ | Variable font with FILL, wght, GRAD, and opsz axes. |
 | class-variance-authority, clsx, tailwind-merge | Variant plumbing | latest | MIT / Apache-2.0 | ✅ | Standard shadcn utilities. |
 | @tanstack/react-router | Routing | 1.170 | MIT | 🟦 | Typed routes and deep links across shells. |
-| @tanstack/react-query | Server-state cache | 5.104 | MIT | 🟦 | Wraps calls to the core. |
+| @tanstack/react-query | Server-state cache | 5.104 | MIT | ✅ | Wraps calls to the core. |
 | @tanstack/react-virtual | Long lists | 3.14 | MIT | 🟦 | Message lists with 100k+ rows. |
-| zustand | UI state | 5.0 | MIT | 🟦 | — |
+| zustand | UI state | 5.0 | MIT | ✅ | — |
 | @tiptap/core, react, pm | Notes + composer editor | 3.32 | MIT | 🟦 | **Avoid Tiptap Pro** (paid). Collaboration uses Yjs + Hocuspocus (MIT). |
 | yjs | CRDT for notes sync | 13.6 | MIT | 🟦 | — |
 | @schedule-x/calendar | Calendar views | 4.9 | MIT core | 🟦 | **Avoid Premium plugins.** We may build our own views on the same tokens. |
 | ical.js | iCal / vCard parsing (web) | 2.2 | MPL-2.0 | 🟦 | Use unmodified only. The Rust core is the source of truth. |
-| dompurify | Sanitize email HTML (web) | 3.4 | Apache-2.0 option | 🟦 | Elect Apache-2.0. Rendered inside a sandboxed iframe. |
+| dompurify | Sanitize email HTML (web) | 3.4 | Apache-2.0 option | ✅ | Elect Apache-2.0. Rendered inside a sandboxed iframe. |
 | temporal-polyfill | Dates and time zones | 1.0 | MIT | 🟦 | Prefer Temporal over date-fns for time-zone-correct calendar math. |
 | cmdk | Command palette | 1.1 | MIT | 🟦 | shadcn Command. |
 | sonner | Toasts / undo | 2.0 | MIT | 🟦 | — |
@@ -53,18 +53,22 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 
 | Crate | Role | Version | License | Status |
 |---|---|---|---|---|
-| tokio, serde | Runtime, serialization | 1.x | MIT / MIT OR Apache-2.0 | 🟦 |
-| async-imap (or imap-next) | IMAP | 0.12 | MIT OR Apache-2.0 | 🟦 |
-| lettre | SMTP | 0.11 | MIT | 🟦 |
-| mail-parser, mail-builder, mail-auth | MIME, DKIM/SPF | 0.11 / 1.0 / 0.13 | Apache-2.0 OR MIT | 🟦 |
+| tokio, serde | Runtime, serialization | 1.x | MIT / MIT OR Apache-2.0 | ✅ |
+| async-imap (or imap-next) | IMAP | 0.12 | MIT OR Apache-2.0 | ✅ |
+| lettre | SMTP | 0.11 | MIT | ✅ |
+| mail-parser | MIME parsing | 0.11 | Apache-2.0 OR MIT | ✅ |
+| mail-auth | DKIM/SPF/DMARC checks | 0.13 | Apache-2.0 OR MIT | 🟦 |
 | jmap-client | JMAP (Fastmail, Stalwart) | 0.4 | Apache-2.0 OR MIT | 🟦 |
 | calcard | iCalendar + vCard | 0.3 | Apache-2.0 OR MIT | 🟦 |
 | libdav | CalDAV / CardDAV client | 0.11 | ISC | 🟦 |
-| rusqlite (bundled) | Local store | 0.40 | MIT | 🟦 |
-| tantivy | Full-text search | 0.26 | MIT | 🟦 |
+| rusqlite (bundled) | Local store | 0.40 | MIT | ✅ |
+| SQLite FTS5 (in rusqlite) | Full-text search | — | Public domain | ✅ |
+| tantivy | Full-text search at scale | 0.26 | MIT | ⚪ (deferred, ADR-0007) |
 | oauth2 | OAuth (Google, Microsoft) | 5.0 | MIT OR Apache-2.0 | 🟦 |
-| keyring | OS keychain | 4.2 | MIT OR Apache-2.0 | 🟦 |
-| ammonia | HTML sanitize (native) | 4.2 | MIT OR Apache-2.0 | 🟦 |
+| keyring | OS keychain | 3.6 (4.x for Android later) | MIT OR Apache-2.0 | ✅ |
+| ammonia | HTML sanitize (native) | 4.2 | MIT OR Apache-2.0 | ⚪ (UI sanitizes with DOMPurify today) |
+| tokio-rustls + rustls (ring) + webpki-roots | TLS for IMAP | 0.26 / 0.23 / 1.0 | MIT/Apache-2.0/ISC; webpki-roots CDLA-Permissive-2.0 | ✅ |
+| futures, thiserror, uuid, serde_json | Plumbing | — | MIT OR Apache-2.0 | ✅ |
 | email-lib (Pimalaya) | Mail library | 0.27 | MIT | ⚪ |
 | uniffi | Swift/Kotlin bindings | 0.32 | MPL-2.0 | ⚪ (only with the Capacitor fallback) |
 | vstorage / pimsync | DAV sync | 0.11 | EUPL-1.2 | ⛔ |
@@ -77,6 +81,8 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 |---|---|---|
 | Stalwart Mail Server | AGPL-3.0 / SELv2 | Dev and test JMAP + IMAP + CalDAV + CardDAV server in `docker compose`. Run unmodified. |
 | Radicale | GPL-3.0 | Lightweight CalDAV/CardDAV for tests. |
+| Dovecot | MIT + LGPL-2.1 | IMAP server for the mail integration test (`tools/test-mail-servers`). Test-only. |
+| aiosmtpd | Apache-2.0 | SMTP sink for the integration test. Test-only. |
 | Nextcloud | AGPL-3.0 | Integration target only. |
 
 ## Watch-outs

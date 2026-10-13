@@ -1,17 +1,5 @@
-// Placeholder data until the Rust core (packages/core) exposes real accounts.
-
-export interface Message {
-  id: string
-  from: string
-  email: string
-  subject: string
-  preview: string
-  body: string
-  time: string
-  unread: boolean
-  starred?: boolean
-  account: "Personal" | "Work"
-}
+// Placeholder data for calendar, contacts, and notes until their core phases
+// land. Mail comes from the core (src/core), or its demo transport on the web.
 
 export interface CalendarEvent {
   id: string
@@ -40,14 +28,6 @@ export interface Note {
   pinned?: boolean
   tags: string[]
 }
-
-export const messages: Message[] = [
-  { id: "m1", from: "Priya Raman", email: "priya@studio.example", subject: "Token audit — round two", preview: "I pulled the semantic tier into a single sheet so we can see where the aliases drift…", body: "Hi,\n\nI pulled the semantic tier into a single sheet so we can see where the aliases drift from the primitives. Three of the surface tokens resolve to the same value in dark mode, which is probably why the list pane feels flat.\n\nCan we review Thursday?\n\nPriya", time: "9:41", unread: true, starred: true, account: "Work" },
-  { id: "m2", from: "Ferry Line", email: "no-reply@ferry.example", subject: "Your booking is confirmed", preview: "Saturday 08:15 crossing, vehicle under 5 m, two passengers.", body: "Saturday 08:15 crossing, vehicle under 5 m, two passengers. Arrive 30 minutes before departure.", time: "8:02", unread: true, account: "Personal" },
-  { id: "m3", from: "Marcus Lee", email: "marcus@example.com", subject: "Re: Cabin weekend", preview: "Count me in. I'll bring the board games and the good coffee.", body: "Count me in. I'll bring the board games and the good coffee.\n\n— M", time: "Yesterday", unread: false, account: "Personal" },
-  { id: "m4", from: "Design Systems Weekly", email: "digest@dsweekly.example", subject: "Issue 212: Variable fonts in production", preview: "This week: shipping icon fonts with live axes, plus a look at density modes.", body: "This week: shipping icon fonts with live axes, plus a look at density modes.", time: "Mon", unread: false, account: "Personal" },
-  { id: "m5", from: "Ana Duarte", email: "ana@example.com", subject: "Photos from the trip", preview: "Finally sorted them. Shared album link inside — the lighthouse ones came out great.", body: "Finally sorted them. Shared album link inside — the lighthouse ones came out great.", time: "Sun", unread: false, starred: true, account: "Personal" },
-]
 
 export const events: CalendarEvent[] = [
   { id: "e1", title: "Design review", day: "Today", start: "10:00", end: "11:00", location: "Studio B", calendar: "Work" },

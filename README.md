@@ -42,7 +42,17 @@ cargo test -p pim-core      # Rust core
 pnpm tauri dev              # desktop shell (needs the Tauri prerequisites for your OS)
 ```
 
-The desktop shell needs [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/): WebView2 on Windows, Xcode CLT on macOS, and WebKitGTK on Linux.
+**Web vs. desktop.** In a browser the app runs on sample mail, so you can try every flow. Connecting real accounts (iCloud, Fastmail, or any IMAP/SMTP server) needs the desktop app. Gmail and Outlook need OAuth, which is Phase 4.
+
+**Mail integration test (Linux).** This runs a real IMAP + SMTP round trip:
+
+```bash
+sudo apt-get install -y dovecot-imapd && pip install aiosmtpd
+sudo tools/test-mail-servers/start.sh
+MAILBIRD_IT_SMTP_OUT=/tmp/mbtest/smtp-out cargo test -p pim-core --test imap_smtp -- --ignored
+```
+
+The desktop shell needs [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/): WebView2 on Windows, Xcode CLT on macOS, and WebKitGTK plus libdbus on Linux (for the keychain).
 
 ### Adding shadcn components
 
@@ -60,7 +70,8 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | Phase | Scope |
 |---|---|
 | **0 · Foundation** ✅ | Adaptive shell, tokens, shadcn + Material Symbols pipeline, Tauri desktop shell, capability matrix |
-| **1 · Mail MVP** | IMAP/SMTP + JMAP adapters, local store and search, unified inbox, composer, undo send, snooze |
+| **1 · Mail MVP** ✅ | IMAP/SMTP adapters, local store + FTS5 search, unified inbox lanes, composer, undo send, snooze, archive, tracker-safe HTML, keychain ([ADR-0007](docs/decisions/0007-mail-engine.md)) |
+| **1b · Mail depth** | IMAP IDLE push, JMAP adapter, attachments, threads, backfill, swipe gestures |
 | **2 · Calendar + Contacts** | CalDAV/CardDAV, agenda/day/week views, natural-language quick add, contact merge |
 | **3 · Notes** | Tiptap editor, Markdown storage, Yjs sync relay, Apple Notes and Keep import |
 | **4 · Big providers** | Gmail API + Google verification, Microsoft Graph |
