@@ -40,7 +40,19 @@ export function replyDraft(m: MessageDetail): Partial<Draft> {
     subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
     body: `\n\nOn ${longTime(m.date)}, ${displayName(m.from)} wrote:\n${quoted}`,
     inReplyTo: m.messageId,
+    references: m.references,
   }
+}
+
+/** The message a Reply answers: the newest one you didn't send yourself. */
+export function replyTarget(thread: MessageDetail[]) {
+  return [...thread].reverse().find((m) => m.mailbox !== "Sent") ?? thread.at(-1)
+}
+
+export function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export function forwardDraft(m: MessageDetail): Partial<Draft> {

@@ -9,7 +9,10 @@ mod commands;
 mod secrets;
 mod workers;
 
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex, atomic::AtomicBool},
+};
 
 use pim_core::Store;
 use tauri::Manager;
@@ -18,6 +21,10 @@ pub struct AppState {
     pub store: Mutex<Store>,
     /// One sync at a time, so two passes never race on the same cursor.
     pub sync_lock: tokio::sync::Mutex<()>,
+    /// Accounts with a live IDLE (push) connection.
+    pub idling: Mutex<HashSet<String>>,
+    /// Some account still has older mail on the server to backfill.
+    pub backfill_pending: AtomicBool,
 }
 
 pub type Shared = Arc<AppState>;
@@ -32,6 +39,7 @@ pub mod events {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -46,6 +54,8 @@ pub fn run() {
             let state: Shared = Arc::new(AppState {
                 store: Mutex::new(store),
                 sync_lock: tokio::sync::Mutex::new(()),
+                idling: Mutex::new(HashSet::new()),
+                backfill_pending: AtomicBool::new(false),
             });
             app.manage(state.clone());
             workers::start(app.handle().clone(), state);
@@ -58,12 +68,13 @@ pub fn run() {
             commands::remove_account,
             commands::sync_now,
             commands::list_messages,
-            commands::get_message,
-            commands::set_seen,
-            commands::set_flagged,
-            commands::set_archived,
-            commands::snooze,
-            commands::unsnooze,
+            commands::get_thread,
+            commands::set_thread_seen,
+            commands::set_thread_flagged,
+            commands::set_thread_archived,
+            commands::snooze_thread,
+            commands::unsnooze_thread,
+            commands::open_attachment,
             commands::queue_send,
             commands::cancel_send,
             commands::list_outbox,

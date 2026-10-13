@@ -1,23 +1,44 @@
 import type { CoreClient, CoreEvent } from "./client"
-import type { Account, Capabilities, Draft, MessageDetail, MessageQuery, OutboxItem, Provider } from "./types"
+import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OutboxItem, Provider } from "./types"
 
 // An in-memory stand-in for the Rust core, so the web build is usable before
 // the gateway exists. It follows the same rules as crates/core/src/store.rs:
-// lanes, snooze wake-ups (unread, back on top), and an undo-send window.
+// conversations, lanes (Sent copies never fill the inbox), snooze wake-ups
+// (unread, back on top), thread-level triage, and an undo-send window.
 
 const now = () => Math.floor(Date.now() / 1000)
 const HOUR = 3600
+const SENT = "Sent"
 
 const CAPABILITIES: Record<Provider, Capabilities> = {
   google: { mail: true, calendar: true, contacts: true, notes: "import_only", mail_organization: "labels", contact_groups: true, server_side_scheduling: true, push: true, auth: "o_auth2" },
   microsoft: { mail: true, calendar: true, contacts: true, notes: "unsupported", mail_organization: "folders", contact_groups: true, server_side_scheduling: true, push: true, auth: "o_auth2" },
   i_cloud: { mail: true, calendar: true, contacts: true, notes: "import_only", mail_organization: "folders", contact_groups: true, server_side_scheduling: false, push: true, auth: "app_password" },
-  jmap: { mail: true, calendar: true, contacts: true, notes: "unsupported", mail_organization: "labels", contact_groups: true, server_side_scheduling: false, push: true, auth: "o_auth2" },
+  jmap: { mail: true, calendar: true, contacts: true, notes: "unsupported", mail_organization: "labels", contact_groups: true, server_side_scheduling: false, push: true, auth: "password" },
   generic: { mail: true, calendar: false, contacts: false, notes: "unsupported", mail_organization: "folders", contact_groups: false, server_side_scheduling: false, push: false, auth: "password" },
   local: { mail: false, calendar: true, contacts: true, notes: "native", mail_organization: null, contact_groups: true, server_side_scheduling: false, push: false, auth: "none" },
 }
 
-function seed(): { accounts: Account[]; messages: MessageDetail[] } {
+/** A small solid-color PNG, so sample image attachments open as real files. */
+function swatch(r: number, g: number, b: number): string {
+  if (typeof document === "undefined") return ""
+  const c = document.createElement("canvas")
+  c.width = c.height = 64
+  const ctx = c.getContext("2d")
+  if (!ctx) return ""
+  ctx.fillStyle = `rgb(${r},${g},${b})`
+  ctx.fillRect(0, 0, 64, 64)
+  return c.toDataURL("image/png").split(",")[1] ?? ""
+}
+
+const PDF = btoa("%PDF-1.4\n% Sample attachment from the Mailbird demo\n")
+
+interface DemoMessage extends MessageDetail {
+  /** Attachment payloads (base64) for openAttachment. */
+  files: Record<string, string>
+}
+
+function seed(): { accounts: Account[]; messages: DemoMessage[] } {
   const t = now()
   const server = { host: "demo.invalid", port: 993, security: "tls" as const }
   const account = (id: string, displayName: string, address: string): Account => ({
@@ -25,31 +46,49 @@ function seed(): { accounts: Account[]; messages: MessageDetail[] } {
     imap: server, smtp: { ...server, port: 465 }, lastSync: t, lastError: null,
   })
   const accounts = [account("personal", "Personal", "me@personal.example"), account("work", "Work", "me@studio.example")]
+  const me = (acct: string) => ({ name: "Me", email: accounts.find((a) => a.id === acct)!.address })
   let n = 0
   const msg = (
-    accountId: string, name: string, email: string, subject: string, body: string,
-    ago: number, extra: Partial<MessageDetail> = {},
-  ): MessageDetail => {
+    accountId: string, from: { name: string | null; email: string }, subject: string, body: string,
+    ago: number, extra: Partial<DemoMessage> & { files?: Record<string, string> } = {},
+  ): DemoMessage => {
     const date = t - ago
+    const id = `demo-${++n}`
     return {
-      id: `demo-${++n}`, accountId, from: { name, email }, subject,
-      preview: body.replace(/\s+/g, " ").slice(0, 160), date, sortAt: date,
-      seen: false, flagged: false, archived: false, snoozedUntil: null,
-      to: [{ name: null, email: accounts.find((a) => a.id === accountId)!.address }], cc: [],
-      messageId: `demo-${n}@example.com`, bodyText: body, bodyHtml: null, ...extra,
+      id, accountId, threadId: extra.threadId ?? id, threadCount: 1, hasAttachments: false,
+      from, subject, preview: body.replace(/\s+/g, " ").slice(0, 160), date, sortAt: date,
+      seen: false, flagged: false, archived: false, snoozedUntil: null, mailbox: "INBOX",
+      to: [me(accountId)], cc: [], messageId: `${id}@demo.example`, bodyText: body, bodyHtml: null,
+      attachments: [], references: [], files: {}, ...extra,
     }
   }
+  const file = (id: string, filename: string, mimeType: string, data: string): AttachmentInfo & { data: string } => ({
+    id, filename, mimeType, size: Math.floor((data.length * 3) / 4), inline: false, data,
+  })
+  const withFiles = (list: (AttachmentInfo & { data: string })[]) => ({
+    attachments: list.map(({ data: _d, ...info }) => info),
+    files: Object.fromEntries(list.map((f) => [f.id, f.data])),
+    hasAttachments: list.length > 0,
+  })
+
+  const priya = { name: "Priya Raman", email: "priya@studio.example" }
+  const marcus = { name: "Marcus Lee", email: "marcus@example.com" }
+
   return {
     accounts,
     messages: [
-      msg("work", "Priya Raman", "priya@studio.example", "Token audit — round two",
+      // A three-message conversation, including my own reply.
+      msg("work", priya, "Token audit", "Kicking off the audit. First pass: the semantic tier has a few aliases pointing at the wrong primitives.", 2 * 24 * HOUR, { threadId: "t-audit", seen: true }),
+      msg("work", me("work"), "Re: Token audit", "Great — can you pull them into one sheet so we can see the drift?", 26 * HOUR, { threadId: "t-audit", seen: true, mailbox: SENT, to: [priya] }),
+      msg("work", priya, "Re: Token audit",
         "Hi,\n\nI pulled the semantic tier into a single sheet so we can see where the aliases drift from the primitives. Three of the surface tokens resolve to the same value in dark mode, which is probably why the list pane feels flat.\n\nCan we review Thursday?\n\nPriya",
-        0.3 * HOUR, { flagged: true }),
-      msg("personal", "Ferry Line", "no-reply@ferry.example", "Your booking is confirmed",
-        "Saturday 08:15 crossing, vehicle under 5 m, two passengers. Arrive 30 minutes before departure.", 1.6 * HOUR),
-      msg("personal", "Marcus Lee", "marcus@example.com", "Re: Cabin weekend",
-        "Count me in. I'll bring the board games and the good coffee.\n\n— M", 20 * HOUR, { seen: true }),
-      msg("personal", "Design Systems Weekly", "digest@dsweekly.example", "Issue 212: Variable fonts in production",
+        0.3 * HOUR, { threadId: "t-audit", flagged: true }),
+      msg("personal", { name: "Ferry Line", email: "no-reply@ferry.example" }, "Your booking is confirmed",
+        "Saturday 08:15 crossing, vehicle under 5 m, two passengers. Arrive 30 minutes before departure. Your confirmation is attached.",
+        1.6 * HOUR, withFiles([file("att-ferry", "booking-confirmation.pdf", "application/pdf", PDF)])),
+      msg("personal", me("personal"), "Cabin weekend", "Who's in for the cabin on the 24th? Ferry is at 8:15.", 2 * 24 * HOUR, { threadId: "t-cabin", seen: true, mailbox: SENT, to: [marcus] }),
+      msg("personal", marcus, "Re: Cabin weekend", "Count me in. I'll bring the board games and the good coffee.\n\n— M", 20 * HOUR, { threadId: "t-cabin", seen: true }),
+      msg("personal", { name: "Design Systems Weekly", email: "digest@dsweekly.example" }, "Issue 212: Variable fonts in production",
         "This week: shipping icon fonts with live axes, plus a look at density modes.", 2 * 24 * HOUR, {
           seen: true,
           // Exercises the HTML path: the script must be stripped, the pixel blocked.
@@ -59,9 +98,15 @@ function seed(): { accounts: Account[]; messages: MessageDetail[] } {
 <script>document.body.innerHTML = "pwned"</script>
 <p><a href="https://example.com/issue-212">Read the issue →</a></p>`,
         }),
-      msg("personal", "Ana Duarte", "ana@example.com", "Photos from the trip",
-        "Finally sorted them. Shared album link inside — the lighthouse ones came out great.", 3 * 24 * HOUR, { seen: true, flagged: true }),
-      msg("work", "Sam Okafor", "sam@example.com", "Density modes proposal",
+      msg("personal", { name: "Ana Duarte", email: "ana@example.com" }, "Photos from the trip",
+        "Finally sorted them. The lighthouse ones came out great — two favorites attached.", 3 * 24 * HOUR, {
+          seen: true, flagged: true,
+          ...withFiles([
+            file("att-light", "lighthouse.png", "image/png", swatch(37, 99, 235)),
+            file("att-dunes", "dunes.png", "image/png", swatch(217, 160, 72)),
+          ]),
+        }),
+      msg("work", { name: "Sam Okafor", email: "sam@example.com" }, "Density modes proposal",
         "Attached the comfortable / compact spec. The list row drops to 56px in compact.", 4 * 24 * HOUR, { seen: true, archived: true }),
     ],
   }
@@ -72,33 +117,61 @@ export function createDemoClient(): CoreClient {
   const outbox = new Map<string, OutboxItem>()
   const listeners = new Map<CoreEvent, Set<(p?: unknown) => void>>()
   const emit = (e: CoreEvent, p?: unknown) => listeners.get(e)?.forEach((h) => h(p))
-  const find = (id: string) => {
-    const m = state.messages.find((x) => x.id === id)
-    if (!m) throw new Error("that message is no longer here")
-    return m
-  }
   const awake = (m: MessageDetail, t: number) => m.snoozedUntil === null || m.snoozedUntil <= t
+  const thread = (threadId: string) => state.messages.filter((m) => m.threadId === threadId)
+  const received = (threadId: string) => {
+    const list = thread(threadId).filter((m) => m.mailbox !== SENT)
+    if (!thread(threadId).length) throw new Error("that conversation is no longer here")
+    return list
+  }
+  const inLane = (m: MessageDetail, lane: Lane, t: number) => {
+    const r = m.mailbox !== SENT
+    switch (lane) {
+      case "inbox": return r && !m.archived && awake(m, t)
+      case "unread": return r && !m.archived && !m.seen && awake(m, t)
+      case "starred": return m.flagged
+      case "snoozed": return r && m.snoozedUntil !== null && m.snoozedUntil > t
+      case "archive": return r && m.archived
+    }
+  }
+  const summary = ({ to: _t, cc: _c, messageId: _m, bodyText: _b, bodyHtml: _h, attachments: _a, references: _r, files: _f, ...s }: DemoMessage): MessageSummary => s
 
   // The same 1-second tick the native workers run.
   setInterval(() => {
     const t = now()
-    let woke = false
+    let changed = false
     for (const m of state.messages) {
       if (m.snoozedUntil !== null && m.snoozedUntil <= t) {
         Object.assign(m, { snoozedUntil: null, sortAt: t, seen: false })
-        woke = true
+        changed = true
       }
     }
-    if (woke) emit("mail:changed")
     for (const item of outbox.values()) {
       if (item.state === "queued" && item.sendAt <= t) {
         item.state = "sent"
+        // File a Sent copy in its conversation, as the native shell does.
+        const parent = state.messages.find((m) => item.draft.inReplyTo && m.messageId === item.draft.inReplyTo)
+        const id = `sent-${item.id}`
+        const account = state.accounts.find((a) => a.id === item.draft.accountId)
+        state.messages.push({
+          id, accountId: item.draft.accountId, threadId: parent?.threadId ?? id, threadCount: 1,
+          hasAttachments: (item.draft.attachments?.length ?? 0) > 0,
+          from: { name: account?.displayName ?? "Me", email: account?.address ?? "" },
+          subject: item.draft.subject, preview: item.draft.body.replace(/\s+/g, " ").slice(0, 160),
+          date: t, sortAt: t, seen: true, flagged: false, archived: false, snoozedUntil: null, mailbox: SENT,
+          to: item.draft.to, cc: item.draft.cc, messageId: `${id}@demo.example`, bodyText: item.draft.body, bodyHtml: null,
+          attachments: (item.draft.attachments ?? []).map((a, i) => ({ id: `${id}-a${i}`, filename: a.filename, mimeType: a.mimeType, size: Math.floor((a.dataBase64.length * 3) / 4), inline: false })),
+          references: [...(item.draft.references ?? [])], files: Object.fromEntries((item.draft.attachments ?? []).map((a, i) => [`${id}-a${i}`, a.dataBase64])),
+        })
         emit("outbox:changed", item.id)
+        changed = true
       }
     }
+    if (changed) emit("mail:changed")
   }, 1000)
 
   const later = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 60))
+  const done = () => emit("mail:changed")
 
   return {
     kind: "demo",
@@ -111,39 +184,76 @@ export function createDemoClient(): CoreClient {
       throw new Error("Sample accounts can't be removed.")
     },
     syncNow: () => later(undefined),
+
     listMessages: (q: MessageQuery) => {
       const t = now()
       const needle = q.search?.trim().toLowerCase()
-      let list = state.messages.filter((m) => {
+      const matching = state.messages.filter((m) => {
         if (q.accountId && m.accountId !== q.accountId) return false
         if (needle && ![m.subject, m.from.name ?? "", m.from.email, m.bodyText].some((f) => f.toLowerCase().includes(needle))) return false
-        switch (q.lane) {
-          case "inbox": return !m.archived && awake(m, t)
-          case "unread": return !m.archived && !m.seen && awake(m, t)
-          case "starred": return m.flagged
-          case "snoozed": return m.snoozedUntil !== null && m.snoozedUntil > t
-          case "archive": return m.archived
-        }
+        return inLane(m, q.lane, t)
       })
-      list = q.lane === "snoozed"
-        ? list.sort((a, b) => a.snoozedUntil! - b.snoozedUntil!)
-        : list.sort((a, b) => b.sortAt - a.sortAt)
-      return later(list.slice(0, q.limit ?? 200).map(({ to: _t, cc: _c, messageId: _m, bodyText: _b, bodyHtml: _h, ...s }) => s))
+      // Group by conversation: newest matching message, rolled-up state.
+      const rows = new Map<string, MessageSummary>()
+      for (const m of [...matching].sort((a, b) => b.sortAt - a.sortAt)) {
+        const row = rows.get(m.threadId)
+        if (row) {
+          row.seen &&= m.seen
+          continue
+        }
+        const all = thread(m.threadId)
+        rows.set(m.threadId, {
+          ...summary(m),
+          threadCount: all.length,
+          hasAttachments: all.some((x) => x.hasAttachments),
+          flagged: all.some((x) => x.flagged),
+        })
+      }
+      let list = [...rows.values()]
+      if (q.lane === "snoozed") list = list.sort((a, b) => a.snoozedUntil! - b.snoozedUntil!)
+      return later(list.slice(0, q.limit ?? 200))
     },
-    getMessage: async (id) => later(find(id)),
-    setSeen: async (id, seen) => { find(id).seen = seen; emit("mail:changed") },
-    setFlagged: async (id, flagged) => { find(id).flagged = flagged; emit("mail:changed") },
-    setArchived: async (id, archived) => { find(id).archived = archived; emit("mail:changed") },
-    snooze: async (id, until) => {
+    getThread: async (threadId) => {
+      const list = thread(threadId).sort((a, b) => a.date - b.date)
+      if (!list.length) throw new Error("that conversation is no longer here")
+      return later(list.map(({ files: _f, ...m }) => ({ ...m, threadCount: list.length })))
+    },
+
+    setThreadSeen: async (threadId, seen) => { received(threadId).forEach((m) => (m.seen = seen)); done() },
+    setThreadFlagged: async (threadId, flagged) => {
+      const list = received(threadId)
+      if (flagged) {
+        const newest = [...list].sort((a, b) => b.sortAt - a.sortAt)[0]
+        if (newest) newest.flagged = true
+      } else list.forEach((m) => (m.flagged = false))
+      done()
+    },
+    setThreadArchived: async (threadId, archived) => { received(threadId).forEach((m) => (m.archived = archived)); done() },
+    snoozeThread: async (threadId, until) => {
       if (until <= now()) throw new Error("pick a time in the future")
-      Object.assign(find(id), { snoozedUntil: until, archived: false })
-      emit("mail:changed")
+      received(threadId).filter((m) => !m.archived).forEach((m) => (m.snoozedUntil = until))
+      done()
     },
-    unsnooze: async (id) => { find(id).snoozedUntil = null; emit("mail:changed") },
+    unsnoozeThread: async (threadId) => { thread(threadId).forEach((m) => (m.snoozedUntil = null)); done() },
+
+    openAttachment: async (id) => {
+      const m = state.messages.find((x) => id in x.files)
+      const info = m?.attachments.find((a) => a.id === id)
+      if (!m || !info) throw new Error("that attachment is no longer here")
+      // Browsers can't open files with the system's default app; download instead.
+      const a = document.createElement("a")
+      a.href = `data:${info.mimeType};base64,${m.files[id]}`
+      a.download = info.filename
+      a.click()
+      return null
+    },
+
     queueSend: async (draft: Draft, undoSecs) => {
       if (draft.to.length + draft.cc.length === 0) throw new Error("add at least one recipient")
       const bad = [...draft.to, ...draft.cc].find((a) => !a.email.includes("@"))
       if (bad) throw new Error(`“${bad.email}” isn't an email address`)
+      const bytes = (draft.attachments ?? []).reduce((n, a) => n + (a.dataBase64.length * 3) / 4, 0)
+      if (bytes > 25 * 1024 * 1024) throw new Error("attachments are over 25 MB — most mail servers will refuse the message")
       const item: OutboxItem = {
         id: crypto.randomUUID(), draft, sendAt: now() + Math.min(Math.max(undoSecs, 0), 120),
         state: "queued", error: null,

@@ -62,6 +62,8 @@ Archive moves mail to the server's `\Archive` mailbox if it has one. Otherwise i
 
 ## Not yet (Phase 1b)
 
+_Phase 1b delivered IDLE push, backfill, JMAP, attachments, threads, and swipe gestures. See [ADR-0008](0008-mail-depth.md)._
+
 - **Sync coverage:** only INBOX syncs. Archive and Sent are written to but not read back. Backfill beyond the newest 500 messages, and CONDSTORE/QRESYNC incremental flags, are still to come.
 - **Push:** IMAP IDLE push. Sync currently runs every 2 minutes and after local changes.
 - **JMAP:** the JMAP adapter (Fastmail, Stalwart).

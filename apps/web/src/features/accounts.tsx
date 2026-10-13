@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
-import type { AccountConfig, Provider, Security, ServerConfig } from "@/core/types"
+import type { AccountConfig, JmapConfig, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
 
 interface Preset {
@@ -24,6 +24,10 @@ interface Preset {
   unavailable?: string
   imap?: ServerConfig
   smtp?: ServerConfig
+  /** JMAP accounts sync and send over HTTPS; no IMAP/SMTP needed. */
+  jmap?: JmapConfig
+  /** Which server fields the form asks for. */
+  custom?: "imap" | "jmap"
   passwordLabel: string
   passwordHelp?: { text: string; href: string }
 }
@@ -37,16 +41,21 @@ const PRESETS: Preset[] = [
     passwordHelp: { text: "Create one at account.apple.com → Sign-In and Security.", href: "https://support.apple.com/102654" },
   },
   {
-    id: "fastmail", label: "Fastmail", icon: "bolt", provider: "generic",
-    imap: { host: "imap.fastmail.com", port: 993, security: "tls" },
-    smtp: { host: "smtp.fastmail.com", port: 465, security: "tls" },
-    passwordLabel: "App password",
-    passwordHelp: { text: "Create one in Fastmail → Settings → Privacy & Security.", href: "https://www.fastmail.help/hc/en-us/articles/360058752854" },
+    id: "fastmail", label: "Fastmail", icon: "bolt", provider: "jmap",
+    // Fastmail is the JMAP reference server: faster sync, no IMAP/SMTP.
+    jmap: { sessionUrl: "https://api.fastmail.com/jmap/session", bearer: true },
+    passwordLabel: "API token",
+    passwordHelp: { text: "In Fastmail: Settings → Privacy & Security → Connected apps & API tokens. Choose JMAP and allow Email and Email submission. (Not available on Basic plans.)", href: "https://www.fastmail.help/hc/en-us/articles/5254602856719" },
   },
   {
-    id: "other", label: "Other (IMAP)", icon: "dns", provider: "generic",
+    id: "other", label: "Other (IMAP)", icon: "dns", provider: "generic", custom: "imap",
     imap: { host: "", port: 993, security: "tls" },
     smtp: { host: "", port: 465, security: "tls" },
+    passwordLabel: "Password",
+  },
+  {
+    id: "jmap", label: "Other (JMAP)", icon: "api", provider: "jmap", custom: "jmap",
+    jmap: { sessionUrl: "", bearer: false },
     passwordLabel: "Password",
   },
   { id: "google", label: "Gmail", icon: "mail", provider: "google", passwordLabel: "", unavailable: "Needs Google sign-in and app verification — planned for a later release." },
@@ -139,6 +148,9 @@ function AccountList({ onAdd }: { onAdd: (p: Preset) => void }) {
   )
 }
 
+/** JMAP accounts carry no IMAP/SMTP settings. */
+const UNUSED: ServerConfig = { host: "", port: 0, security: "tls" }
+
 const SECURITY: { value: Security; label: string }[] = [
   { value: "tls", label: "SSL/TLS" },
   { value: "start_tls", label: "STARTTLS" },
@@ -167,9 +179,10 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
   const [displayName, setDisplayName] = useState("")
   const [password, setPassword] = useState("")
   const [username, setUsername] = useState("")
-  const [imap, setImap] = useState(preset.imap!)
-  const [smtp, setSmtp] = useState(preset.smtp!)
-  const custom = preset.id === "other"
+  const [imap, setImap] = useState(preset.imap ?? UNUSED)
+  const [smtp, setSmtp] = useState(preset.smtp ?? UNUSED)
+  const [sessionUrl, setSessionUrl] = useState(preset.jmap?.sessionUrl ?? "")
+  const custom = preset.custom
   const qc = useQueryClient()
 
   const add = useMutation({
@@ -181,6 +194,7 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
         provider: preset.provider,
         imap,
         smtp,
+        jmap: preset.jmap ? { sessionUrl: sessionUrl.trim(), bearer: preset.jmap.bearer } : null,
       }
       return (await getCoreClient()).addAccount(config, password)
     },
@@ -210,6 +224,13 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
           <FieldLabel htmlFor="acct-name">Name on sent mail</FieldLabel>
           <Input id="acct-name" placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" />
         </Field>
+        {custom === "jmap" && (
+          <Field>
+            <FieldLabel htmlFor="acct-session">JMAP session URL</FieldLabel>
+            <Input id="acct-session" type="url" required placeholder="https://mail.example.com/jmap/session" value={sessionUrl} onChange={(e) => setSessionUrl(e.target.value)} autoCapitalize="none" />
+            <FieldDescription>Often https://your-server/.well-known/jmap</FieldDescription>
+          </Field>
+        )}
         {custom && (
           <Field>
             <FieldLabel htmlFor="acct-user">Username</FieldLabel>
@@ -228,7 +249,7 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
             </FieldDescription>
           )}
         </Field>
-        {custom && (
+        {custom === "imap" && (
           <>
             <ServerFields label="Incoming (IMAP)" value={imap} onChange={setImap} idPrefix="imap" />
             <ServerFields label="Outgoing (SMTP)" value={smtp} onChange={setSmtp} idPrefix="smtp" />

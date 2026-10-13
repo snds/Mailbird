@@ -11,13 +11,14 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAccounts, useCore, useMailAction, useMessage, useMessages } from "@/core/queries"
+import { useAccounts, useCore, useMailAction, useMessages, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
 import { useTriage } from "./actions"
+import { ConversationView } from "./conversation-view"
 import { displayName, initials } from "./format"
-import { MessageView } from "./message-view"
+import { SwipeRow } from "./swipe-row"
 import { useMailShortcuts } from "./use-shortcuts"
 
 const LANES: { id: Lane; label: string; empty: string }[] = [
@@ -32,49 +33,54 @@ export function MailView() {
   const [lane, setLane] = useState<Lane>("inbox")
   const [accountId, setAccountId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Selection is a conversation. The row is remembered so the reader stays
+  // open when the row leaves the current lane (e.g. read mail in "Unread").
+  const [selected, setSelected] = useState<MessageSummary | null>(null)
+  const selectedId = selected?.threadId ?? null
   const searchRef = useRef<HTMLInputElement>(null)
   const deferredSearch = useDeferredValue(search.trim())
 
   const { data: core } = useCore()
   const { data: accounts = [] } = useAccounts()
   const { data: messages, isPending } = useMessages({ lane, accountId, search: deferredSearch || null })
-  const { data: detail } = useMessage(selectedId)
+  const { data: thread } = useThread(selectedId)
   const openComposer = useUi((s) => s.openComposer)
   const setAccountsOpen = useUi((s) => s.setAccountsOpen)
   const sync = useMailAction<void>((c) => c.syncNow())
-  const triage = useTriage(() => setSelectedId(null))
+  const triage = useTriage(() => setSelected(null))
   const markSeen = triage.markSeen
 
-  // Opening a message reads it — once, so "Mark unread" sticks.
+  const list = messages ?? []
+  const row = list.find((m) => m.threadId === selectedId) ?? selected ?? undefined
+  const select = (id: string | null) => setSelected(id ? (list.find((m) => m.threadId === id) ?? null) : null)
+
+  // Opening a conversation reads it — once, so "Mark unread" sticks.
   const markedRef = useRef<string | null>(null)
   useEffect(() => {
-    if (detail && !detail.seen && markedRef.current !== detail.id) {
-      markedRef.current = detail.id
-      markSeen(detail, true)
+    if (row && thread && thread.some((m) => !m.seen) && markedRef.current !== row.threadId) {
+      markedRef.current = row.threadId
+      markSeen(row, true)
     }
-  }, [detail, markSeen])
+  }, [row, thread, markSeen])
 
-  const list = messages ?? []
-  const selected = list.find((m) => m.id === selectedId) ?? detail
   const multiAccount = accounts.length > 1
   const laneInfo = LANES.find((l) => l.id === lane)!
 
   useMailShortcuts({
     list,
     selectedId,
-    select: setSelectedId,
+    select,
     compose: () => openComposer({ accountId: accountId ?? accounts[0]?.id }),
     focusSearch: () => searchRef.current?.focus(),
     triage,
-    selected,
+    selected: row,
   })
 
   return (
     <MasterDetail
       emptyIcon="mail"
       emptyLabel="Choose a conversation to read it here."
-      onBack={() => setSelectedId(null)}
+      onBack={() => setSelected(null)}
       header={
         <>
           <PaneHeader title={accountId ? (accounts.find((a) => a.id === accountId)?.displayName ?? "Inbox") : "All inboxes"}>
@@ -87,7 +93,7 @@ export function MailView() {
                 size="sm"
                 aria-label="Account"
                 value={accountId ?? ""}
-                onChange={(e) => (setAccountId(e.target.value || null), setSelectedId(null))}
+                onChange={(e) => (setAccountId(e.target.value || null), setSelected(null))}
                 className="w-auto"
               >
                 <NativeSelectOption value="">All</NativeSelectOption>
@@ -127,7 +133,7 @@ export function MailView() {
             </InputGroup>
             {/* Lanes scroll sideways when they don't fit; the edge fade says there's more. */}
             <div className="-mx-4 no-scrollbar overflow-x-auto px-4 [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
-              <Tabs value={lane} onValueChange={(v) => (setLane(v as Lane), setSelectedId(null))} className="w-max pr-6">
+              <Tabs value={lane} onValueChange={(v) => (setLane(v as Lane), setSelected(null))} className="w-max pr-6">
                 <TabsList>
                   {LANES.map((l) => (
                     <TabsTrigger key={l.id} value={l.id}>
@@ -169,23 +175,31 @@ export function MailView() {
         ) : (
           <div role="list" aria-label={laneInfo.label}>
             {list.map((m) => (
-              <MessageRow
-                key={m.id}
-                message={m}
-                lane={lane}
-                selected={m.id === selectedId}
-                onSelect={() => setSelectedId(m.id)}
-                account={multiAccount && !accountId ? accounts.find((a) => a.id === m.accountId)?.displayName : undefined}
-              />
+              <SwipeRow
+                key={m.threadId}
+                // Apple Mail mapping: swipe left to archive, right to toggle read.
+                start={{ icon: m.seen ? "mark_email_unread" : "drafts", label: m.seen ? "Unread" : "Read", tone: "bg-vertical-mail", onCommit: () => triage.toggleSeen(m) }}
+                end={{ icon: m.archived ? "unarchive" : "archive", label: m.archived ? "Inbox" : "Archive", tone: "bg-vertical-contacts", onCommit: () => triage.toggleArchive(m) }}
+              >
+                <MessageRow
+                  message={m}
+                  lane={lane}
+                  selected={m.threadId === selectedId}
+                  onSelect={() => setSelected(m)}
+                  account={multiAccount && !accountId ? accounts.find((a) => a.id === m.accountId)?.displayName : undefined}
+                />
+              </SwipeRow>
             ))}
           </div>
         )
       }
       detail={
         selectedId && (
-          <MessageView
-            message={detail}
-            account={accounts.find((a) => a.id === detail?.accountId)}
+          <ConversationView
+            key={selectedId}
+            row={row}
+            thread={thread}
+            account={accounts.find((a) => a.id === row?.accountId)}
             showAccount={multiAccount}
             triage={triage}
           />
@@ -217,8 +231,7 @@ function MessageRow({
     shortTime(m.sortAt)
   )
   return (
-    <div role="listitem">
-      <ListRow
+    <ListRow
         selected={selected}
         onSelect={onSelect}
         emphasized={!m.seen}
@@ -227,7 +240,16 @@ function MessageRow({
             <AvatarFallback>{initials(m.from)}</AvatarFallback>
           </Avatar>
         }
-        title={displayName(m.from)}
+        title={
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{displayName(m.from)}</span>
+            {m.threadCount > 1 && (
+              <span className="shrink-0 text-xs font-normal text-muted-foreground" aria-label={`${m.threadCount} messages`}>
+                {m.threadCount}
+              </span>
+            )}
+          </span>
+        }
         meta={meta}
         supporting={
           <>
@@ -238,11 +260,11 @@ function MessageRow({
         trailing={
           <span className="mt-0.5 flex shrink-0 flex-col items-end gap-1">
             {m.flagged && <Icon name="star" fill className="size-4 text-vertical-notes" label="Starred" />}
+            {m.hasAttachments && <Icon name="attach_file" className="size-4 text-muted-foreground" label="Has attachments" />}
             {account && <span className="text-[11px] text-muted-foreground">{account}</span>}
           </span>
         }
       />
-    </div>
   )
 }
 

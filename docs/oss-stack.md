@@ -46,6 +46,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | Package | Role | Version | License | Status | Notes |
 |---|---|---|---|---|---|
 | tauri, @tauri-apps/cli, @tauri-apps/api | Desktop + mobile shell | 2.12 | MIT OR Apache-2.0 | ✅ | Windows, macOS, and Linux now. iOS and Android are a spike (see [ADR-0002](decisions/0002-shells.md)). |
+| tauri-plugin-opener | Open saved attachments | 2.7 | MIT OR Apache-2.0 | ✅ | — |
 | tauri-plugin-notification, deep-link, biometric | Shell plugins | 2.4–2.6 | MIT OR Apache-2.0 | 🟦 | Plugin 3.0 alphas exist, so expect churn. |
 | @capacitor/core, ios, android | Mobile fallback shell | 8.5 | MIT | ⚪ | Used only if the Tauri mobile spike fails on background sync or push. |
 
@@ -58,7 +59,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | lettre | SMTP | 0.11 | MIT | ✅ |
 | mail-parser | MIME parsing | 0.11 | Apache-2.0 OR MIT | ✅ |
 | mail-auth | DKIM/SPF/DMARC checks | 0.13 | Apache-2.0 OR MIT | 🟦 |
-| jmap-client | JMAP (Fastmail, Stalwart) | 0.4 | Apache-2.0 OR MIT | 🟦 |
+| jmap-client | JMAP client | 0.4 | Apache-2.0 OR MIT | ⚪ (not used: defaults to aws-lc-rs; our small client covers what we need, ADR-0008) |
 | calcard | iCalendar + vCard | 0.3 | Apache-2.0 OR MIT | 🟦 |
 | libdav | CalDAV / CardDAV client | 0.11 | ISC | 🟦 |
 | rusqlite (bundled) | Local store | 0.40 | MIT | ✅ |
@@ -68,7 +69,8 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | keyring | OS keychain | 3.6 (4.x for Android later) | MIT OR Apache-2.0 | ✅ |
 | ammonia | HTML sanitize (native) | 4.2 | MIT OR Apache-2.0 | ⚪ (UI sanitizes with DOMPurify today) |
 | tokio-rustls + rustls (ring) + webpki-roots | TLS for IMAP | 0.26 / 0.23 / 1.0 | MIT/Apache-2.0/ISC; webpki-roots CDLA-Permissive-2.0 | ✅ |
-| futures, thiserror, uuid, serde_json | Plumbing | — | MIT OR Apache-2.0 | ✅ |
+| futures, thiserror, uuid, serde_json, base64 | Plumbing | — | MIT OR Apache-2.0 | ✅ |
+| reqwest (rustls, no default provider) | JMAP over HTTPS | 0.13 | MIT OR Apache-2.0 | ✅ (uses our rustls/ring config) |
 | email-lib (Pimalaya) | Mail library | 0.27 | MIT | ⚪ |
 | uniffi | Swift/Kotlin bindings | 0.32 | MPL-2.0 | ⚪ (only with the Capacitor fallback) |
 | vstorage / pimsync | DAV sync | 0.11 | EUPL-1.2 | ⛔ |
@@ -79,7 +81,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 
 | Server | License | Use |
 |---|---|---|
-| Stalwart Mail Server | AGPL-3.0 / SELv2 | Dev and test JMAP + IMAP + CalDAV + CardDAV server in `docker compose`. Run unmodified. |
+| Stalwart Mail Server | AGPL-3.0 / SELv2 | JMAP integration test server (`tools/test-mail-servers/start-jmap.sh`). Built from source, run unmodified as a separate process. Test-only. |
 | Radicale | GPL-3.0 | Lightweight CalDAV/CardDAV for tests. |
 | Dovecot | MIT + LGPL-2.1 | IMAP server for the mail integration test (`tools/test-mail-servers`). Test-only. |
 | aiosmtpd | Apache-2.0 | SMTP sink for the integration test. Test-only. |

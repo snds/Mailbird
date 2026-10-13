@@ -15,7 +15,7 @@ const keys = {
   core: ["core"] as const,
   accounts: ["accounts"] as const,
   messages: (q: MessageQuery) => ["messages", q] as const,
-  message: (id: string) => ["message", id] as const,
+  thread: (id: string) => ["thread", id] as const,
   outbox: ["outbox"] as const,
 }
 
@@ -36,7 +36,7 @@ export function useCoreEvents() {
     const offs = [
       core.on("mail:changed", () => {
         void qc.invalidateQueries({ queryKey: ["messages"] })
-        void qc.invalidateQueries({ queryKey: ["message"] })
+        void qc.invalidateQueries({ queryKey: ["thread"] })
       }),
       core.on("outbox:changed", () => void qc.invalidateQueries({ queryKey: keys.outbox })),
       core.on("accounts:changed", () => void qc.invalidateQueries({ queryKey: keys.accounts })),
@@ -57,11 +57,11 @@ export function useMessages(q: MessageQuery) {
   })
 }
 
-export function useMessage(id: string | null) {
+export function useThread(threadId: string | null) {
   return useQuery({
-    queryKey: keys.message(id ?? ""),
-    queryFn: () => call((c) => c.getMessage(id!)),
-    enabled: id !== null,
+    queryKey: keys.thread(threadId ?? ""),
+    queryFn: () => call((c) => c.getThread(threadId!)),
+    enabled: threadId !== null,
   })
 }
 
@@ -76,7 +76,7 @@ export function useMailAction<A>(fn: (c: CoreClient, args: A) => Promise<unknown
     mutationFn: (args: A) => call((c) => fn(c, args)),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["messages"] })
-      void qc.invalidateQueries({ queryKey: ["message"] })
+      void qc.invalidateQueries({ queryKey: ["thread"] })
     },
   })
 }

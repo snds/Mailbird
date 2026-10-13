@@ -1,15 +1,22 @@
 //! Background work: sending once the undo window closes, waking snoozes,
-//! and syncing every account on an interval.
+//! IDLE push per account, and a periodic sync as the safety net.
 
-use std::time::Duration;
+use std::{sync::atomic::Ordering, time::Duration};
 
-use pim_core::{net, now};
+use pim_core::{net, now, store::SENT};
 use tauri::{AppHandle, Emitter};
 
 use crate::{Shared, events, secrets};
 
 const TICK: Duration = Duration::from_secs(1);
+/// With IDLE push this is only a safety net (and the path for servers without IDLE).
 const SYNC_EVERY: Duration = Duration::from_secs(120);
+/// How often the supervisor checks that every account has a push connection.
+const IDLE_SUPERVISE_EVERY: Duration = Duration::from_secs(30);
+/// Wait after a failed IDLE connection before trying again.
+const IDLE_RETRY: Duration = Duration::from_secs(60);
+/// Pause between backfill passes, so a big mailbox doesn't hog the connection.
+const BACKFILL_PAUSE: Duration = Duration::from_secs(3);
 
 pub fn start(app: AppHandle, state: Shared) {
     // Outbox + snooze: cheap local checks, once a second, so undo-send timing
@@ -24,13 +31,67 @@ pub fn start(app: AppHandle, state: Shared) {
         }
     });
 
+    let (a, s) = (app.clone(), state.clone());
     tauri::async_runtime::spawn(async move {
         let mut tick = tokio::time::interval(SYNC_EVERY);
         loop {
             tick.tick().await; // first tick fires immediately: sync on launch
-            sync_all(&app, &state).await;
+            sync_all(&a, &s).await;
         }
     });
+
+    // Backfill: while any account has older mail left, take another chunk.
+    let (a, s) = (app.clone(), state.clone());
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(BACKFILL_PAUSE).await;
+            if s.backfill_pending.swap(false, Ordering::Relaxed) && sync_pass(&a, &s).await {
+                s.backfill_pending.store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    // Push: keep one IDLE connection per account.
+    tauri::async_runtime::spawn(async move {
+        let mut tick = tokio::time::interval(IDLE_SUPERVISE_EVERY);
+        loop {
+            tick.tick().await;
+            let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
+            // JMAP accounts sync on the interval; JMAP push (EventSource) comes later.
+            for account in accounts.into_iter().filter(|a| a.config.jmap.is_none()) {
+                let fresh = state.idling.lock().map(|mut set| set.insert(account.id.clone())).unwrap_or(false);
+                if fresh {
+                    let (app, state) = (app.clone(), state.clone());
+                    tauri::async_runtime::spawn(async move { idle_loop(app, state, account.id).await });
+                }
+            }
+        }
+    });
+}
+
+/// Hold IDLE on one account's INBOX and sync whenever the server says
+/// something changed. Ends when the account is removed or the server has no IDLE.
+async fn idle_loop(app: AppHandle, state: Shared, account_id: String) {
+    loop {
+        let account = state.store.lock().ok().and_then(|s| s.account(&account_id).ok());
+        let Some(account) = account else { break }; // removed
+        let outcome = match secrets::get(&account.id) {
+            Ok(password) => net::wait_for_change(&account.config, &password, net::IDLE_TIMEOUT).await,
+            Err(_) => Err(pim_core::Error::Auth("no saved password".into())),
+        };
+        match outcome {
+            Ok(net::Change::Changed) => sync_all(&app, &state).await,
+            Ok(net::Change::Quiet) => {}
+            Ok(net::Change::Unsupported) => break, // the periodic sync covers it
+            Err(e) => {
+                log::info!("IDLE for {} paused: {e}", account.config.address);
+                tokio::time::sleep(IDLE_RETRY).await;
+            }
+        }
+    }
+    if let Ok(mut set) = state.idling.lock() {
+        set.remove(&account_id);
+    }
 }
 
 fn wake_snoozes(app: &AppHandle, state: &Shared) {
@@ -56,16 +117,24 @@ async fn send_due(app: &AppHandle, state: &Shared) {
             None => Err("the sending account was removed".to_string()),
             Some(account) => match secrets::get(&account.id) {
                 Err(e) => Err(e),
-                Ok(password) => net::send(&account.config, &password, &item.draft)
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string()),
+                Ok(password) => match account.config.jmap {
+                    Some(_) => net::jmap::send(&account.config, &password, &item.draft).await,
+                    None => net::send(&account.config, &password, &item.draft).await,
+                }
+                .map_err(|e| e.to_string()),
             },
         };
         if let Ok(s) = state.store.lock() {
             let _ = s.finish_send(&item.id, result.as_ref().err().map(String::as_str));
+            // Keep a local copy so the reply shows up inside its conversation.
+            if let Ok(raw) = &result {
+                let _ = s.insert_local(&item.draft.account_id, SENT, raw, true);
+            }
         }
         let _ = app.emit(events::OUTBOX_CHANGED, &item.id);
+        if result.is_ok() {
+            let _ = app.emit(events::MAIL_CHANGED, ());
+        }
     }
 }
 
@@ -79,33 +148,59 @@ pub fn sync_soon(app: &AppHandle, state: &Shared) {
 }
 
 pub async fn sync_all(app: &AppHandle, state: &Shared) {
+    if sync_pass(app, state).await {
+        // Big mailbox: the backfill worker keeps pulling older chunks.
+        state.backfill_pending.store(true, Ordering::Relaxed);
+    }
+}
+
+/// One pass over every account. Returns whether any still has older mail to backfill.
+async fn sync_pass(app: &AppHandle, state: &Shared) -> bool {
+    let mut more_older = false;
     let _guard = state.sync_lock.lock().await;
     let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
     for account in accounts {
-        let prepared = state.store.lock().ok().and_then(|s| {
-            Some((s.sync_cursor(&account.id, net::INBOX).ok()?, s.pending_ops(&account.id, net::INBOX).ok()?))
-        });
-        let Some((cursor, ops)) = prepared else { continue };
-
         let result = match secrets::get(&account.id) {
             Err(e) => Err(e),
-            Ok(password) => net::sync_inbox(&account.config, &password, cursor, &ops)
-                .await
-                .map_err(|e| e.to_string()),
+            Ok(password) if account.config.jmap.is_some() => sync_jmap(state, &account, &password).await,
+            Ok(password) => sync_imap(state, &account, &password).await,
         };
-
         if let Ok(s) = state.store.lock() {
-            match &result {
-                Ok(batch) => {
-                    let applied = s.apply_sync(&account.id, batch);
-                    let _ = s.record_sync_result(&account.id, applied.as_ref().err().map(|e| e.to_string()).as_deref());
-                }
-                Err(e) => {
-                    let _ = s.record_sync_result(&account.id, Some(e));
-                }
-            }
+            let _ = s.record_sync_result(&account.id, result.as_ref().err().map(String::as_str));
         }
+        more_older |= result.unwrap_or(false);
     }
     let _ = app.emit(events::MAIL_CHANGED, ());
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
+    more_older
+}
+
+/// One IMAP pass for one account. Returns whether older mail remains.
+async fn sync_imap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
+    let (cursor, ops) = {
+        let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+        (
+            s.sync_cursor(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+            s.pending_ops(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+        )
+    };
+    let batch = net::sync_inbox(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
+    let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+    s.apply_sync(&account.id, &batch).map_err(|e| e.to_string())?;
+    Ok(batch.more_older)
+}
+
+/// One JMAP pass for one account. Returns whether older mail remains.
+async fn sync_jmap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
+    let (cursor, ops) = {
+        let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+        (
+            s.remote_cursor(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+            s.pending_remote_ops(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+        )
+    };
+    let batch = net::jmap::sync_inbox(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
+    let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+    s.apply_remote(&account.id, &batch).map_err(|e| e.to_string())?;
+    Ok(batch.more_older)
 }

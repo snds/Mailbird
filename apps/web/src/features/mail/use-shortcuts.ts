@@ -12,6 +12,7 @@ import type { useTriage } from "./actions"
  */
 export function useMailShortcuts(opts: {
   list: MessageSummary[]
+  /** The selected conversation (thread id). */
   selectedId: string | null
   selected: MessageSummary | undefined
   select: (id: string | null) => void
@@ -26,10 +27,10 @@ export function useMailShortcuts(opts: {
     if (useUi.getState().composer || useUi.getState().accountsOpen) return
 
     const { list, selectedId, selected, select, triage } = opts
-    const index = list.findIndex((m) => m.id === selectedId)
+    const index = list.findIndex((m) => m.threadId === selectedId)
     const move = (delta: number) => {
       const next = list[Math.min(Math.max(index + delta, 0), list.length - 1)]
-      if (next) select(next.id)
+      if (next) select(next.threadId)
     }
     const handlers: Record<string, () => void> = {
       j: () => move(index < 0 ? 0 : 1),
