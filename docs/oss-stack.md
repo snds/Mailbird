@@ -1,0 +1,88 @@
+# OSS stack and licensing
+
+_Versions and licenses verified 2026-10-13 against the npm registry and crates.io. **Rule:** every dependency we ship must be permissive (MIT, Apache-2.0, BSD, ISC, or 0BSD). MPL-2.0 is allowed only unmodified (file-level copyleft). GPL, AGPL, EUPL, SSPL, and BSL code never ships inside the client. Copyleft servers can run beside us as separate network services._
+
+**Status key**
+
+- ✅ **In scaffold:** installed in this repo today.
+- 🟦 **Chosen:** chosen, but added in the phase that needs it.
+- ⚪ **Alternative:** evaluated and kept as an option.
+- ⛔ **Avoid:** do not use.
+
+## Front end (web, shared by every shell)
+
+| Package | Role | Version | License | Status | Notes |
+|---|---|---|---|---|---|
+| react | UI runtime | 19.x | MIT | ✅ | — |
+| vite | Build | 8.3 | MIT | ✅ | v8 runs on Rolldown. |
+| typescript | Language | 6.0 (7.0 available) | Apache-2.0 | ✅ | TS 7 is the Go-native compiler. Upgrade once the tooling catches up. |
+| tailwindcss | Styling | 4.3 | MIT | ✅ | CSS-first config. All tokens live in `src/styles/tokens.css`. |
+| shadcn (CLI) | Component source | 4.21 | MIT | ✅ | Base UI base + Nova style. Icons swapped to Material Symbols by `tools/shadcn-material` (see [ADR-0003](decisions/0003-material-symbols.md)). |
+| @base-ui/react | Headless primitives | 1.9 | MIT | ✅ | Replaces the deprecated `@base-ui-components/react`. |
+| material-symbols | Icon font | 0.48 | Apache-2.0 | ✅ | Variable font with FILL, wght, GRAD, and opsz axes. |
+| class-variance-authority, clsx, tailwind-merge | Variant plumbing | latest | MIT / Apache-2.0 | ✅ | Standard shadcn utilities. |
+| @tanstack/react-router | Routing | 1.170 | MIT | 🟦 | Typed routes and deep links across shells. |
+| @tanstack/react-query | Server-state cache | 5.104 | MIT | 🟦 | Wraps calls to the core. |
+| @tanstack/react-virtual | Long lists | 3.14 | MIT | 🟦 | Message lists with 100k+ rows. |
+| zustand | UI state | 5.0 | MIT | 🟦 | — |
+| @tiptap/core, react, pm | Notes + composer editor | 3.32 | MIT | 🟦 | **Avoid Tiptap Pro** (paid). Collaboration uses Yjs + Hocuspocus (MIT). |
+| yjs | CRDT for notes sync | 13.6 | MIT | 🟦 | — |
+| @schedule-x/calendar | Calendar views | 4.9 | MIT core | 🟦 | **Avoid Premium plugins.** We may build our own views on the same tokens. |
+| ical.js | iCal / vCard parsing (web) | 2.2 | MPL-2.0 | 🟦 | Use unmodified only. The Rust core is the source of truth. |
+| dompurify | Sanitize email HTML (web) | 3.4 | Apache-2.0 option | 🟦 | Elect Apache-2.0. Rendered inside a sandboxed iframe. |
+| temporal-polyfill | Dates and time zones | 1.0 | MIT | 🟦 | Prefer Temporal over date-fns for time-zone-correct calendar math. |
+| cmdk | Command palette | 1.1 | MIT | 🟦 | shadcn Command. |
+| sonner | Toasts / undo | 2.0 | MIT | 🟦 | — |
+| react-hook-form + zod | Forms | 7.90 / 4.6 | MIT | 🟦 | — |
+| i18next | Localization | 26 | MIT | 🟦 | — |
+| vite-plugin-pwa | Installable web app | 2.0 | MIT | 🟦 | Confirm Vite 8 compatibility. |
+| vaul | Drawer | 1.1 | MIT | ⚪ | **Unmaintained.** Prefer the Base UI Drawer. |
+| lexical | Editor | 0.52 | MIT | ⚪ | Still 0.x. |
+| fullcalendar | Calendar | 7.1 | MIT core | ⚪ | Premium views are paid. |
+| @blocknote/core | Editor | 0.55 | MPL-2.0 | ⛔ | `@blocknote/xl-*` is GPL-3.0 or proprietary. |
+
+## Native shells
+
+| Package | Role | Version | License | Status | Notes |
+|---|---|---|---|---|---|
+| tauri, @tauri-apps/cli, @tauri-apps/api | Desktop + mobile shell | 2.12 | MIT OR Apache-2.0 | ✅ | Windows, macOS, and Linux now. iOS and Android are a spike (see [ADR-0002](decisions/0002-shells.md)). |
+| tauri-plugin-notification, deep-link, biometric | Shell plugins | 2.4–2.6 | MIT OR Apache-2.0 | 🟦 | Plugin 3.0 alphas exist, so expect churn. |
+| @capacitor/core, ios, android | Mobile fallback shell | 8.5 | MIT | ⚪ | Used only if the Tauri mobile spike fails on background sync or push. |
+
+## Rust core
+
+| Crate | Role | Version | License | Status |
+|---|---|---|---|---|
+| tokio, serde | Runtime, serialization | 1.x | MIT / MIT OR Apache-2.0 | 🟦 |
+| async-imap (or imap-next) | IMAP | 0.12 | MIT OR Apache-2.0 | 🟦 |
+| lettre | SMTP | 0.11 | MIT | 🟦 |
+| mail-parser, mail-builder, mail-auth | MIME, DKIM/SPF | 0.11 / 1.0 / 0.13 | Apache-2.0 OR MIT | 🟦 |
+| jmap-client | JMAP (Fastmail, Stalwart) | 0.4 | Apache-2.0 OR MIT | 🟦 |
+| calcard | iCalendar + vCard | 0.3 | Apache-2.0 OR MIT | 🟦 |
+| libdav | CalDAV / CardDAV client | 0.11 | ISC | 🟦 |
+| rusqlite (bundled) | Local store | 0.40 | MIT | 🟦 |
+| tantivy | Full-text search | 0.26 | MIT | 🟦 |
+| oauth2 | OAuth (Google, Microsoft) | 5.0 | MIT OR Apache-2.0 | 🟦 |
+| keyring | OS keychain | 4.2 | MIT OR Apache-2.0 | 🟦 |
+| ammonia | HTML sanitize (native) | 4.2 | MIT OR Apache-2.0 | 🟦 |
+| email-lib (Pimalaya) | Mail library | 0.27 | MIT | ⚪ |
+| uniffi | Swift/Kotlin bindings | 0.32 | MPL-2.0 | ⚪ (only with the Capacitor fallback) |
+| vstorage / pimsync | DAV sync | 0.11 | EUPL-1.2 | ⛔ |
+| tauri-plugin-stronghold | Secrets | 2.4 | MIT/Apache | ⛔ (uncertain upstream; use `keyring`) |
+| tauri-plugin-keyring (3rd party) | Secrets | 0.1 | MIT | ⛔ (abandoned) |
+
+## Servers (separate services only, never linked)
+
+| Server | License | Use |
+|---|---|---|
+| Stalwart Mail Server | AGPL-3.0 / SELv2 | Dev and test JMAP + IMAP + CalDAV + CardDAV server in `docker compose`. Run unmodified. |
+| Radicale | GPL-3.0 | Lightweight CalDAV/CardDAV for tests. |
+| Nextcloud | AGPL-3.0 | Integration target only. |
+
+## Watch-outs
+
+1. **Open-core traps:** Tiptap Pro, Schedule-X Premium, FullCalendar Premium, Dexie Cloud, Ionic Appflow, and Hugeicons Pro are all paid. Stay on the MIT cores.
+2. **MPL-2.0 files** (ical.js, uniffi, BlockNote core) are fine if we never patch them. Send fixes upstream.
+3. **Stalwart:** the *server* is AGPL, but its *libraries* (mail-parser, calcard, jmap-client) are permissive.
+4. **Dead or deprecated:** `@base-ui-components/react`, `vaul`, `rrule` (stale, time-zone bugs; do recurrence in Rust with calcard), the `wa-sqlite` npm package, and `tauri-plugin-keyring`.
+5. **Font weight:** the full Material Symbols Rounded variable font is about 5.4 MB of woff2. Subset it before shipping (see [ADR-0003](decisions/0003-material-symbols.md)).
