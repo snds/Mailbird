@@ -27,14 +27,39 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p pim-core
 
+  # Real IMAP (Dovecot) + SMTP (aiosmtpd) round trip: sync, flag push, archive
+  # move, send, and the Sent copy. See tools/test-mail-servers/.
+  mail-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Dovecot
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dovecot-imapd
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install aiosmtpd
+      - name: Start test mail servers
+        run: sudo env PYTHON="$(which python)" tools/test-mail-servers/start.sh
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p pim-core --test imap_smtp -- --ignored
+        env:
+          MAILBIRD_IT_SMTP_OUT: /tmp/mbtest/smtp-out
+      - name: Server logs on failure
+        if: failure()
+        run: sudo tail -n 50 /tmp/mbtest/dovecot.log /tmp/mbtest/smtpd.log
+
   shell:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install WebKitGTK and friends (Tauri Linux deps)
+      - name: Install WebKitGTK and friends (Tauri Linux deps; dbus for the keychain)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # The shell embeds the built front end, so tauri::generate_context! needs dist/.

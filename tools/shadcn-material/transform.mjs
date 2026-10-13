@@ -68,13 +68,21 @@ function swapIcons(src, file) {
     const rest = attrs
       .replace(/\s*(lucide|tabler|hugeicons|phosphor|remixicon)="[^"]*"/g, "")
       .trim()
-    return `<Icon name="${name}"${rest ? " " + rest : ""} />`
+    // name goes last so a spread of svg props (which can carry `name`) can't override it.
+    return `<Icon${rest ? " " + rest : ""} name="${name}" />`
   })
   if (!touched) return out
-  return out.replace(
-    /import \{ IconPlaceholder \} from "[^"]+"\n/,
-    'import { Icon } from "@/components/icon"\n'
-  )
+  // Components that are just an icon (Spinner) type their props as svg props;
+  // Icon's axis props (fill: boolean) replace svg's string `fill`.
+  const iconOnly = out.includes('React.ComponentProps<"svg">')
+  return out
+    .replaceAll('React.ComponentProps<"svg">', 'Omit<IconProps, "name">')
+    .replace(
+      /import \{ IconPlaceholder \} from "[^"]+"\n/,
+      iconOnly
+        ? 'import { Icon, type IconProps } from "@/components/icon"\n'
+        : 'import { Icon } from "@/components/icon"\n'
+    )
 }
 
 function rewriteImports(src) {

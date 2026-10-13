@@ -6,15 +6,17 @@ import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { contacts, messages } from "@/data/mock"
+import { useMessages } from "@/core/queries"
+import { contacts } from "@/data/mock"
 
 const initials = (name: string) => name.split(" ").map((p) => p[0]).slice(0, 2).join("")
 
 export function ContactsView() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = contacts.find((c) => c.id === selectedId) ?? null
-  // Cross-vertical context: the contact card shows the threads you share.
-  const threads = selected ? messages.filter((m) => m.email === selected.email) : []
+  // Cross-vertical context: the contact card shows mail you've exchanged.
+  const { data: found = [] } = useMessages({ lane: "inbox", search: selected?.email ?? "", limit: 5 })
+  const threads = selected ? found.filter((m) => m.from.email === selected.email) : []
 
   return (
     <MasterDetail

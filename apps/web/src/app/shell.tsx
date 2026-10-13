@@ -11,6 +11,7 @@ interface ShellProps {
   active: VerticalId
   onNavigate: (id: VerticalId) => void
   onCreate: () => void
+  onSettings: () => void
   children: ReactNode
 }
 
@@ -20,11 +21,11 @@ interface ShellProps {
  *   tablet  (md)    nav rail + list/detail split
  *   desktop (lg+)   nav rail + wider list + reading pane
  */
-export function AppShell({ active, onNavigate, onCreate, children }: ShellProps) {
+export function AppShell({ active, onNavigate, onCreate, onSettings, children }: ShellProps) {
   const current = VERTICALS.find((v) => v.id === active)!
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-canvas">
-      <NavRail active={active} onNavigate={onNavigate} onCreate={onCreate} current={current} />
+      <NavRail active={active} onNavigate={onNavigate} onCreate={onCreate} onSettings={onSettings} current={current} />
       <main className="flex min-w-0 flex-1 flex-col pb-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0">
         {children}
       </main>
@@ -81,11 +82,13 @@ function NavRail({
   active,
   onNavigate,
   onCreate,
+  onSettings,
   current,
 }: {
   active: VerticalId
   onNavigate: (id: VerticalId) => void
   onCreate: () => void
+  onSettings: () => void
   current: Vertical
 }) {
   return (
@@ -107,7 +110,7 @@ function NavRail({
         <NavItem key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" />
       ))}
       <div className="mt-auto flex flex-col items-center gap-1">
-        <Button variant="ghost" size="icon-lg" aria-label="Settings">
+        <Button variant="ghost" size="icon-lg" aria-label="Accounts and settings" onClick={onSettings}>
           <Icon name="settings" className="size-6" opticalSize={24} />
         </Button>
       </div>
