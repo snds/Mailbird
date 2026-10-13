@@ -128,9 +128,9 @@ impl Admin {
 }
 
 async fn sync(store: &Store, account: &str) -> pim_core::RemoteBatch {
-    let cursor = store.remote_cursor(account, net::INBOX).unwrap();
-    let ops = store.pending_remote_ops(account, net::INBOX).unwrap();
-    let batch = jmap::sync_inbox(&config(), PASS, cursor, &ops).await.unwrap();
+    let cursor = store.remote_cursor(account).unwrap();
+    let ops = store.pending_remote_ops(account).unwrap();
+    let batch = jmap::sync_account(&config(), PASS, cursor, &ops).await.unwrap();
     store.apply_remote(account, &batch).unwrap();
     batch
 }
@@ -169,7 +169,7 @@ async fn jmap_round_trip() {
     store.set_thread_archived(&by("Third note").thread_id, true).unwrap();
     let pushed = sync(&store, &account).await;
     assert_eq!(pushed.applied_ops.len(), 3);
-    assert!(store.pending_remote_ops(&account, net::INBOX).unwrap().is_empty());
+    assert!(store.pending_remote_ops(&account).unwrap().is_empty());
     let server = admin.emails().await;
     let find = |s: &str| server.iter().find(|(subj, _, _)| subj == s).unwrap().clone();
     assert_eq!(find("First note").1["$seen"], true);
@@ -177,8 +177,34 @@ async fn jmap_round_trip() {
     let third_boxes = find("Third note").2;
     assert_eq!(third_boxes[&archive], true, "archive moves it to the Archive mailbox");
     assert!(third_boxes.get(&inbox_id).is_none());
-    assert!(pushed.removed.contains(&third), "the move comes back as a removal from INBOX");
-    assert_eq!(store.messages(&MessageQuery { lane: Lane::Archive, account_id: None, search: None, limit: None }).unwrap().len(), 1, "local archive copy kept");
+    assert!(pushed.moved.contains(&(third.clone(), pim_core::store::ARCHIVE.to_owned())), "the move comes back as a move, not a re-download");
+    let archived = store.messages(&MessageQuery { lane: Lane::Archive, account_id: None, search: None, limit: None }).unwrap();
+    assert_eq!((archived.len(), archived[0].mailbox.as_str()), (1, pim_core::store::ARCHIVE));
+
+    // Unarchive moves it back on the server.
+    store.set_thread_archived(&archived[0].thread_id, false).unwrap();
+    sync(&store, &account).await;
+    let back = admin.emails().await;
+    assert_eq!(back.iter().find(|(s, _, _)| s == "Third note").unwrap().2[&inbox_id], true, "unarchive moved it back to the Inbox");
+    assert_eq!(inbox(&store).len(), 3);
+    // …and archive it again so the counts below match.
+    let t = inbox(&store).into_iter().find(|m| m.subject == "Third note").unwrap().thread_id;
+    store.set_thread_archived(&t, true).unwrap();
+    sync(&store, &account).await;
+
+    // Push: EventSource wakes on a change, not on the state we already have.
+    let state = store.remote_cursor(&account).unwrap().state;
+    let waiter = tokio::spawn({
+        let state = state.clone();
+        async move { jmap::wait_for_change(&config(), PASS, state.as_deref(), std::time::Duration::from_secs(20)).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    let pushed_mail = admin.import("Pushed note", json!({})).await;
+    let change = tokio::time::timeout(std::time::Duration::from_secs(15), waiter).await.expect("push arrived").unwrap().unwrap();
+    assert_eq!(change, net::Change::Changed);
+    assert_eq!(sync(&store, &account).await.new_messages.len(), 1);
+    admin.call("Email/set", json!({ "destroy": [pushed_mail] })).await;
+    sync(&store, &account).await;
 
     // Changes made elsewhere arrive through Email/changes
     let fourth = admin.import("Fourth note", json!({})).await;
@@ -204,6 +230,7 @@ async fn jmap_round_trip() {
         cc: vec![],
         subject: "Re: First note".into(),
         body: "Thanks!".into(),
+        body_html: Some("<p><em>Thanks!</em></p>".into()),
         in_reply_to: Some("First-note@example.com".into()),
         references: vec![],
         attachments: vec![],
@@ -215,6 +242,16 @@ async fn jmap_round_trip() {
             assert!(admin.emails().await.iter().any(|(s, _, boxes)| s == "Re: First note" && boxes[&sent] == true), "filed in Sent");
             let subs = admin.call("EmailSubmission/query", json!({})).await;
             assert!(subs["ids"].as_array().is_some_and(|a| !a.is_empty()), "an EmailSubmission was created");
+
+            // The shell keeps a local Sent copy; the synced server copy replaces it and joins the thread.
+            store.insert_local(&account, pim_core::store::SENT, &raw, true).unwrap();
+            sync(&store, &account).await;
+            let first = inbox(&store).into_iter().find(|m| m.subject == "First note").unwrap();
+            let thread = store.thread(&first.thread_id).unwrap();
+            let sent_copies: Vec<_> = thread.iter().filter(|m| m.summary.mailbox == pim_core::store::SENT).collect();
+            assert_eq!(sent_copies.len(), 1, "one Sent copy in the conversation, not two");
+            assert!(sent_copies[0].body_html.as_deref().is_some_and(|h| h.contains("<em>Thanks!</em>")), "the server copy keeps the rich body");
+            assert!(store.remote_cursor(&account).unwrap().known.values().any(|m| m == pim_core::store::SENT), "it's the server's copy");
         }
         // A server whose test account has no identity must say so plainly.
         Err(Error::Invalid(m)) if m.contains("sending identity") => eprintln!("send skipped: {m}"),

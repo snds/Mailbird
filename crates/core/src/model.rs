@@ -172,7 +172,12 @@ pub struct Draft {
     #[serde(default)]
     pub cc: Vec<Address>,
     pub subject: String,
+    /// Plain-text body. Always sent, so text-only readers get the message.
     pub body: String,
+    /// Rich body from the composer; sent alongside `body` as
+    /// multipart/alternative when present.
+    #[serde(default)]
+    pub body_html: Option<String>,
     /// `Message-ID` of the message being replied to, for threading.
     #[serde(default)]
     pub in_reply_to: Option<String>,
@@ -228,6 +233,9 @@ pub struct SyncBatch {
     pub applied_ops: Vec<i64>,
     /// Older mail is still on the server; another pass should backfill it.
     pub more_older: bool,
+    /// UIDs our own ops moved to another mailbox. Their local rows go now;
+    /// the destination mailbox's sync brings them back under the new UID.
+    pub moved_out: Vec<u32>,
 }
 
 /// Where an IMAP sync should pick up.
@@ -251,20 +259,24 @@ pub struct PendingOp {
 pub enum OpKind {
     Seen(bool),
     Flagged(bool),
+    /// Move from the inbox to the server's archive mailbox.
     Archive,
+    /// Move from the server's archive mailbox back to the inbox.
+    Unarchive,
 }
 
 // ── Server-id sync (JMAP) ────────────────────────────────────────────────
 // IMAP addresses messages by numeric UID; JMAP by opaque string id. The
 // store keeps both, and these types carry the string-id flavor.
 
-/// Where a JMAP sync should pick up.
+/// Where a JMAP sync should pick up. JMAP state is account-wide, so one
+/// cursor covers every mailbox.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RemoteCursor {
     /// The server's `Email` state string from the last pass.
     pub state: Option<String>,
-    /// Ids already stored for this mailbox.
-    pub known: std::collections::HashSet<String>,
+    /// Stored server ids and the store mailbox each lives in.
+    pub known: std::collections::HashMap<String, String>,
 }
 
 /// A local change that still has to reach a JMAP server.
@@ -278,23 +290,26 @@ pub struct RemoteOp {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteMessage {
     pub remote_id: String,
+    /// Store mailbox: `store::INBOX`, `store::ARCHIVE`, or `store::SENT`.
+    pub mailbox: String,
     pub seen: bool,
     pub flagged: bool,
     pub raw: Vec<u8>,
 }
 
-/// The result of one JMAP sync pass for one mailbox.
+/// The result of one JMAP sync pass for one account.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RemoteBatch {
-    pub mailbox: String,
     /// New `Email` state to resume from next time.
     pub state: String,
-    /// The old state was too old to diff; local copies were replaced.
+    /// The old state was too old to diff; server copies were replaced.
     pub reset: bool,
     pub new_messages: Vec<RemoteMessage>,
     /// Current flags for already-known ids: (id, seen, flagged).
     pub flags: Vec<(String, bool, bool)>,
-    /// Ids that left the mailbox or were destroyed.
+    /// Known ids that moved to another tracked mailbox: (id, store mailbox).
+    pub moved: Vec<(String, String)>,
+    /// Ids that left every tracked mailbox or were destroyed.
     pub removed: Vec<String>,
     pub applied_ops: Vec<i64>,
     pub more_older: bool,

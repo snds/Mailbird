@@ -25,7 +25,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | @tanstack/react-query | Server-state cache | 5.104 | MIT | ✅ | Wraps calls to the core. |
 | @tanstack/react-virtual | Long lists | 3.14 | MIT | 🟦 | Message lists with 100k+ rows. |
 | zustand | UI state | 5.0 | MIT | ✅ | — |
-| @tiptap/core, react, pm | Notes + composer editor | 3.32 | MIT | 🟦 | **Avoid Tiptap Pro** (paid). Collaboration uses Yjs + Hocuspocus (MIT). |
+| @tiptap/react, pm, starter-kit, extensions | Composer editor (notes next) | 3.31.3 (pinned) | MIT | ✅ | **Avoid Tiptap Pro** (paid). Collaboration uses Yjs + Hocuspocus (MIT). |
 | yjs | CRDT for notes sync | 13.6 | MIT | 🟦 | — |
 | @schedule-x/calendar | Calendar views | 4.9 | MIT core | 🟦 | **Avoid Premium plugins.** We may build our own views on the same tokens. |
 | ical.js | iCal / vCard parsing (web) | 2.2 | MPL-2.0 | 🟦 | Use unmodified only. The Rust core is the source of truth. |

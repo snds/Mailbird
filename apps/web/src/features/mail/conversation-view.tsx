@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils"
 import { longTime, shortTime } from "@/lib/time"
 
 import type { useTriage } from "./actions"
+import { THUMB_LIMIT, previewKind, useAttachmentUrl } from "./attachment-kind"
+import { AttachmentPreview } from "./attachment-preview"
 import { displayName, formatSize, forwardDraft, initials, replyDraft, replyTarget } from "./format"
 import { HtmlBody } from "./html-body"
 import { SnoozeMenu } from "./snooze-menu"
@@ -45,7 +47,10 @@ function fileIcon(mime: string): IconName {
 
 function AttachmentChip({ file }: { file: AttachmentInfo }) {
   const [busy, setBusy] = useState(false)
-  const open = async () => {
+  const [previewing, setPreviewing] = useState(false)
+  const kind = previewKind(file)
+  const thumb = useAttachmentUrl(file.id, kind === "image" && file.size <= THUMB_LIMIT, file.mimeType)
+  const save = async () => {
     setBusy(true)
     try {
       const path = await (await getCoreClient()).openAttachment(file.id)
@@ -57,19 +62,53 @@ function AttachmentChip({ file }: { file: AttachmentInfo }) {
     }
   }
   return (
-    <button
-      type="button"
-      onClick={open}
-      disabled={busy}
-      className="flex max-w-full min-w-0 items-center gap-2.5 rounded-xl border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent disabled:opacity-60"
-    >
-      <Icon name={fileIcon(file.mimeType)} className="size-6 shrink-0 text-muted-foreground" opticalSize={24} />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium">{file.filename}</span>
-        <span className="text-xs text-muted-foreground">{formatSize(file.size)}</span>
-      </span>
-      <Icon name={busy ? "progress_activity" : "download"} className={cn("ml-1 size-4 shrink-0 text-muted-foreground", busy && "animate-spin")} />
-    </button>
+    <div className="flex max-w-full min-w-0 items-center rounded-xl border bg-card text-sm" data-slot="attachment-chip">
+      <button
+        type="button"
+        onClick={kind ? () => setPreviewing(true) : save}
+        disabled={busy}
+        aria-label={kind ? `Preview ${file.filename}` : `Open ${file.filename}`}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-l-xl px-3 py-2 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+      >
+        {thumb ? (
+          <img src={thumb} alt="" className="size-8 shrink-0 rounded-md object-cover" />
+        ) : (
+          <Icon name={fileIcon(file.mimeType)} className="size-6 shrink-0 text-muted-foreground" opticalSize={24} />
+        )}
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">{file.filename}</span>
+          <span className="text-xs text-muted-foreground">{formatSize(file.size)}</span>
+        </span>
+      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={save}
+              disabled={busy}
+              aria-label={`Save ${file.filename}`}
+              className="flex self-stretch items-center rounded-r-xl border-l px-2.5 text-muted-foreground transition-colors outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+            />
+          }
+        >
+          <Icon name={busy ? "progress_activity" : "download"} className={cn("size-4", busy && "animate-spin")} />
+        </TooltipTrigger>
+        <TooltipContent>Save and open</TooltipContent>
+      </Tooltip>
+      {kind && (
+        <AttachmentPreview
+          file={file}
+          kind={kind}
+          open={previewing}
+          onOpenChange={setPreviewing}
+          onSave={() => {
+            setPreviewing(false)
+            void save()
+          }}
+        />
+      )}
+    </div>
   )
 }
 

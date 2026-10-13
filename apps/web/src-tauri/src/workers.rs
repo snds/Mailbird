@@ -3,7 +3,10 @@
 
 use std::{sync::atomic::Ordering, time::Duration};
 
-use pim_core::{net, now, store::SENT};
+use pim_core::{
+    net, now,
+    store::{ARCHIVE, INBOX, SENT},
+};
 use tauri::{AppHandle, Emitter};
 
 use crate::{Shared, events, secrets};
@@ -57,8 +60,7 @@ pub fn start(app: AppHandle, state: Shared) {
         loop {
             tick.tick().await;
             let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
-            // JMAP accounts sync on the interval; JMAP push (EventSource) comes later.
-            for account in accounts.into_iter().filter(|a| a.config.jmap.is_none()) {
+            for account in accounts {
                 let fresh = state.idling.lock().map(|mut set| set.insert(account.id.clone())).unwrap_or(false);
                 if fresh {
                     let (app, state) = (app.clone(), state.clone());
@@ -69,13 +71,18 @@ pub fn start(app: AppHandle, state: Shared) {
     });
 }
 
-/// Hold IDLE on one account's INBOX and sync whenever the server says
-/// something changed. Ends when the account is removed or the server has no IDLE.
+/// Hold a push connection (IMAP IDLE, or JMAP EventSource) and sync whenever
+/// the server says something changed. Ends when the account is removed or the
+/// server has no push; the periodic sync covers those.
 async fn idle_loop(app: AppHandle, state: Shared, account_id: String) {
     loop {
         let account = state.store.lock().ok().and_then(|s| s.account(&account_id).ok());
         let Some(account) = account else { break }; // removed
         let outcome = match secrets::get(&account.id) {
+            Ok(password) if account.config.jmap.is_some() => {
+                let state = state.store.lock().ok().and_then(|s| s.remote_cursor(&account.id).ok()).and_then(|c| c.state);
+                net::jmap::wait_for_change(&account.config, &password, state.as_deref(), net::IDLE_TIMEOUT).await
+            }
             Ok(password) => net::wait_for_change(&account.config, &password, net::IDLE_TIMEOUT).await,
             Err(_) => Err(pim_core::Error::Auth("no saved password".into())),
         };
@@ -175,31 +182,42 @@ async fn sync_pass(app: &AppHandle, state: &Shared) -> bool {
     more_older
 }
 
-/// One IMAP pass for one account. Returns whether older mail remains.
+/// One IMAP pass for one account: INBOX, Archive, and Sent on one connection.
+/// Returns whether older mail remains anywhere.
 async fn sync_imap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
-    let (cursor, ops) = {
+    let plans = {
         let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
-        (
-            s.sync_cursor(&account.id, net::INBOX).map_err(|e| e.to_string())?,
-            s.pending_ops(&account.id, net::INBOX).map_err(|e| e.to_string())?,
-        )
+        [INBOX, ARCHIVE, SENT]
+            .into_iter()
+            .map(|m| {
+                Ok(net::MailboxPlan {
+                    store: m,
+                    cursor: s.sync_cursor(&account.id, m).map_err(|e| e.to_string())?,
+                    ops: s.pending_ops(&account.id, m).map_err(|e| e.to_string())?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?
     };
-    let batch = net::sync_inbox(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
+    let batches = net::sync_account(&account.config, password, plans).await.map_err(|e| e.to_string())?;
     let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
-    s.apply_sync(&account.id, &batch).map_err(|e| e.to_string())?;
-    Ok(batch.more_older)
+    let mut more_older = false;
+    for batch in &batches {
+        s.apply_sync(&account.id, batch).map_err(|e| e.to_string())?;
+        more_older |= batch.more_older;
+    }
+    Ok(more_older)
 }
 
-/// One JMAP pass for one account. Returns whether older mail remains.
+/// One JMAP pass for one account (every mailbox at once). Returns whether older mail remains.
 async fn sync_jmap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
     let (cursor, ops) = {
         let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
         (
-            s.remote_cursor(&account.id, net::INBOX).map_err(|e| e.to_string())?,
-            s.pending_remote_ops(&account.id, net::INBOX).map_err(|e| e.to_string())?,
+            s.remote_cursor(&account.id).map_err(|e| e.to_string())?,
+            s.pending_remote_ops(&account.id).map_err(|e| e.to_string())?,
         )
     };
-    let batch = net::jmap::sync_inbox(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
+    let batch = net::jmap::sync_account(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
     let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
     s.apply_remote(&account.id, &batch).map_err(|e| e.to_string())?;
     Ok(batch.more_older)

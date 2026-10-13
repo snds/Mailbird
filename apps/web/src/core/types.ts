@@ -117,7 +117,10 @@ export interface Draft {
   to: Address[]
   cc: Address[]
   subject: string
+  /** Plain-text part; always sent. */
   body: string
+  /** Rich part from the composer, sent alongside `body` as multipart/alternative. */
+  bodyHtml?: string | null
   inReplyTo?: string | null
   references?: string[]
   attachments?: OutgoingAttachment[]

@@ -75,6 +75,7 @@ pub fn run() {
             commands::snooze_thread,
             commands::unsnooze_thread,
             commands::open_attachment,
+            commands::attachment_data,
             commands::queue_send,
             commands::cancel_send,
             commands::list_outbox,

@@ -23,8 +23,15 @@ use crate::{
     RemoteBatch, RemoteCursor, RemoteOp, Result, SyncBatch, SyncCursor, mime, now,
 };
 
-/// Mailbox name for local copies of sent mail.
+/// Store mailbox names. Server mailboxes map onto these by role (RFC 6154
+/// special-use for IMAP, `role` for JMAP), whatever the server calls them.
+pub const INBOX: &str = "INBOX";
+/// Sent mail: server copies, plus local copies of mail sent from this device.
 pub const SENT: &str = "Sent";
+/// The server's archive mailbox. Rows here are always `archived`.
+pub const ARCHIVE: &str = "Archive";
+/// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
+const JMAP_STATE: &str = "*jmap";
 
 const SCHEMA_VERSION: i64 = 3;
 
@@ -428,22 +435,26 @@ impl Store {
         self.queue_op(id, op)
     }
 
-    /// Archive or un-archive. Un-archiving is local-only: the IMAP adapter
-    /// moves archived mail out of the synced INBOX.
+    /// Archive or un-archive. Mail in the inbox queues a move to the server's
+    /// archive mailbox; mail already in it queues a move back. Toggling twice
+    /// before a sync cancels out, so nothing reaches the server.
     pub fn set_archived(&self, id: &str, archived: bool) -> Result<()> {
-        let n = self
+        let mailbox: String = self
             .db
+            .query_row("SELECT mailbox FROM messages WHERE id = ?1", [id], |r| r.get(0))
+            .optional()?
+            .ok_or_else(|| Error::NotFound("that message is no longer here".into()))?;
+        self.db
             .execute("UPDATE messages SET archived = ?2 WHERE id = ?1", params![id, archived])?;
-        if n == 0 {
-            return Err(Error::NotFound("that message is no longer here".into()));
-        }
-        if archived {
-            self.queue_op(id, "archive")?;
-        } else {
-            self.db.execute(
-                "DELETE FROM pending_ops WHERE message_id = ?1 AND kind = 'archive'",
-                [id],
-            )?;
+        let (forward, back) = if mailbox == ARCHIVE { ("unarchive", "archive") } else { ("archive", "unarchive") };
+        // `archived` is the state the user wants; the op is whatever move gets the server there.
+        let wants_move = (mailbox == ARCHIVE) != archived;
+        self.db.execute(
+            "DELETE FROM pending_ops WHERE message_id = ?1 AND kind IN (?2, ?3)",
+            params![id, forward, back],
+        )?;
+        if wants_move {
+            self.queue_op(id, forward)?;
         }
         Ok(())
     }
@@ -652,6 +663,7 @@ impl Store {
                 "flag" => OpKind::Flagged(true),
                 "unflag" => OpKind::Flagged(false),
                 "archive" => OpKind::Archive,
+                "unarchive" => OpKind::Unarchive,
                 _ => continue,
             };
             ops.push((id, key, kind));
@@ -674,6 +686,12 @@ impl Store {
 
         for op in &batch.applied_ops {
             tx.execute("DELETE FROM pending_ops WHERE id = ?1", [op])?;
+        }
+        for uid in &batch.moved_out {
+            tx.execute(
+                "DELETE FROM messages WHERE account_id = ?1 AND mailbox = ?2 AND uid = ?3",
+                params![account_id, batch.mailbox, uid],
+            )?;
         }
 
         let mut inserted = 0;
@@ -737,31 +755,37 @@ impl Store {
 
     // ── Server-id sync (JMAP) ─────────────────────────────────────────────
 
-    pub fn remote_cursor(&self, account_id: &str, mailbox: &str) -> Result<RemoteCursor> {
+    pub fn remote_cursor(&self, account_id: &str) -> Result<RemoteCursor> {
         let state: Option<String> = self
             .db
             .query_row(
                 "SELECT state FROM sync_state WHERE account_id = ?1 AND mailbox = ?2",
-                params![account_id, mailbox],
+                params![account_id, JMAP_STATE],
                 |r| r.get(0),
             )
             .optional()?
             .flatten();
-        let mut stmt = self.db.prepare(
-            "SELECT remote_id FROM messages WHERE account_id = ?1 AND mailbox = ?2 AND remote_id IS NOT NULL",
-        )?;
+        let mut stmt = self
+            .db
+            .prepare("SELECT remote_id, mailbox FROM messages WHERE account_id = ?1 AND remote_id IS NOT NULL")?;
         let known = stmt
-            .query_map(params![account_id, mailbox], |r| r.get(0))?
+            .query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         Ok(RemoteCursor { state, known })
     }
 
-    pub fn pending_remote_ops(&self, account_id: &str, mailbox: &str) -> Result<Vec<RemoteOp>> {
-        Ok(self
-            .ops_where(account_id, mailbox, "m.remote_id")?
-            .into_iter()
-            .map(|(id, remote_id, kind)| RemoteOp { id, remote_id, kind })
-            .collect())
+    /// Every local change on this account still waiting for the JMAP server.
+    pub fn pending_remote_ops(&self, account_id: &str) -> Result<Vec<RemoteOp>> {
+        let mut ops = Vec::new();
+        for mailbox in [INBOX, ARCHIVE, SENT] {
+            ops.extend(
+                self.ops_where(account_id, mailbox, "m.remote_id")?
+                    .into_iter()
+                    .map(|(id, remote_id, kind)| RemoteOp { id, remote_id, kind }),
+            );
+        }
+        ops.sort_by_key(|o| o.id);
+        Ok(ops)
     }
 
     /// Apply one JMAP sync pass atomically. Returns the number of new messages.
@@ -769,16 +793,22 @@ impl Store {
         let tx = self.db.unchecked_transaction()?;
         if batch.reset {
             tx.execute(
-                "DELETE FROM messages WHERE account_id = ?1 AND mailbox = ?2 AND remote_id IS NOT NULL AND archived = 0",
-                params![account_id, batch.mailbox],
+                "DELETE FROM messages WHERE account_id = ?1 AND remote_id IS NOT NULL",
+                [account_id],
             )?;
         }
         for op in &batch.applied_ops {
             tx.execute("DELETE FROM pending_ops WHERE id = ?1", [op])?;
         }
+        for (remote_id, mailbox) in &batch.moved {
+            tx.execute(
+                "UPDATE messages SET mailbox = ?3, archived = ?4 WHERE account_id = ?1 AND remote_id = ?2",
+                params![account_id, remote_id, mailbox, mailbox == ARCHIVE],
+            )?;
+        }
         let mut inserted = 0;
         for m in &batch.new_messages {
-            if insert_message(&tx, account_id, &batch.mailbox, ServerKey::Remote(&m.remote_id), &m.raw, m.seen, m.flagged)?.is_some() {
+            if insert_message(&tx, account_id, &m.mailbox, ServerKey::Remote(&m.remote_id), &m.raw, m.seen, m.flagged)?.is_some() {
                 inserted += 1;
             }
         }
@@ -786,24 +816,23 @@ impl Store {
             tx.execute(
                 "UPDATE messages SET
                    seen = CASE WHEN EXISTS (SELECT 1 FROM pending_ops o WHERE o.message_id = messages.id
-                          AND o.kind IN ('seen','unseen')) THEN seen ELSE ?4 END,
+                          AND o.kind IN ('seen','unseen')) THEN seen ELSE ?3 END,
                    flagged = CASE WHEN EXISTS (SELECT 1 FROM pending_ops o WHERE o.message_id = messages.id
-                          AND o.kind IN ('flag','unflag')) THEN flagged ELSE ?5 END
-                 WHERE account_id = ?1 AND mailbox = ?2 AND remote_id = ?3",
-                params![account_id, batch.mailbox, remote_id, seen, flagged],
+                          AND o.kind IN ('flag','unflag')) THEN flagged ELSE ?4 END
+                 WHERE account_id = ?1 AND remote_id = ?2",
+                params![account_id, remote_id, seen, flagged],
             )?;
         }
-        // Gone from the server mailbox; a copy we archived ourselves stays.
         for remote_id in &batch.removed {
             tx.execute(
-                "DELETE FROM messages WHERE account_id = ?1 AND mailbox = ?2 AND remote_id = ?3 AND archived = 0",
-                params![account_id, batch.mailbox, remote_id],
+                "DELETE FROM messages WHERE account_id = ?1 AND remote_id = ?2",
+                params![account_id, remote_id],
             )?;
         }
         tx.execute(
             "INSERT INTO sync_state (account_id, mailbox, uid_validity, last_uid, state) VALUES (?1, ?2, 0, 0, ?3)
              ON CONFLICT (account_id, mailbox) DO UPDATE SET state = ?3",
-            params![account_id, batch.mailbox, batch.state],
+            params![account_id, JMAP_STATE, batch.state],
         )?;
         tx.commit()?;
         Ok(inserted)
@@ -964,16 +993,31 @@ fn insert_message(
     let n = tx.execute(
         "INSERT OR IGNORE INTO messages (id, account_id, mailbox, uid, message_id, from_name, from_email,
            to_json, cc_json, subject, preview, body_text, body_html, date, sort_at, seen, flagged,
-           thread_id, has_attachments, raw, remote_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18, ?19)",
+           thread_id, has_attachments, raw, remote_id, archived)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18, ?19, ?20)",
         params![
             id, account_id, mailbox, uid, p.message_id, p.from.name, p.from.email, json(&p.to),
             json(&p.cc), p.subject, p.preview, p.body_text, p.body_html, date, seen, flagged,
-            has_files, raw, remote_id
+            has_files, raw, remote_id, mailbox == ARCHIVE
         ],
     )?;
     if n == 0 {
         return Ok(None);
+    }
+    // A server copy supersedes the stand-ins we kept until it arrived: the
+    // local copy of mail sent from this device, or an archived inbox row.
+    if let (Some(mid), false) = (&p.message_id, matches!(key, ServerKey::Local)) {
+        let stale = match mailbox {
+            SENT => Some(format!("mailbox = '{SENT}' AND uid IS NULL AND remote_id IS NULL")),
+            ARCHIVE => Some(format!("mailbox = '{INBOX}' AND archived = 1")),
+            _ => None,
+        };
+        if let Some(cond) = stale {
+            tx.execute(
+                &format!("DELETE FROM messages WHERE account_id = ?1 AND message_id = ?2 AND id <> ?3 AND {cond}"),
+                params![account_id, mid, id],
+            )?;
+        }
     }
 
     for a in &p.attachments {
@@ -1321,6 +1365,7 @@ mod tests {
             cc: vec![],
             subject: "Hi".into(),
             body: "Hello".into(),
+            body_html: None,
             in_reply_to: None,
             references: vec![],
             attachments: vec![],
@@ -1470,6 +1515,71 @@ mod tests {
         assert!(s.pending_ops(&acct, "INBOX").unwrap().iter().all(|o| o.kind != OpKind::Archive));
     }
 
+    // ── Sent and Archive mailboxes ───────────────────────────────────────
+
+    fn batch_in(mailbox: &str, uid_validity: u32, new: Vec<FetchedMessage>, server_uids: Vec<u32>) -> SyncBatch {
+        SyncBatch { mailbox: mailbox.into(), uid_validity, new_messages: new, server_uids, ..Default::default() }
+    }
+
+    #[test]
+    fn archive_mailbox_mail_is_archived_and_can_be_unarchived() {
+        let (s, acct) = store_with_account();
+        s.apply_sync(&acct, &batch_in(ARCHIVE, 3, vec![fetched_raw(1, threaded("old@x", None, &[], "Old trip", 8))], vec![1])).unwrap();
+        assert!(inbox(&s).is_empty());
+        let row = lane(&s, Lane::Archive).remove(0);
+        // Unarchive = move back to the inbox on the server.
+        s.set_thread_archived(&row.thread_id, false).unwrap();
+        assert_eq!(inbox(&s).len(), 1, "shows in the inbox right away");
+        let ops = s.pending_ops(&acct, ARCHIVE).unwrap();
+        assert_eq!(ops.iter().map(|o| o.kind).collect::<Vec<_>>(), [OpKind::Unarchive]);
+        // Changing your mind before a sync sends nothing.
+        s.set_thread_archived(&row.thread_id, true).unwrap();
+        assert!(s.pending_ops(&acct, ARCHIVE).unwrap().is_empty());
+    }
+
+    #[test]
+    fn moved_out_rows_go_and_the_archive_copy_replaces_them() {
+        let (s, acct) = store_with_account();
+        s.apply_sync(&acct, &batch(7, vec![fetched_raw(1, threaded("a@x", None, &[], "Plans", 8))], vec![1])).unwrap();
+        let t = inbox(&s)[0].thread_id.clone();
+        s.set_thread_archived(&t, true).unwrap();
+        // The adapter moved it: INBOX drops the row, Archive brings it back.
+        let mut b = batch(7, vec![], vec![]);
+        b.moved_out = vec![1];
+        b.applied_ops = s.pending_ops(&acct, INBOX).unwrap().iter().map(|o| o.id).collect();
+        s.apply_sync(&acct, &b).unwrap();
+        s.apply_sync(&acct, &batch_in(ARCHIVE, 3, vec![fetched_raw(40, threaded("a@x", None, &[], "Plans", 8))], vec![40])).unwrap();
+        let archived = lane(&s, Lane::Archive);
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].mailbox, ARCHIVE);
+        assert_eq!(archived[0].thread_count, 1, "no duplicate of the archived message");
+    }
+
+    #[test]
+    fn a_locally_kept_archived_copy_is_replaced_by_the_server_copy() {
+        // Defense in depth: even without moved_out, the Archive copy wins.
+        let (s, acct) = store_with_account();
+        s.apply_sync(&acct, &batch(7, vec![fetched_raw(1, threaded("a@x", None, &[], "Plans", 8))], vec![1])).unwrap();
+        let t = inbox(&s)[0].thread_id.clone();
+        s.set_thread_archived(&t, true).unwrap();
+        s.apply_sync(&acct, &batch_in(ARCHIVE, 3, vec![fetched_raw(40, threaded("a@x", None, &[], "Plans", 8))], vec![40])).unwrap();
+        assert_eq!(lane(&s, Lane::Archive)[0].thread_count, 1);
+    }
+
+    #[test]
+    fn server_sent_copy_replaces_the_local_one() {
+        let (s, acct) = store_with_account();
+        s.apply_sync(&acct, &batch(7, vec![fetched_raw(1, threaded("a@x", None, &[], "Lunch?", 8))], vec![1])).unwrap();
+        let mine = b"From: Me <me@example.com>\r\nTo: ana@example.com\r\nSubject: Re: Lunch?\r\nMessage-ID: <mine@x>\r\nIn-Reply-To: <a@x>\r\nDate: Tue, 13 Oct 2026 09:00:00 +0000\r\n\r\nYes!\r\n";
+        s.insert_local(&acct, SENT, mine, true).unwrap();
+        let t = inbox(&s)[0].thread_id.clone();
+        assert_eq!(s.thread(&t).unwrap().len(), 2);
+        s.apply_sync(&acct, &batch_in(SENT, 5, vec![FetchedMessage { uid: 9, seen: true, flagged: false, raw: mine.to_vec() }], vec![9])).unwrap();
+        let thread = s.thread(&t).unwrap();
+        assert_eq!(thread.len(), 2, "server copy replaced the local one, no duplicate");
+        assert_eq!(s.sync_cursor(&acct, SENT).unwrap().oldest_uid, Some(9), "the kept copy is the server's");
+    }
+
     // ── Attachments ──────────────────────────────────────────────────────
 
     const WITH_FILES: &[u8] = b"From: a@example.com\r\nSubject: Trip\r\nMIME-Version: 1.0\r\n\
@@ -1507,49 +1617,61 @@ Content-Type: multipart/related; boundary=\"b1\"\r\n\r\n\
 
     // ── Server-id (JMAP) sync ────────────────────────────────────────────
 
-    fn remote(id: &str, raw: Vec<u8>) -> crate::RemoteMessage {
-        crate::RemoteMessage { remote_id: id.into(), seen: false, flagged: false, raw }
+    fn remote(id: &str, mailbox: &str, raw: Vec<u8>) -> crate::RemoteMessage {
+        crate::RemoteMessage { remote_id: id.into(), mailbox: mailbox.into(), seen: false, flagged: false, raw }
     }
 
     #[test]
     fn remote_sync_inserts_updates_and_removes_by_server_id() {
         let (s, acct) = store_with_account();
         let b = RemoteBatch {
-            mailbox: "INBOX".into(),
             state: "s1".into(),
-            new_messages: vec![remote("M1", raw("One", "x")), remote("M2", raw("Two", "y"))],
+            new_messages: vec![remote("M1", INBOX, raw("One", "x")), remote("M2", INBOX, raw("Two", "y"))],
             ..Default::default()
         };
         assert_eq!(s.apply_remote(&acct, &b).unwrap(), 2);
         assert_eq!(s.apply_remote(&acct, &b).unwrap(), 0, "same ids are not stored twice");
-        let c = s.remote_cursor(&acct, "INBOX").unwrap();
+        let c = s.remote_cursor(&acct).unwrap();
         assert_eq!(c.state.as_deref(), Some("s1"));
-        assert_eq!(c.known.len(), 2);
+        assert_eq!(c.known.get("M1").map(String::as_str), Some(INBOX));
 
-        // Local change → op keyed by server id; server flags don't clobber it.
         let one = inbox(&s).into_iter().find(|m| m.subject == "One").unwrap();
         s.set_thread_seen(&one.thread_id, true).unwrap();
-        let ops = s.pending_remote_ops(&acct, "INBOX").unwrap();
+        let ops = s.pending_remote_ops(&acct).unwrap();
         assert_eq!((ops.len(), ops[0].remote_id.as_str(), ops[0].kind), (1, "M1", OpKind::Seen(true)));
-        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s2".into(), flags: vec![("M1".into(), false, true)], ..Default::default() }).unwrap();
+        s.apply_remote(&acct, &RemoteBatch { state: "s2".into(), flags: vec![("M1".into(), false, true)], ..Default::default() }).unwrap();
         let after = s.message(&one.id).unwrap().summary;
         assert!(after.seen && after.flagged, "pending seen kept, server flag applied");
 
-        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s3".into(), removed: vec!["M2".into()], applied_ops: vec![ops[0].id], ..Default::default() }).unwrap();
+        s.apply_remote(&acct, &RemoteBatch { state: "s3".into(), removed: vec!["M2".into()], applied_ops: vec![ops[0].id], ..Default::default() }).unwrap();
         assert_eq!(inbox(&s).len(), 1);
-        assert!(s.pending_remote_ops(&acct, "INBOX").unwrap().is_empty());
-        assert!(s.pending_ops(&acct, "INBOX").unwrap().is_empty(), "IMAP ops never see JMAP rows");
+        assert!(s.pending_remote_ops(&acct).unwrap().is_empty());
+        assert!(s.pending_ops(&acct, INBOX).unwrap().is_empty(), "IMAP ops never see JMAP rows");
     }
 
     #[test]
-    fn remote_reset_replaces_server_copies_but_keeps_local_archive() {
+    fn remote_moves_change_mailbox_without_redownloading() {
         let (s, acct) = store_with_account();
-        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s1".into(), new_messages: vec![remote("M1", raw("Keep", "x")), remote("M2", raw("Old", "y"))], ..Default::default() }).unwrap();
-        let keep = inbox(&s).into_iter().find(|m| m.subject == "Keep").unwrap();
-        s.set_thread_archived(&keep.thread_id, true).unwrap();
-        s.apply_remote(&acct, &RemoteBatch { mailbox: "INBOX".into(), state: "s9".into(), reset: true, new_messages: vec![remote("M3", raw("New", "z"))], ..Default::default() }).unwrap();
+        s.apply_remote(&acct, &RemoteBatch { state: "s1".into(), new_messages: vec![remote("M1", INBOX, raw("Trip", "x"))], ..Default::default() }).unwrap();
+        let t = inbox(&s)[0].thread_id.clone();
+        s.set_thread_archived(&t, true).unwrap();
+        let op = s.pending_remote_ops(&acct).unwrap().remove(0);
+        assert_eq!(op.kind, OpKind::Archive);
+        s.apply_remote(&acct, &RemoteBatch { state: "s2".into(), moved: vec![("M1".into(), ARCHIVE.into())], applied_ops: vec![op.id], ..Default::default() }).unwrap();
+        let archived = lane(&s, Lane::Archive);
+        assert_eq!((archived.len(), archived[0].mailbox.as_str()), (1, ARCHIVE));
+        // And back: unarchive queues the reverse move.
+        s.set_thread_archived(&t, false).unwrap();
+        assert_eq!(s.pending_remote_ops(&acct).unwrap()[0].kind, OpKind::Unarchive);
+    }
+
+    #[test]
+    fn remote_reset_replaces_every_server_copy() {
+        let (s, acct) = store_with_account();
+        s.apply_remote(&acct, &RemoteBatch { state: "s1".into(), new_messages: vec![remote("M1", INBOX, raw("Old", "x")), remote("M2", ARCHIVE, raw("Older", "y"))], ..Default::default() }).unwrap();
+        s.apply_remote(&acct, &RemoteBatch { state: "s9".into(), reset: true, new_messages: vec![remote("M3", INBOX, raw("New", "z"))], ..Default::default() }).unwrap();
         assert_eq!(inbox(&s).iter().map(|m| m.subject.as_str()).collect::<Vec<_>>(), ["New"]);
-        assert_eq!(lane(&s, Lane::Archive).len(), 1);
+        assert!(lane(&s, Lane::Archive).is_empty());
     }
 
     // ── Migration ────────────────────────────────────────────────────────

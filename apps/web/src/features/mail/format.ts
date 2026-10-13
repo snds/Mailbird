@@ -1,6 +1,8 @@
 import type { Address, Draft, MessageDetail } from "@/core/types"
 import { longTime } from "@/lib/time"
 
+import { escapeHtml, textToHtml } from "./rich-text"
+
 /** Seconds between pressing Send and the message leaving. */
 export const UNDO_SECONDS = 10
 
@@ -34,11 +36,15 @@ export function replyDraft(m: MessageDetail): Partial<Draft> {
     .split("\n")
     .map((l) => `> ${l}`)
     .join("\n")
+  const intro = `On ${longTime(m.date)}, ${displayName(m.from)} wrote:`
   return {
     accountId: m.accountId,
     to: [m.from],
     subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
-    body: `\n\nOn ${longTime(m.date)}, ${displayName(m.from)} wrote:\n${quoted}`,
+    body: `\n\n${intro}\n${quoted}`,
+    // The quote is rebuilt from the text part: the sender's HTML is untrusted
+    // and the editor's schema would drop most of it anyway.
+    bodyHtml: `<p></p><p>${escapeHtml(intro)}</p><blockquote>${textToHtml(m.bodyText.trimEnd())}</blockquote>`,
     inReplyTo: m.messageId,
     references: m.references,
   }
@@ -56,9 +62,16 @@ export function formatSize(bytes: number) {
 }
 
 export function forwardDraft(m: MessageDetail): Partial<Draft> {
+  const header = [
+    "---------- Forwarded message ----------",
+    `From: ${displayName(m.from)} <${m.from.email}>`,
+    `Date: ${longTime(m.date)}`,
+    `Subject: ${m.subject}`,
+  ]
   return {
     accountId: m.accountId,
     subject: /^fwd?:/i.test(m.subject) ? m.subject : `Fwd: ${m.subject}`,
-    body: `\n\n---------- Forwarded message ----------\nFrom: ${displayName(m.from)} <${m.from.email}>\nDate: ${longTime(m.date)}\nSubject: ${m.subject}\n\n${m.bodyText}`,
+    body: `\n\n${header.join("\n")}\n\n${m.bodyText}`,
+    bodyHtml: `<p></p><p></p>${textToHtml(header.join("\n"))}<p></p>${textToHtml(m.bodyText.trimEnd())}`,
   }
 }

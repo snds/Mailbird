@@ -15,9 +15,10 @@ use serde_json::{Value, json};
 use crate::{
     AccountConfig, Draft, Error, JmapConfig, OpKind, RemoteBatch, RemoteCursor, RemoteMessage,
     RemoteOp, Result,
+    store::{ARCHIVE, INBOX, SENT},
 };
 
-use super::{BACKFILL_CHUNK, INBOX, INITIAL_SYNC_LIMIT, TIMEOUT, build_message, tls_config};
+use super::{BACKFILL_CHUNK, Change, INITIAL_SYNC_LIMIT, TIMEOUT, build_message, tls_config};
 
 const CORE: &str = "urn:ietf:params:jmap:core";
 const MAIL: &str = "urn:ietf:params:jmap:mail";
@@ -30,6 +31,7 @@ struct Session {
     api_url: String,
     download_url: String,
     upload_url: String,
+    event_source_url: Option<String>,
     account_id: String,
 }
 
@@ -122,6 +124,7 @@ async fn connect(config: &AccountConfig, secret: &str) -> Result<Session> {
         api_url: resolve(&jmap.session_url, &str_at("apiUrl")?)?,
         download_url: resolve(&jmap.session_url, &str_at("downloadUrl")?)?,
         upload_url: resolve(&jmap.session_url, &str_at("uploadUrl")?)?,
+        event_source_url: s["eventSourceUrl"].as_str().map(|u| resolve(&jmap.session_url, u)).transpose()?,
         http,
         auth,
         account_id,
@@ -224,10 +227,10 @@ struct Meta {
     blob: String,
     seen: bool,
     flagged: bool,
-    in_inbox: bool,
+    mailbox_ids: Value,
 }
 
-fn metas(v: &Value, inbox: &str) -> Vec<Meta> {
+fn metas(v: &Value) -> Vec<Meta> {
     v["list"]
         .as_array()
         .into_iter()
@@ -238,7 +241,7 @@ fn metas(v: &Value, inbox: &str) -> Vec<Meta> {
                 blob: e["blobId"].as_str()?.to_owned(),
                 seen: e["keywords"]["$seen"].as_bool().unwrap_or(false),
                 flagged: e["keywords"]["$flagged"].as_bool().unwrap_or(false),
-                in_inbox: e["mailboxIds"][inbox].as_bool().unwrap_or(false),
+                mailbox_ids: e["mailboxIds"].clone(),
             })
         })
         .collect()
@@ -246,12 +249,42 @@ fn metas(v: &Value, inbox: &str) -> Vec<Meta> {
 
 const PROPS: [&str; 4] = ["id", "blobId", "keywords", "mailboxIds"];
 
-/// One sync pass of the Inbox: push local changes, apply server changes
-/// since the last state, and backfill one chunk of older mail.
-pub async fn sync_inbox(config: &AccountConfig, secret: &str, cursor: RemoteCursor, ops: &[RemoteOp]) -> Result<RemoteBatch> {
+/// Server mailbox ids for the roles we track, and which store mailbox each feeds.
+struct Tracked(Vec<(String, &'static str)>);
+
+impl Tracked {
+    fn from_roles(roles: &HashMap<String, String>) -> Result<Self> {
+        let inbox = roles.get("inbox").ok_or_else(|| Error::Network("this account has no Inbox".into()))?;
+        let mut list = vec![(inbox.clone(), INBOX)];
+        if let Some(a) = roles.get("archive") {
+            list.push((a.clone(), ARCHIVE));
+        }
+        if let Some(s) = roles.get("sent") {
+            list.push((s.clone(), SENT));
+        }
+        Ok(Self(list))
+    }
+
+    /// Where an email belongs. JMAP mail can sit in several mailboxes at
+    /// once; the inbox wins, then archive, then sent. `None` = untracked
+    /// (trash, junk, custom folders).
+    fn classify(&self, mailbox_ids: &Value) -> Option<&'static str> {
+        self.0.iter().find(|(id, _)| mailbox_ids[id].as_bool() == Some(true)).map(|(_, store)| *store)
+    }
+
+    fn server_id(&self, store: &str) -> Option<&str> {
+        self.0.iter().find(|(_, s)| *s == store).map(|(id, _)| id.as_str())
+    }
+}
+
+/// One sync pass of the whole account: push local changes, apply every
+/// change since the last state (across Inbox, Archive, and Sent), and
+/// backfill one chunk of older mail per mailbox.
+pub async fn sync_account(config: &AccountConfig, secret: &str, cursor: RemoteCursor, ops: &[RemoteOp]) -> Result<RemoteBatch> {
     let s = connect(config, secret).await?;
     let roles = s.roles().await?;
-    let inbox = roles.get("inbox").cloned().ok_or_else(|| Error::Network("this account has no Inbox".into()))?;
+    let tracked = Tracked::from_roles(&roles)?;
+    let inbox = tracked.server_id(INBOX).unwrap().to_owned();
 
     // 1. Push local changes in one Email/set.
     let mut applied_ops = Vec::new();
@@ -262,11 +295,12 @@ pub async fn sync_inbox(config: &AccountConfig, secret: &str, cursor: RemoteCurs
             match op.kind {
                 OpKind::Seen(on) => patch["keywords/$seen"] = if on { json!(true) } else { Value::Null },
                 OpKind::Flagged(on) => patch["keywords/$flagged"] = if on { json!(true) } else { Value::Null },
-                OpKind::Archive => {
-                    // No Archive mailbox: archiving stays local-only, as with IMAP.
-                    if let Some(archive) = roles.get("archive") {
-                        patch[format!("mailboxIds/{inbox}")] = Value::Null;
-                        patch[format!("mailboxIds/{archive}")] = json!(true);
+                // No Archive mailbox: archiving stays local-only, as with IMAP.
+                OpKind::Archive | OpKind::Unarchive => {
+                    if let Some(archive) = tracked.server_id(ARCHIVE) {
+                        let (from, to) = if op.kind == OpKind::Archive { (&inbox[..], archive) } else { (archive, &inbox[..]) };
+                        patch[format!("mailboxIds/{from}")] = Value::Null;
+                        patch[format!("mailboxIds/{to}")] = json!(true);
                     }
                 }
             }
@@ -275,26 +309,19 @@ pub async fn sync_inbox(config: &AccountConfig, secret: &str, cursor: RemoteCurs
         if !update.is_empty() {
             let v = s.one(&[CORE, MAIL], "Email/set", json!({ "accountId": s.account_id, "update": update })).await?;
             // notFound means the message is already gone: nothing left to push.
-            let failed: Vec<&str> = v["notUpdated"]
-                .as_object()
-                .into_iter()
-                .flatten()
-                .filter(|(_, e)| e["type"] != "notFound")
-                .map(|(k, _)| k.as_str())
-                .collect();
-            if let Some(id) = failed.first() {
-                return Err(Error::Network(format!("the server refused a change to message {id}")));
+            let failed = v["notUpdated"].as_object().into_iter().flatten().find(|(_, e)| e["type"] != "notFound");
+            if let Some((id, e)) = failed {
+                return Err(Error::Network(format!("the server refused a change to message {id}: {}", e["type"])));
             }
         }
         applied_ops = ops.iter().map(|o| o.id).collect();
     }
 
-    // 2. Changes since the last pass.
-    let mut batch = RemoteBatch { mailbox: INBOX.into(), applied_ops, ..Default::default() };
+    // 2. Changes since the last pass, for every tracked mailbox at once.
+    let mut batch = RemoteBatch { applied_ops, ..Default::default() };
     let mut known = cursor.known.clone();
     let mut state = cursor.state.clone();
-    if let Some(since) = state.clone() {
-        let mut since = since;
+    if let Some(mut since) = state.clone() {
         loop {
             let r = s
                 .call(&[CORE, MAIL], vec![
@@ -306,25 +333,35 @@ pub async fn sync_inbox(config: &AccountConfig, secret: &str, cursor: RemoteCurs
             let changes = &r["c"];
             if changes.get("__error").is_some() {
                 // State too old to diff (cannotCalculateChanges): start over.
-                batch.reset = true;
+                batch = RemoteBatch { reset: true, applied_ops: batch.applied_ops, ..Default::default() };
                 known.clear();
                 state = None;
                 break;
             }
-            for m in metas(&r["gc"], &inbox).into_iter().chain(metas(&r["gu"], &inbox)) {
-                match (m.in_inbox, known.contains(&m.id)) {
-                    (true, true) => batch.flags.push((m.id, m.seen, m.flagged)),
-                    (true, false) => {
-                        let raw = s.download(&m.blob).await?;
-                        known.insert(m.id.clone());
-                        batch.new_messages.push(RemoteMessage { remote_id: m.id, seen: m.seen, flagged: m.flagged, raw });
+            for m in metas(&r["gc"]).into_iter().chain(metas(&r["gu"])) {
+                let target = tracked.classify(&m.mailbox_ids);
+                match (target, known.get(&m.id).cloned()) {
+                    (Some(to), Some(at)) => {
+                        if at != to {
+                            batch.moved.push((m.id.clone(), to.to_owned()));
+                            known.insert(m.id.clone(), to.to_owned());
+                        }
+                        batch.flags.push((m.id, m.seen, m.flagged));
                     }
-                    (false, true) => batch.removed.push(m.id),
-                    (false, false) => {}
+                    (Some(to), None) => {
+                        let raw = s.download(&m.blob).await?;
+                        known.insert(m.id.clone(), to.to_owned());
+                        batch.new_messages.push(RemoteMessage { remote_id: m.id, mailbox: to.to_owned(), seen: m.seen, flagged: m.flagged, raw });
+                    }
+                    (None, Some(_)) => {
+                        known.remove(&m.id);
+                        batch.removed.push(m.id);
+                    }
+                    (None, None) => {}
                 }
             }
             for id in changes["destroyed"].as_array().into_iter().flatten().filter_map(Value::as_str) {
-                if known.contains(id) {
+                if known.remove(id).is_some() {
                     batch.removed.push(id.to_owned());
                 }
             }
@@ -336,39 +373,113 @@ pub async fn sync_inbox(config: &AccountConfig, secret: &str, cursor: RemoteCurs
         }
     }
 
-    // 3. First pass: newest first. Later passes: one chunk of older mail.
+    // 3. One page per mailbox: newest first on the first pass, then older chunks.
     let first = state.is_none();
-    let limit = if first { INITIAL_SYNC_LIMIT } else { BACKFILL_CHUNK };
-    let position = if first { 0 } else { known.len() };
-    let r = s
-        .call(&[CORE, MAIL], vec![
-            json!(["Email/query", {
-                "accountId": s.account_id,
-                "filter": { "inMailbox": inbox },
-                "sort": [{ "property": "receivedAt", "isAscending": false }],
-                "position": position, "limit": limit, "calculateTotal": true,
-            }, "q"]),
-            json!(["Email/get", { "accountId": s.account_id, "#ids": { "resultOf": "q", "name": "Email/query", "path": "/ids" }, "properties": PROPS }, "g"]),
-        ])
-        .await?;
-    if let Some(e) = r["q"].get("__error") {
-        return Err(Error::Network(format!("Email/query failed: {e}")));
+    let mut calls = Vec::new();
+    for (i, (server_id, store)) in tracked.0.iter().enumerate() {
+        let have = known.values().filter(|m| m == store).count();
+        let limit = match (first, *store) {
+            (true, INBOX) => INITIAL_SYNC_LIMIT,
+            _ => BACKFILL_CHUNK,
+        };
+        calls.push(json!(["Email/query", {
+            "accountId": s.account_id,
+            "filter": { "inMailbox": server_id },
+            "sort": [{ "property": "receivedAt", "isAscending": false }],
+            "position": if first { 0 } else { have }, "limit": limit, "calculateTotal": true,
+        }, format!("q{i}")]));
+        calls.push(json!(["Email/get", { "accountId": s.account_id, "#ids": { "resultOf": format!("q{i}"), "name": "Email/query", "path": "/ids" }, "properties": PROPS }, format!("g{i}")]));
     }
-    for m in metas(&r["g"], &inbox) {
-        if !known.contains(&m.id) {
-            let raw = s.download(&m.blob).await?;
-            known.insert(m.id.clone());
-            batch.new_messages.push(RemoteMessage { remote_id: m.id, seen: m.seen, flagged: m.flagged, raw });
+    let r = s.call(&[CORE, MAIL], calls).await?;
+    let mut email_state = None;
+    for (i, (_, store)) in tracked.0.iter().enumerate() {
+        let (q, g) = (&r[&format!("q{i}")], &r[&format!("g{i}")]);
+        if let Some(e) = q.get("__error") {
+            return Err(Error::Network(format!("Email/query failed: {e}")));
         }
+        email_state = email_state.or_else(|| g["state"].as_str().map(str::to_owned));
+        for m in metas(g) {
+            // Mail in two tracked mailboxes appears in both queries; classify picks one.
+            let Some(to) = tracked.classify(&m.mailbox_ids) else { continue };
+            if !known.contains_key(&m.id) {
+                let raw = s.download(&m.blob).await?;
+                known.insert(m.id.clone(), to.to_owned());
+                batch.new_messages.push(RemoteMessage { remote_id: m.id, mailbox: to.to_owned(), seen: m.seen, flagged: m.flagged, raw });
+            }
+        }
+        let total = q["total"].as_u64().unwrap_or(0) as usize;
+        let have = known.values().filter(|m| m == store).count();
+        batch.more_older |= have < total;
     }
-    let total = r["q"]["total"].as_u64().unwrap_or(0) as usize;
-    batch.more_older = known.len() < total;
     // The Email/get state is the point we resume from (RFC 8620 §5.2).
     batch.state = match state {
         Some(s) if !first => s,
-        _ => r["g"]["state"].as_str().unwrap_or_default().to_owned(),
+        _ => email_state.unwrap_or_default(),
     };
     Ok(batch)
+}
+
+/// Wait for the server to push an Email change over EventSource (RFC 8620
+/// §7.3), or for `timeout`. `current_state` is the state we already have, so
+/// a server that announces the present state on connect doesn't cause a sync.
+pub async fn wait_for_change(config: &AccountConfig, secret: &str, current_state: Option<&str>, timeout: std::time::Duration) -> Result<Change> {
+    let s = connect(config, secret).await?;
+    let Some(template) = &s.event_source_url else { return Ok(Change::Unsupported) };
+    let url = fill(template, &[("types", "Email"), ("closeafter", "no"), ("ping", "60")]);
+    // A long-lived stream: no whole-request timeout, only on connect.
+    let http = reqwest::Client::builder()
+        .tls_backend_preconfigured(tls_config())
+        .connect_timeout(TIMEOUT)
+        .build()
+        .map_err(http_err)?;
+    let wait = async {
+        let mut res = http
+            .get(url)
+            .header("Authorization", &s.auth)
+            .header("Accept", "text/event-stream")
+            .send()
+            .await
+            .map_err(http_err)?;
+        if !res.status().is_success() {
+            return Ok(Change::Unsupported);
+        }
+        let mut buf = String::new();
+        while let Some(chunk) = res.chunk().await.map_err(http_err)? {
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            // Events end with a blank line.
+            while let Some(end) = buf.find("\n\n").or_else(|| buf.find("\r\n\r\n")) {
+                let event: String = buf.drain(..end).collect();
+                buf = buf.trim_start_matches(['\r', '\n']).to_owned();
+                if let Some(Change::Changed) = parse_event(&event, &s.account_id, current_state) {
+                    return Ok(Change::Changed);
+                }
+            }
+        }
+        Ok(Change::Quiet) // the server closed the stream
+    };
+    match tokio::time::timeout(timeout, wait).await {
+        Ok(result) => result,
+        Err(_) => Ok(Change::Quiet),
+    }
+}
+
+/// One server-sent event: `event: state` with a StateChange `data:` payload.
+fn parse_event(event: &str, account_id: &str, current_state: Option<&str>) -> Option<Change> {
+    let mut kind = "message";
+    let mut data = String::new();
+    for line in event.lines() {
+        if let Some(v) = line.strip_prefix("event:") {
+            kind = v.trim();
+        } else if let Some(v) = line.strip_prefix("data:") {
+            data.push_str(v.trim_start());
+        }
+    }
+    if kind != "state" {
+        return None; // pings and comments
+    }
+    let v: Value = serde_json::from_str(&data).ok()?;
+    let new = v["changed"][account_id]["Email"].as_str()?;
+    (Some(new) != current_state).then_some(Change::Changed)
 }
 
 /// Send a draft: upload the message, file it in Sent, and submit it.
@@ -438,6 +549,16 @@ mod tests {
             fill(t, &[("accountId", "u1"), ("blobId", "B/2"), ("name", "a b.eml"), ("type", "message/rfc822")]),
             "https://x/download/u1/B%2F2/a%20b.eml?accept=message%2Frfc822"
         );
+    }
+
+    #[test]
+    fn parses_state_change_events() {
+        let ev = "event: state\ndata: {\"@type\":\"StateChange\",\"changed\":{\"u1\":{\"Email\":\"s9\",\"Mailbox\":\"m2\"}}}";
+        assert_eq!(parse_event(ev, "u1", Some("s8")), Some(Change::Changed));
+        assert_eq!(parse_event(ev, "u1", Some("s9")), None, "the state we already have isn't a change");
+        assert_eq!(parse_event(ev, "other", None), None, "another account's change");
+        assert_eq!(parse_event(": ping", "u1", None), None);
+        assert_eq!(parse_event("event: ping\ndata: {\"interval\":60}", "u1", None), None);
     }
 
     #[tokio::test]
