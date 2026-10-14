@@ -297,6 +297,7 @@ mod tests {
                 smtp: server,
                 jmap: None,
                 dav: None,
+                oauth: None,
             })
             .unwrap()
             .id;

@@ -72,7 +72,8 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | rusqlite (bundled) | Local store | 0.40 | MIT | ✅ |
 | SQLite FTS5 (in rusqlite) | Full-text search | — | Public domain | ✅ |
 | tantivy | Full-text search at scale | 0.26 | MIT | ⚪ (deferred, ADR-0007) |
-| oauth2 | OAuth (Google, Microsoft) | 5.0 | MIT OR Apache-2.0 | 🟦 |
+| oauth2 | OAuth (Google, Microsoft) | 5.0 | MIT OR Apache-2.0 | ⚪ |
+| ring | PKCE (SHA-256) and OAuth state | 0.17 | Apache-2.0 AND ISC | ✅ |
 | keyring | OS keychain | 3.6 (4.x for Android later) | MIT OR Apache-2.0 | ✅ |
 | ammonia | HTML sanitize (native) | 4.2 | MIT OR Apache-2.0 | ⚪ (UI sanitizes with DOMPurify today) |
 | tokio-rustls + rustls (ring) + webpki-roots | TLS for IMAP | 0.26 / 0.23 / 1.0 | MIT/Apache-2.0/ISC; webpki-roots CDLA-Permissive-2.0 | ✅ |

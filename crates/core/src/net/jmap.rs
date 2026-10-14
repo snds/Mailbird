@@ -572,6 +572,7 @@ mod tests {
             smtp: crate::ServerConfig { host: String::new(), port: 0, security: crate::Security::Tls },
             jmap: Some(JmapConfig { session_url: "http://mail.example.com/jmap/session".into(), bearer: false }),
             dav: None,
+            oauth: None,
         };
         assert!(matches!(connect(&config, "p").await, Err(Error::Invalid(_))));
         config.jmap = None;

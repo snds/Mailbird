@@ -22,6 +22,8 @@ const IDLE_RETRY: Duration = Duration::from_secs(60);
 const BACKFILL_PAUSE: Duration = Duration::from_secs(3);
 /// How often due reminders are checked.
 const REMINDER_TICK: Duration = Duration::from_secs(10);
+/// How long one Gmail poll loop runs before the supervisor restarts it.
+const GMAIL_POLL_WINDOW: Duration = Duration::from_secs(10 * 60);
 
 pub fn start(app: AppHandle, state: Shared) {
     // Outbox + snooze: cheap local checks, once a second, so undo-send timing
@@ -101,6 +103,16 @@ pub fn start(app: AppHandle, state: Shared) {
     });
 }
 
+/// What an account signs in with right now: its password, or a fresh OAuth access token.
+pub async fn secret(state: &Shared, account: &pim_core::Account) -> Result<String, String> {
+    let client = account.config.oauth.as_ref().and_then(|o| crate::oauth_commands::client(state, o.issuer));
+    secrets::mail_secret(account, client).await
+}
+
+fn is_gmail(account: &pim_core::Account) -> bool {
+    account.config.oauth.as_ref().is_some_and(|o| o.issuer == pim_core::OAuthIssuer::Google)
+}
+
 /// Hold a push connection (IMAP IDLE, or JMAP EventSource) and sync whenever
 /// the server says something changed. Ends when the account is removed or the
 /// server has no push; the periodic sync covers those.
@@ -108,13 +120,18 @@ async fn idle_loop(app: AppHandle, state: Shared, account_id: String) {
     loop {
         let account = state.store.lock().ok().and_then(|s| s.account(&account_id).ok());
         let Some(account) = account else { break }; // removed
-        let outcome = match secrets::get(&account.id) {
+        let outcome = match secret(&state, &account).await {
+            Ok(token) if is_gmail(&account) => {
+                // No push without a server of our own: poll the history id (ADR-0013).
+                let state = state.store.lock().ok().and_then(|s| s.remote_cursor(&account.id).ok()).and_then(|c| c.state);
+                net::gmail::wait_for_change(&account.config, &token, state.as_deref(), GMAIL_POLL_WINDOW).await
+            }
             Ok(password) if account.config.jmap.is_some() => {
                 let state = state.store.lock().ok().and_then(|s| s.remote_cursor(&account.id).ok()).and_then(|c| c.state);
                 net::jmap::wait_for_change(&account.config, &password, state.as_deref(), net::IDLE_TIMEOUT).await
             }
             Ok(password) => net::wait_for_change(&account.config, &password, net::IDLE_TIMEOUT).await,
-            Err(_) => Err(pim_core::Error::Auth("no saved password".into())),
+            Err(e) => Err(pim_core::Error::Auth(e)),
         };
         match outcome {
             Ok(net::Change::Changed) => sync_all(&app, &state).await,
@@ -152,9 +169,10 @@ async fn send_due(app: &AppHandle, state: &Shared) {
         let account = state.store.lock().ok().and_then(|s| s.account(&item.draft.account_id).ok());
         let result = match account {
             None => Err("the sending account was removed".to_string()),
-            Some(account) => match secrets::get(&account.id) {
+            Some(account) => match secret(state, &account).await {
                 Err(e) => Err(e),
                 Ok(password) => match account.config.jmap {
+                    _ if is_gmail(&account) => net::gmail::send(&account.config, &password, &item.draft).await,
                     Some(_) => net::jmap::send(&account.config, &password, &item.draft).await,
                     None => net::send(&account.config, &password, &item.draft).await,
                 }
@@ -197,9 +215,10 @@ async fn sync_pass(app: &AppHandle, state: &Shared) -> bool {
     let _guard = state.sync_lock.lock().await;
     let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
     for account in accounts {
-        let result = match secrets::get(&account.id) {
+        let result = match secret(state, &account).await {
             Err(e) => Err(e),
-            Ok(password) if account.config.jmap.is_some() => sync_jmap(state, &account, &password).await,
+            Ok(token) if is_gmail(&account) => sync_remote(state, &account, &token, Remote::Gmail).await,
+            Ok(password) if account.config.jmap.is_some() => sync_remote(state, &account, &password, Remote::Jmap).await,
             Ok(password) => sync_imap(state, &account, &password).await,
         };
         if let Ok(s) = state.store.lock() {
@@ -238,8 +257,13 @@ async fn sync_imap(state: &Shared, account: &pim_core::Account, password: &str) 
     Ok(more_older)
 }
 
-/// One JMAP pass for one account (every mailbox at once). Returns whether older mail remains.
-async fn sync_jmap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
+enum Remote {
+    Jmap,
+    Gmail,
+}
+
+/// One JMAP or Gmail pass for one account (every mailbox at once). Returns whether older mail remains.
+async fn sync_remote(state: &Shared, account: &pim_core::Account, password: &str, kind: Remote) -> Result<bool, String> {
     let (cursor, ops) = {
         let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
         (
@@ -247,7 +271,11 @@ async fn sync_jmap(state: &Shared, account: &pim_core::Account, password: &str) 
             s.pending_remote_ops(&account.id).map_err(|e| e.to_string())?,
         )
     };
-    let batch = net::jmap::sync_account(&account.config, password, cursor, &ops).await.map_err(|e| e.to_string())?;
+    let batch = match kind {
+        Remote::Jmap => net::jmap::sync_account(&account.config, password, cursor, &ops).await,
+        Remote::Gmail => net::gmail::sync_account(&account.config, password, cursor, &ops).await,
+    }
+    .map_err(|e| e.to_string())?;
     let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
     s.apply_remote(&account.id, &batch).map_err(|e| e.to_string())?;
     Ok(batch.more_older)
@@ -282,12 +310,14 @@ pub async fn sync_dav_all(app: &AppHandle, state: &Shared) {
 async fn sync_dav(state: &Shared, account: &pim_core::Account) -> Result<(), String> {
     use pim_core::CollectionKind;
     let Some(cfg) = account.config.dav.clone() else { return Ok(()) };
-    let secret = secrets::dav_secret(account)?;
+    // OAuth accounts (Google) send their access token; others their password.
+    let bearer = account.config.oauth.is_some();
+    let secret = if bearer { secret(state, account).await? } else { secrets::dav_secret(account)? };
     let user = &account.config.username;
     let unavailable = || "the database is unavailable".to_string();
     for (kind, url) in [(CollectionKind::Calendar, &cfg.calendar_url), (CollectionKind::Contacts, &cfg.contacts_url)] {
         let Some(url) = url else { continue };
-        let dav = net::dav::Dav::new(url, user, &secret).map_err(|e| e.to_string())?;
+        let dav = if bearer { net::dav::Dav::with_bearer(url, &secret) } else { net::dav::Dav::new(url, user, &secret) }.map_err(|e| e.to_string())?;
         let remote = dav.discover(kind).await.map_err(|e| e.to_string())?;
         let plans = {
             let s = state.store.lock().map_err(|_| unavailable())?;

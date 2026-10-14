@@ -43,6 +43,23 @@ export interface AccountConfig {
   jmap?: JmapConfig | null
   /** Calendars and contacts over CalDAV/CardDAV. */
   dav?: DavConfig | null
+  /** Signed in with the provider in the browser (Google), not a password. */
+  oauth?: OAuthAccount | null
+}
+
+export type OAuthIssuer = "google" | "microsoft"
+
+export interface OAuthAccount {
+  issuer: OAuthIssuer
+  clientId: string
+}
+
+/** The app's registration with a provider (an OAuth client). */
+export interface OAuthClientInfo {
+  clientId: string
+  hasSecret: boolean
+  /** Baked into this build, rather than set in the app. */
+  builtIn: boolean
 }
 
 export interface DavConfig {

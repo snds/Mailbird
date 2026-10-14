@@ -12,8 +12,10 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
-import type { Account, AccountConfig, DavConfig, JmapConfig, Provider, Security, ServerConfig } from "@/core/types"
+import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
+
+import { GoogleSignIn } from "./oauth-sign-in"
 
 interface Preset {
   id: string
@@ -22,6 +24,8 @@ interface Preset {
   provider: Provider
   /** Why it can't be added yet. Shown instead of hiding the option. */
   unavailable?: string
+  /** Signs in on the provider's page in the browser instead of a form. */
+  oauth?: OAuthIssuer
   imap?: ServerConfig
   smtp?: ServerConfig
   /** JMAP accounts sync and send over HTTPS; no IMAP/SMTP needed. */
@@ -69,8 +73,8 @@ const PRESETS: Preset[] = [
     passwordLabel: "Password",
     dav: "ask",
   },
-  { id: "google", label: "Gmail", icon: "mail", provider: "google", passwordLabel: "", unavailable: "Needs Google sign-in and app verification — planned for a later release." },
-  { id: "microsoft", label: "Outlook / Microsoft 365", icon: "mail", provider: "microsoft", passwordLabel: "", unavailable: "Needs Microsoft sign-in — planned for a later release." },
+  { id: "google", label: "Gmail", icon: "mail", provider: "google", passwordLabel: "", oauth: "google" },
+  { id: "microsoft", label: "Outlook / Microsoft 365", icon: "mail", provider: "microsoft", passwordLabel: "", unavailable: "Microsoft sign-in is coming in the next release." },
 ]
 
 export function AccountsDialog() {
@@ -82,7 +86,9 @@ export function AccountsDialog() {
   return (
     <Dialog open={open} onOpenChange={(o) => (setOpen(o), !o && setPreset(null))}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-        {preset ? (
+        {preset?.oauth === "google" ? (
+          <GoogleSignIn onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
+        ) : preset ? (
           <AddAccountForm preset={preset} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
         ) : connecting ? (
           <ConnectDavForm account={connecting} onDone={() => setConnecting(null)} />
@@ -101,6 +107,15 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
   const remove = useMutation({
     mutationFn: async (id: string) => (await getCoreClient()).removeAccount(id),
     onSuccess: () => qc.invalidateQueries(),
+    onError: (e) => toast.error(e.message),
+  })
+  // An OAuth account whose sign-in expired or was revoked: sign in again in the browser.
+  const reauth = useMutation({
+    mutationFn: async (id: string) => (await getCoreClient()).reauthOAuthAccount(id),
+    onSuccess: (a) => {
+      void qc.invalidateQueries()
+      toast.success(`${a.address} is connected again`)
+    },
     onError: (e) => toast.error(e.message),
   })
 
@@ -127,7 +142,14 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
                 <span className="truncate text-sm font-medium">{a.displayName}</span>
                 <span className="truncate text-xs text-muted-foreground">{a.address}</span>
                 {a.lastError ? (
-                  <span className="text-xs text-destructive">Sync problem: {a.lastError}</span>
+                  <span className="flex flex-wrap items-center gap-x-2 text-xs text-destructive">
+                    Sync problem: {a.lastError}
+                    {a.oauth && core?.kind === "native" && (
+                      <button type="button" className="font-medium text-primary hover:underline" disabled={reauth.isPending} onClick={() => reauth.mutate(a.id)}>
+                        {reauth.isPending && reauth.variables === a.id ? "Waiting for the browser…" : "Sign in again"}
+                      </button>
+                    )}
+                  </span>
                 ) : (
                   <span className="text-xs text-muted-foreground">{a.lastSync ? `Synced ${longTime(a.lastSync)}` : "Waiting for first sync"}</span>
                 )}
@@ -162,7 +184,7 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
             <button
               key={p.id}
               type="button"
-              disabled={!!p.unavailable || core?.kind === "demo"}
+              disabled={!!p.unavailable || (core?.kind === "demo" && !p.oauth)}
               onClick={() => onAdd(p)}
               className="flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
             >

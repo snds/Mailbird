@@ -18,6 +18,8 @@ import type {
   Invite,
   InviteResponse,
   NoteDetail,
+  OAuthClientInfo,
+  OAuthIssuer,
   NoteInput,
   NoteLink,
   NoteMeta,
@@ -50,6 +52,14 @@ export interface CoreClient {
   /** Connect (or, with null, disconnect) calendars and contacts. */
   setAccountDav(id: string, dav: DavConfig | null, password?: string | null): Promise<Account>
   removeAccount(id: string): Promise<void>
+  // Browser sign-in (OAuth)
+  getOAuthClient(issuer: OAuthIssuer): Promise<OAuthClientInfo | null>
+  /** Sets this app's own OAuth client; null goes back to the built-in one. */
+  setOAuthClient(issuer: OAuthIssuer, client: { clientId: string; clientSecret?: string | null } | null): Promise<void>
+  /** Opens the provider's sign-in page in the browser and waits for it. */
+  addOAuthAccount(issuer: OAuthIssuer, loginHint?: string | null): Promise<Account>
+  reauthOAuthAccount(id: string): Promise<Account>
+  cancelOAuthSignIn(): Promise<void>
   syncNow(): Promise<void>
   listMessages(query: MessageQuery): Promise<MessageSummary[]>
   /** A whole conversation, oldest first. */
@@ -130,6 +140,11 @@ async function createTauriClient(): Promise<CoreClient> {
     addAccount: (config, password, davPassword) => invoke("add_account", { config, password, davPassword: davPassword ?? null }),
     setAccountDav: (id, dav, password) => invoke("set_account_dav", { id, dav, password: password ?? null }),
     removeAccount: (id) => invoke("remove_account", { id }),
+    getOAuthClient: (issuer) => invoke("get_oauth_client", { issuer }),
+    setOAuthClient: (issuer, client) => invoke("set_oauth_client", { issuer, client }),
+    addOAuthAccount: (issuer, loginHint) => invoke("add_oauth_account", { issuer, loginHint: loginHint ?? null }),
+    reauthOAuthAccount: (id) => invoke("reauth_oauth_account", { id }),
+    cancelOAuthSignIn: () => invoke("cancel_oauth_sign_in"),
     syncNow: () => invoke("sync_now"),
     listMessages: (query) => invoke("list_messages", { query }),
     getThread: (threadId) => invoke("get_thread", { threadId }),

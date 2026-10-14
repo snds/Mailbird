@@ -7,6 +7,7 @@
 
 mod commands;
 mod notes_commands;
+mod oauth_commands;
 mod pim_commands;
 mod secrets;
 mod workers;
@@ -29,6 +30,8 @@ pub struct AppState {
     pub backfill_pending: AtomicBool,
     /// One calendar/contacts sync at a time.
     pub dav_lock: tokio::sync::Mutex<()>,
+    /// Ends the browser sign-in that's waiting, if any.
+    pub oauth_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -70,6 +73,7 @@ pub fn run() {
                 idling: Mutex::new(HashSet::new()),
                 backfill_pending: AtomicBool::new(false),
                 dav_lock: tokio::sync::Mutex::new(()),
+                oauth_cancel: Mutex::new(None),
             });
             app.manage(state.clone());
             workers::start(app.handle().clone(), state);
@@ -114,6 +118,11 @@ pub fn run() {
             pim_commands::respond_to_invite,
             pim_commands::apply_invite_update,
             pim_commands::event_guests,
+            oauth_commands::get_oauth_client,
+            oauth_commands::set_oauth_client,
+            oauth_commands::add_oauth_account,
+            oauth_commands::reauth_oauth_account,
+            oauth_commands::cancel_oauth_sign_in,
             notes_commands::list_notes,
             notes_commands::get_note,
             notes_commands::create_note,

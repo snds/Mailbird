@@ -29,6 +29,7 @@ fn config() -> AccountConfig {
         smtp: ServerConfig { host: "127.0.0.1".into(), port: 2525, security: Security::Plain },
         jmap: None,
         dav: None,
+        oauth: None,
     }
 }
 

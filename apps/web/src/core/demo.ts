@@ -1,5 +1,5 @@
 import type { CoreClient, CoreEvent } from "./client"
-import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OutboxItem, Provider } from "./types"
+import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OAuthClientInfo, OAuthIssuer, OutboxItem, Provider } from "./types"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
 
@@ -197,6 +197,7 @@ export function createDemoClient(): CoreClient {
     if (changed) emit("mail:changed")
   }, 1000)
 
+  const oauthClients: Partial<Record<OAuthIssuer, OAuthClientInfo>> = {}
   const later = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 60))
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
@@ -244,6 +245,20 @@ export function createDemoClient(): CoreClient {
     removeAccount: async () => {
       throw new Error("Sample accounts can't be removed.")
     },
+    // The demo can set an OAuth client (so the sign-in screen is explorable),
+    // but signing in needs the desktop app's browser hand-off.
+    getOAuthClient: async (issuer) => later(oauthClients[issuer] ?? null),
+    setOAuthClient: async (issuer, client) => {
+      if (client?.clientId.trim()) oauthClients[issuer] = { clientId: client.clientId.trim(), hasSecret: !!client.clientSecret, builtIn: false }
+      else delete oauthClients[issuer]
+    },
+    addOAuthAccount: async () => {
+      throw new Error("Signing in with Google needs the desktop app. The web version runs on sample mail.")
+    },
+    reauthOAuthAccount: async () => {
+      throw new Error("Signing in with Google needs the desktop app.")
+    },
+    cancelOAuthSignIn: async () => {},
     setAccountDav: async () => {
       throw new Error("Connecting calendars needs the desktop app for now. The web version runs on sample data.")
     },
