@@ -12,7 +12,9 @@ import type {
   ContactDetail,
   ContactField,
   ContactInput,
+  ContactLabel,
   ContactSummary,
+  DeletedContact,
   DueReminder,
   EditScope,
   EventDetail,
@@ -21,7 +23,10 @@ import type {
   InviteResponse,
   Occurrence,
   Repeat,
+  ContactSuggestion,
+  SignatureCard,
 } from "./types"
+import { parseSignature } from "./demo-signature"
 
 interface DemoEvent {
   id: string
@@ -196,15 +201,15 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   const field = (value: string, label: string | null = null): ContactField => ({ label, value })
   const person = (bookId: string, fullName: string, extra: Partial<DemoContact> = {}): DemoContact => ({
     id: `ct-${++c}`, bookId, fullName, org: null, emails: [], phones: [], photo: null, title: null, note: null, birthday: null,
-    writable: true, ...extra,
+    labels: [], writable: true, ...extra,
   })
   const contacts: DemoContact[] = [
-    person("book-work", "Priya Raman", { org: "Studio", title: "Design systems lead", emails: [field("priya@studio.example", "work")], phones: [field("+1 555 010 4410", "cell")] }),
+    person("book-work", "Priya Raman", { labels: ["Work"], org: "Studio", title: "Design systems lead", emails: [field("priya@studio.example", "work")], phones: [field("+1 555 010 4410", "cell")] }),
     person("book-personal", "Marcus Lee", { emails: [field("marcus@example.com", "home")], phones: [field("+1 555 010 7781", "cell")], birthday: "1990-" + String(new Date(at(5, 0) * 1000).getMonth() + 1).padStart(2, "0") + "-" + String(new Date(at(5, 0) * 1000).getDate()).padStart(2, "0"), note: "Board games, good coffee." }),
-    person("book-personal", "Ana Duarte", { emails: [field("ana@example.com", "home")], org: "Lighthouse Studio" }),
+    person("book-personal", "Ana Duarte", { emails: [field("ana@example.com", "home")], org: "Lighthouse Studio", labels: ["Clay club", "Family"] }),
     person("book-work", "Ana D.", { emails: [field("ANA@example.com")], phones: [field("+351 912 345 678", "cell")] }),
-    person("book-work", "Sam Okafor", { org: "Studio", title: "Engineer", emails: [field("sam@studio.example", "work")] }),
-    person("book-personal", "Lena Fischer", { emails: [field("lena@example.de")], phones: [field("+49 30 1234567", "home")] }),
+    person("book-work", "Sam Okafor", { org: "Studio", title: "Engineer", emails: [field("sam@studio.example", "work")], labels: ["Work"] }),
+    person("book-personal", "Lena Fischer", { emails: [field("lena@example.de")], phones: [field("+49 30 1234567", "home")], labels: ["Clay club"] }),
     person("book-personal", "Diego Alvarez", { emails: [field("diego@example.mx")] }),
     person("book-local", "Ferry Line", { org: "Ferry Line", emails: [field("no-reply@ferry.example")], phones: [field("+351 21 000 1234", "work")] }),
   ]
@@ -302,6 +307,28 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     return e
   }
   const summary = ({ title: _t, note: _n, birthday: _b, writable: _w, ...s }: DemoContact): ContactSummary => s
+  const cleanLabels = (list: string[]) => {
+    const out: string[] = []
+    for (const l of list.map((x) => x.trim().replace(/,/g, " ")).filter(Boolean)) if (!out.some((o) => o.toLowerCase() === l.toLowerCase())) out.push(l)
+    return out
+  }
+  // Recently deleted: a copy of each card for 30 days, like the core's.
+  const trash: (DeletedContact & { card: DemoContact })[] = []
+  const toTrash = (x: DemoContact) =>
+    trash.unshift({ id: `tr-${++c}`, bookId: x.bookId, fullName: x.fullName, emails: x.emails, deletedAt: Math.floor(Date.now() / 1000), card: structuredClone(x) })
+  const vcardOf = (x: DemoContact, short = false) => {
+    const esc = (v: string) => v.replace(/\\/g, "\\\\").replace(/[;,]/g, (m) => `\\${m}`).replace(/\n/g, "\\n")
+    const parts = x.fullName.trim().split(/\s+/)
+    const lines = ["BEGIN:VCARD", "VERSION:3.0", ...(short ? [] : [`UID:${x.id}`]), `FN:${esc(x.fullName)}`, `N:${esc(parts.length > 1 ? parts.at(-1)! : "")};${esc(parts.length > 1 ? parts.slice(0, -1).join(" ") : x.fullName)};;;`]
+    for (const e of x.emails) lines.push(`EMAIL${e.label ? `;TYPE=${e.label.toUpperCase()}` : ""}:${e.value}`)
+    for (const p of x.phones) lines.push(`TEL${p.label ? `;TYPE=${p.label.toUpperCase()}` : ""}:${p.value}`)
+    if (x.org) lines.push(`ORG:${esc(x.org)}`)
+    if (x.title) lines.push(`TITLE:${esc(x.title)}`)
+    if (!short && x.note) lines.push(`NOTE:${esc(x.note)}`)
+    if (!short && x.labels.length) lines.push(`CATEGORIES:${x.labels.map(esc).join(",")}`)
+    lines.push("END:VCARD")
+    return lines.join("\r\n") + "\r\n"
+  }
   const sortKey = (x: DemoContact) => {
     // Companies file under their whole name; people under their family name.
     const parts = x.fullName.trim().split(/\s+/)
@@ -317,6 +344,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       title: input.title?.trim() || null, note: input.note?.trim() || null, birthday: input.birthday?.trim() || null,
       writable: calendar(input.bookId).writable,
     })
+    if (input.labels) x.labels = cleanLabels(input.labels)
     return x
   }
 
@@ -443,10 +471,12 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       return later(e.attendees.filter((a) => !e.organizer || normEmail(a.email) !== normEmail(e.organizer.email)).map(({ name, email }) => ({ name, email })))
     },
 
-    listContacts: (search?: string | null) => {
+    listContacts: (search?: string | null, label?: string | null) => {
       const q = search?.trim().toLowerCase()
+      const l = label?.trim().toLowerCase()
       const list = contacts
         .filter((x) => visible(x.bookId))
+        .filter((x) => !l || x.labels.some((y) => y.toLowerCase() === l))
         .filter((x) => !q || [x.fullName, x.org ?? "", ...x.emails.map((e) => e.value), ...x.phones.map((p) => p.value)].some((f) => f.toLowerCase().includes(q)))
         .sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
       return later(list.map(summary))
@@ -487,9 +517,77 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     deleteContact: async (id: string) => {
       const x = contact(id)
       writable(x.bookId)
+      toTrash(x)
       contacts.splice(contacts.indexOf(x), 1)
       changed()
     },
+    contactLabels: async () => {
+      const counts = new Map<string, ContactLabel>()
+      for (const x of contacts.filter((k) => visible(k.bookId))) {
+        for (const l of x.labels) {
+          const k = l.toLowerCase()
+          const had = counts.get(k)
+          counts.set(k, { name: had && had.name < l ? had.name : l, count: (had?.count ?? 0) + 1 })
+        }
+      }
+      return later([...counts.values()].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())))
+    },
+    deletedContacts: async () => {
+      const cutoff = Math.floor(Date.now() / 1000) - 30 * 86_400
+      trash.splice(0, trash.length, ...trash.filter((t) => t.deletedAt >= cutoff))
+      return later(trash.map(({ card: _c, ...t }) => t))
+    },
+    restoreContact: async (id: string) => {
+      const t = trash.find((x) => x.id === id)
+      if (!t) throw new Error("that contact is no longer in Recently deleted")
+      const book = collections.find((b) => b.id === t.bookId && b.writable) ?? collections.find((b) => b.kind === "contacts" && !b.accountId)!
+      const x = { ...t.card, bookId: book.id, writable: true }
+      if (!contacts.some((k) => k.id === x.id)) contacts.push(x)
+      trash.splice(trash.indexOf(t), 1)
+      changed()
+      return later(x)
+    },
+    contactVcard: async (id: string) => {
+      const x = contact(id)
+      const stem = x.fullName.replace(/[/\\:*?"<>|]/g, "-").trim().slice(0, 80) || "contact"
+      return later({ fileName: `${stem}.vcf`, vcf: vcardOf(x) })
+    },
+    contactQr: async (id: string) => {
+      const { renderSVG } = await import("uqr")
+      return later(renderSVG(vcardOf(contact(id), true), { ecc: "M", border: 2 }))
+    },
+    /** The demo's mail calls this with a card read from a message's signature. */
+    suggestFor: (email: string, name: string | null, card: SignatureCard): ContactSuggestion | null => {
+      const e = normEmail(email)
+      const key = (n: string) => n.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").trim().replace(/\s+/g, " ")
+      if (!card.emails.some((x) => normEmail(x.value) === e)) card.emails.unshift({ label: null, value: email })
+      const named = name && key(name).includes(" ") ? contacts.filter((k) => key(k.fullName) === key(name)) : []
+      const have = contacts.find((k) => k.emails.some((x) => normEmail(x.value) === e)) ?? (named.length === 1 ? named[0] : undefined)
+      if (!have) return { contactId: null, card, adds: ["contact", ...(card.phones.length ? ["phone"] : []), ...(card.title ? ["title"] : []), ...(card.org ? ["company"] : [])] }
+      if (!have.writable) return null
+      const adds: string[] = []
+      const merged: SignatureCard = { fullName: have.fullName, org: have.org, title: have.title, emails: [...have.emails], phones: [...have.phones] }
+      const phones = card.phones.filter((p) => !have.phones.some((h) => normPhone(h.value) === normPhone(p.value)))
+      if (phones.length) {
+        adds.push(phones.length === 1 ? "phone" : "phones")
+        merged.phones.push(...phones)
+      }
+      const emails = card.emails.filter((x) => !have.emails.some((h) => normEmail(h.value) === normEmail(x.value)))
+      if (emails.length) {
+        adds.push("email")
+        merged.emails.push(...emails)
+      }
+      if (!merged.title && card.title) {
+        adds.push("title")
+        merged.title = card.title
+      }
+      if (!merged.org && card.org) {
+        adds.push("company")
+        merged.org = card.org
+      }
+      return adds.length ? { contactId: have.id, card: merged, adds } : null
+    },
+    parseSignature: async (text: string) => later(parseSignature(text)),
     duplicateContacts: () => {
       const list = contacts.filter((x) => visible(x.bookId))
       const parent = list.map((_, i) => i)
@@ -525,6 +623,8 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
         p.note ??= o.note
         p.birthday ??= o.birthday
         p.photo ??= o.photo
+        p.labels = cleanLabels([...p.labels, ...o.labels])
+        toTrash(o)
         contacts.splice(contacts.indexOf(o), 1)
       }
       changed()

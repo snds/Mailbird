@@ -85,6 +85,14 @@ pub const COMMANDS: &[&str] = &[
     "list_contacts",
     "get_contact",
     "contact_activity",
+    "contact_labels",
+    "deleted_contacts",
+    "restore_contact",
+    "contact_vcard",
+    "save_contact_vcard",
+    "contact_qr",
+    "contact_suggestion",
+    "parse_signature",
     "take_missed_reminders",
     "create_contact",
     "update_contact",
@@ -264,8 +272,34 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(pim_commands::delete_event(app.clone(), state, id, occurrence, scope)?)
         }
         "list_contacts" => {
-            args!(args, search: Option<String>);
-            Output::json(pim_commands::list_contacts(state, search)?)
+            args!(args, search: Option<String>, label: Option<String>);
+            Output::json(pim_commands::list_contacts(state, search, label)?)
+        }
+        "contact_labels" => Output::json(pim_commands::contact_labels(state)?),
+        "deleted_contacts" => Output::json(pim_commands::deleted_contacts(state)?),
+        "restore_contact" => {
+            args!(args, id: String);
+            Output::json(pim_commands::restore_contact(app.clone(), state, id)?)
+        }
+        "contact_vcard" => {
+            args!(args, id: String);
+            Output::json(pim_commands::contact_vcard(state, id)?)
+        }
+        "save_contact_vcard" => {
+            args!(args, id: String);
+            Output::json(pim_commands::save_contact_vcard(app.clone(), state, id)?)
+        }
+        "contact_qr" => {
+            args!(args, id: String);
+            Output::json(pim_commands::contact_qr(state, id)?)
+        }
+        "contact_suggestion" => {
+            args!(args, message_id: String);
+            Output::json(pim_commands::contact_suggestion(state, message_id)?)
+        }
+        "parse_signature" => {
+            args!(args, text: String);
+            Output::json(pim_commands::parse_signature(text))
         }
         "get_contact" => {
             args!(args, id: String);

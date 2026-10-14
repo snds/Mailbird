@@ -288,6 +288,7 @@ mod tests {
             title: None,
             note: None,
             birthday: None,
+            labels: None,
         })
         .unwrap();
         s.insert_local(&acct, INBOX, &mail("Priya <priya@studio.example>", "From a contact", "", false), false).unwrap();

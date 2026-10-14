@@ -915,6 +915,7 @@ async fn outlook_calendars_and_contacts() {
         title: None,
         note: None,
         birthday: Some("1988-02-29".into()),
+        labels: None,
     };
     let created = store.create_contact(&sam).unwrap();
     pim_pass(&store, &account, &pim).await;

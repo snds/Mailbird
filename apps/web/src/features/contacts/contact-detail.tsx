@@ -2,8 +2,10 @@ import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
 import { Icon, type IconName } from "@/components/icon"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContact, useContactActivity, usePimAction } from "@/core/queries"
 import type { ContactActivity, Occurrence } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
@@ -13,6 +15,7 @@ import { dayLabel, fromSecs, rangeLabel } from "../calendar/dates"
 import { JoinButton } from "../calendar/join-button"
 import { LinkedNotes } from "../notes/linked-notes"
 import { PersonAvatar } from "./person"
+import { ShareContact } from "./share"
 
 /** "1990-04-02" → "April 2, 1990"; "--04-02" → "April 2". */
 function birthdayLabel(b: string) {
@@ -22,8 +25,10 @@ function birthdayLabel(b: string) {
   return d.toLocaleDateString(undefined, { month: "long", day: "numeric", ...(m[1] === "-" ? {} : { year: "numeric" }) })
 }
 
+const ACTION = "h-auto min-w-18 flex-col gap-1 px-3 py-2 text-xs"
+
 function Action({ icon, label, href, onClick, disabled }: { icon: IconName; label: string; href?: string; onClick?: () => void; disabled?: boolean }) {
-  const cls = "h-auto min-w-18 flex-col gap-1 px-3 py-2 text-xs"
+  const cls = ACTION
   if (href && !disabled) {
     return (
       <Button variant="secondary" className={cls} render={<a href={href} />}>
@@ -45,6 +50,7 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
   const { data: books = [] } = useCollections("contacts")
   const { data: accounts = [] } = useAccounts()
   const openComposer = useUi((s) => s.openComposer)
+  const jumpTo = useUi((s) => s.jumpTo)
   const openEditor = useUi((s) => s.openContactEditor)
   const remove = usePimAction((core, cid: string) => core.deleteContact(cid))
   const email = c?.emails[0]?.value ?? ""
@@ -65,12 +71,22 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
   const account = accounts.find((a) => a.id === book?.accountId)
   const phone = c.phones[0]?.value
   const del = async () => {
+    // Close the card first: the delete refreshes contact queries, and an open
+    // card would ask for itself again.
+    onDeleted()
     try {
       await remove.mutateAsync(c.id)
-      toast.success(`Deleted ${c.fullName}`, { duration: 2500 })
-      onDeleted()
+      // Undo restores it from Recently deleted (its newest copy there).
+      const core = await getCoreClient()
+      const kept = (await core.deletedContacts()).find((d) => d.fullName === c.fullName)
+      toast.success(`Deleted ${c.fullName}`, {
+        duration: 6000,
+        action: kept ? { label: "Undo", onClick: () => void core.restoreContact(kept.id).then((back) => jumpTo({ kind: "contact", id: back.id })).catch((e) => toast.error(String(e))) } : undefined,
+      })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
+      // It's still there: show it again.
+      jumpTo({ kind: "contact", id: c.id })
     }
   }
 
@@ -80,12 +96,22 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
       <div>
         <h2 className="text-2xl font-semibold tracking-tight break-words">{c.fullName}</h2>
         {(c.title || c.org) && <p className="text-sm text-muted-foreground">{[c.title, c.org].filter(Boolean).join(" · ")}</p>}
+        {c.labels.length > 0 && (
+          <ul className="mt-2 flex flex-wrap justify-center gap-1.5" aria-label="Labels">
+            {c.labels.map((l) => (
+              <li key={l}>
+                <Badge variant="secondary">{l}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       {/* Quick actions turn the card into a launcher (Cardhop). */}
       <div className="flex flex-wrap justify-center gap-2">
         <Action icon="mail" label="Email" disabled={!email} onClick={() => openComposer({ to: [{ name: c.fullName, email }] })} />
         <Action icon="call" label="Call" href={phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : undefined} disabled={!phone} />
         <Action icon="chat" label="Message" href={phone ? `sms:${phone.replace(/[^\d+]/g, "")}` : undefined} disabled={!phone} />
+        <ShareContact contact={c} className={ACTION} />
       </div>
 
       <dl className="flex w-full flex-col divide-y rounded-xl border text-left text-sm">
@@ -132,7 +158,7 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
           <Button
             variant="outline"
             onClick={() =>
-              openEditor({ contactId: c.id, initial: { bookId: c.bookId, fullName: c.fullName, org: c.org, title: c.title, emails: c.emails, phones: c.phones, birthday: c.birthday, note: c.note } })
+              openEditor({ contactId: c.id, initial: { bookId: c.bookId, fullName: c.fullName, org: c.org, title: c.title, emails: c.emails, phones: c.phones, birthday: c.birthday, note: c.note, labels: c.labels } })
             }
           >
             <Icon name="edit" data-icon="inline-start" /> Edit

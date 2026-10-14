@@ -97,3 +97,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0017](decisions/0017-mail-power.md) | Send later on the outbox, follow-ups keyed by Message-ID and cleared by replies, RFC 8058 unsubscribe with address checks, signatures and templates in the core, ⌘K |
 | [0018](decisions/0018-calm-inbox.md) | Senders across accounts: the Screener (opt-in, new mail only), header-only People/Updates/Newsletters, screen out and block as server archives |
 | [0019](decisions/0019-connected-calendar.md) | Meeting links from known hosts, birthdays computed from contacts (read-only calendar), contact activity across mail and meetings, a per-viewer second zone, missed reminders handed to the UI once |
+| [0020](decisions/0020-contacts-depth.md) | Signatures read by a header-free heuristic and always reviewed in the editor, labels as vCard CATEGORIES (Outlook categories), a 30-day contacts trash that restores with the same UID, QR from the core |

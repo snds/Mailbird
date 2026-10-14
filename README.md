@@ -87,6 +87,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **7 · Mail power** ✅ | Send later, follow-up reminders (Waiting lane, "No reply yet"), one-tap unsubscribe, signatures and templates, ⌘K command menu ([ADR-0017](docs/decisions/0017-mail-power.md)) |
 | **8 · Calm inbox** ✅ | The Screener for first-time senders, People / Updates / Newsletters from headers, screen out and block (archived on the server) ([ADR-0018](docs/decisions/0018-calm-inbox.md)) |
 | **9 · Connected calendar** ✅ | Join buttons from meeting links, a Birthdays calendar from contacts, mail and meetings on each contact card, a second time zone, reminders missed while closed ([ADR-0019](docs/decisions/0019-connected-calendar.md)) |
+| **10 · Contacts depth** ✅ | Contacts from email signatures (pasted or suggested under a message), labels, Recently deleted for 30 days, share as a vCard file or QR code ([ADR-0020](docs/decisions/0020-contacts-depth.md)) |
 
 ## License
 

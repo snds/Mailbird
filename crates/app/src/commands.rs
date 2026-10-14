@@ -182,7 +182,7 @@ pub fn open_attachment(app: AppHandle, state: &Shared, id: String) -> Res<String
 }
 
 /// Attachment names come from strangers: strip anything path-like.
-fn safe_filename(name: &str) -> String {
+pub(crate) fn safe_filename(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let cleaned: String = base
         .chars()
@@ -192,7 +192,7 @@ fn safe_filename(name: &str) -> String {
     if cleaned.is_empty() { "attachment".into() } else { cleaned }
 }
 
-fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+pub(crate) fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
     let candidate = dir.join(name);
     if !candidate.exists() {
         return candidate;

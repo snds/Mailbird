@@ -201,3 +201,35 @@ async fn connected_commands() {
     assert_eq!(call("take_missed_reminders", Value::Null).await.unwrap(), json!([]));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn contacts_depth_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-contacts-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let app = AppHandle::new(TestHost::default());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+    let books = call("list_collections", json!({ "kind": "contacts" })).await.unwrap();
+
+    // Pasted signature → editor card → a labeled contact.
+    let card = call("parse_signature", json!({ "text": "Rui Costa\nKiln manager | Clay Club\nm: +351 912 000 111" })).await.unwrap();
+    assert_eq!((card["fullName"].as_str(), card["title"].as_str(), card["org"].as_str()), (Some("Rui Costa"), Some("Kiln manager"), Some("Clay Club")));
+    let input = json!({ "bookId": books[0]["id"], "fullName": card["fullName"], "phones": card["phones"], "org": card["org"], "title": card["title"], "labels": ["Clay club"] });
+    let rui = call("create_contact", json!({ "input": input })).await.unwrap()["id"].as_str().unwrap().to_owned();
+    assert_eq!(call("contact_labels", Value::Null).await.unwrap(), json!([{ "name": "Clay club", "count": 1 }]));
+    assert_eq!(call("list_contacts", json!({ "label": "clay club" })).await.unwrap()[0]["labels"], json!(["Clay club"]));
+
+    // Share, delete, restore.
+    let file = call("contact_vcard", json!({ "id": rui })).await.unwrap();
+    assert_eq!(file["fileName"], "Rui Costa.vcf");
+    assert!(call("contact_qr", json!({ "id": rui })).await.unwrap().as_str().unwrap().contains("<svg"));
+    call("delete_contact", json!({ "id": rui })).await.unwrap();
+    let gone = call("deleted_contacts", Value::Null).await.unwrap();
+    assert_eq!(gone[0]["fullName"], "Rui Costa");
+    let back = call("restore_contact", json!({ "id": gone[0]["id"] })).await.unwrap();
+    assert_eq!(back["labels"], json!(["Clay club"]));
+    let _ = std::fs::remove_dir_all(dir);
+}

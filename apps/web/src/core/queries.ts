@@ -21,7 +21,11 @@ const keys = {
   collections: (kind: CollectionKind) => ["pim", "collections", kind] as const,
   occurrences: (from: number, to: number) => ["pim", "occurrences", from, to] as const,
   event: (id: string, start: number | null) => ["pim", "event", id, start] as const,
-  contacts: (search: string) => ["pim", "contacts", search] as const,
+  contacts: (search: string, label: string | null) => ["pim", "contacts", search, label] as const,
+  contactLabels: ["pim", "contact-labels"] as const,
+  deletedContacts: ["pim", "contacts-deleted"] as const,
+  // A message's signature against your contacts: refreshes with either.
+  contactSuggestion: (messageId: string) => ["pim", "suggestion", messageId] as const,
   contact: (id: string) => ["pim", "contact", id] as const,
   // Mail and meetings with a contact: refreshes on "pim" and on mail changes.
   contactActivity: (id: string) => ["pim", "activity", id] as const,
@@ -57,6 +61,7 @@ export function useCoreEvents() {
         void qc.invalidateQueries({ queryKey: ["messages"] })
         void qc.invalidateQueries({ queryKey: ["thread"] })
         void qc.invalidateQueries({ queryKey: ["pim", "activity"] })
+        void qc.invalidateQueries({ queryKey: ["pim", "suggestion"] })
       }),
       core.on("outbox:changed", () => void qc.invalidateQueries({ queryKey: keys.outbox })),
       core.on("accounts:changed", () => void qc.invalidateQueries({ queryKey: keys.accounts })),
@@ -170,12 +175,24 @@ export function useEvent(id: string | null, start: number | null) {
   })
 }
 
-export function useContacts(search: string) {
+export function useContacts(search: string, label: string | null = null) {
   return useQuery({
-    queryKey: keys.contacts(search),
-    queryFn: () => call((c) => c.listContacts(search || null)),
+    queryKey: keys.contacts(search, label),
+    queryFn: () => call((c) => c.listContacts(search || null, label)),
     placeholderData: (prev) => prev,
   })
+}
+
+export function useContactLabels() {
+  return useQuery({ queryKey: keys.contactLabels, queryFn: () => call((c) => c.contactLabels()) })
+}
+
+export function useDeletedContacts() {
+  return useQuery({ queryKey: keys.deletedContacts, queryFn: () => call((c) => c.deletedContacts()) })
+}
+
+export function useContactSuggestion(messageId: string | null) {
+  return useQuery({ queryKey: keys.contactSuggestion(messageId ?? ""), queryFn: () => call((c) => c.contactSuggestion(messageId!)), enabled: messageId !== null })
 }
 
 export function useContact(id: string | null) {

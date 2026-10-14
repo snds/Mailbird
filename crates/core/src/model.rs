@@ -669,6 +669,9 @@ pub struct ContactInput {
     /// "YYYY-MM-DD", or "--MM-DD" without a year.
     #[serde(default)]
     pub birthday: Option<String>,
+    /// Labels (vCard CATEGORIES). None leaves a card's labels as they are.
+    #[serde(default)]
+    pub labels: Option<Vec<String>>,
 }
 
 // ── Calendar and contact collections ────────────────────────────────────────
@@ -791,6 +794,9 @@ pub struct ContactSummary {
     pub emails: Vec<ContactField>,
     pub phones: Vec<ContactField>,
     pub photo: Option<String>,
+    /// vCard CATEGORIES, in the card's order.
+    #[serde(default)]
+    pub labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

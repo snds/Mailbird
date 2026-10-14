@@ -27,6 +27,8 @@ pub struct ContactMeta {
     pub birthday: Option<String>,
     /// A `data:` URL, only for embedded photos.
     pub photo: Option<String>,
+    /// CATEGORIES, trimmed and without duplicates.
+    pub labels: Vec<String>,
 }
 
 fn parse(vcf: &str) -> Result<VCard> {
@@ -102,6 +104,32 @@ fn bday_line(vcf: &str) -> Option<String> {
     }
 }
 
+/// CATEGORIES across every such line ("work,clay club"), without repeats.
+fn labels(card: &VCard) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for e in card.properties(&VCardProperty::Categories) {
+        for v in e.values.iter().filter_map(|v| v.as_text()) {
+            for l in v.split(',').map(str::trim).filter(|l| !l.is_empty()) {
+                if !out.iter().any(|o| o.eq_ignore_ascii_case(l)) {
+                    out.push(l.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Labels as the user typed them: trimmed, no empties, no case-insensitive repeats.
+pub fn clean_labels(list: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for l in list.iter().map(|l| l.trim().replace(',', " ")).filter(|l| !l.is_empty()) {
+        if !out.iter().any(|o| o.eq_ignore_ascii_case(&l)) {
+            out.push(l);
+        }
+    }
+    out
+}
+
 pub fn read_contact(vcf: &str) -> Result<ContactMeta> {
     let card = parse(vcf)?;
     let n = card.property(&VCardProperty::N);
@@ -134,6 +162,7 @@ pub fn read_contact(vcf: &str) -> Result<ContactMeta> {
         note: text(&card, VCardProperty::Note),
         birthday: birthday(&card).or_else(|| bday_line(vcf)),
         photo: photo(&card),
+        labels: labels(&card),
     })
 }
 
@@ -179,6 +208,13 @@ fn input_lines(input: &ContactInput) -> Result<Vec<String>> {
             lines.push(format!("{prop}:{}", esc(v)));
         }
     }
+    if let Some(list) = &input.labels {
+        let list = clean_labels(list);
+        if !list.is_empty() {
+            // One CATEGORIES line, commas between (each label's own commas are gone).
+            lines.push(format!("CATEGORIES:{}", list.iter().map(|l| esc(l)).collect::<Vec<_>>().join(",")));
+        }
+    }
     if let Some(b) = input.birthday.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
         let digits: String = b.chars().filter(char::is_ascii_digit).collect();
         match (b.starts_with("--"), digits.len()) {
@@ -222,10 +258,12 @@ pub fn edit_contact(vcf: &str, input: &ContactInput) -> Result<String> {
     let mut card = parse(vcf)?;
     let version = if vcf.contains("VERSION:4.0") { "4.0" } else { "3.0" };
     let fresh = card_entries(version, &input_lines(input)?)?;
-    card.entries.retain(|e| !OWNED.contains(&e.name) && e.name != VCardProperty::Rev);
+    // Labels are ours only when the edit sets them.
+    let owned = |p: &VCardProperty| OWNED.contains(p) || (input.labels.is_some() && *p == VCardProperty::Categories);
+    card.entries.retain(|e| !owned(&e.name) && e.name != VCardProperty::Rev);
     // Keep fields we own ahead of the rest, where clients expect them.
     let at = card.entries.iter().position(|e| !matches!(e.name, VCardProperty::Begin | VCardProperty::Version)).unwrap_or(card.entries.len());
-    for (i, e) in fresh.into_iter().filter(|e| OWNED.contains(&e.name)).enumerate() {
+    for (i, e) in fresh.into_iter().filter(|e| owned(&e.name)).enumerate() {
         card.entries.insert(at + i, e);
     }
     Ok(crlf(card.to_string()))
@@ -256,7 +294,7 @@ pub fn merge_contacts(primary: &str, other: &str) -> Result<String> {
             VCardProperty::Email => first_text(e).is_some_and(|v| !emails.contains(&normalize_email(&v))),
             VCardProperty::Tel => first_text(e).is_some_and(|v| !phones.contains(&normalize_phone(&v))),
             VCardProperty::Org | VCardProperty::Title | VCardProperty::Note | VCardProperty::Bday | VCardProperty::Photo => a.property(&e.name).is_none(),
-            VCardProperty::Adr | VCardProperty::Url => !a.entries.iter().any(|x| x.name == e.name && x.values == e.values),
+            VCardProperty::Adr | VCardProperty::Url | VCardProperty::Categories => !a.entries.iter().any(|x| x.name == e.name && x.values == e.values),
             _ => false,
         };
         if keep {
@@ -286,6 +324,7 @@ mod tests {
             title: None,
             note: Some("Board games\nGood coffee".into()),
             birthday: Some("1990-04-02".into()),
+            labels: None,
         }
     }
 

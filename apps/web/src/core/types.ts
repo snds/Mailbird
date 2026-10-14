@@ -407,6 +407,8 @@ export interface ContactInput {
   note?: string | null
   /** "YYYY-MM-DD", or "--MM-DD" without a year. */
   birthday?: string | null
+  /** Labels (vCard CATEGORIES). Leave out to keep the card's labels as they are. */
+  labels?: string[] | null
 }
 
 export interface ContactSummary {
@@ -418,6 +420,7 @@ export interface ContactSummary {
   phones: ContactField[]
   /** data: URL; remote photos are never fetched. */
   photo: string | null
+  labels: string[]
 }
 
 export interface ContactDetail extends ContactSummary {
@@ -425,6 +428,44 @@ export interface ContactDetail extends ContactSummary {
   note: string | null
   birthday: string | null
   writable: boolean
+}
+
+export interface ContactLabel {
+  name: string
+  count: number
+}
+
+/** A contact in Recently deleted (kept 30 days). */
+export interface DeletedContact {
+  id: string
+  bookId: string
+  fullName: string
+  emails: ContactField[]
+  deletedAt: number
+}
+
+/** A card read from an email signature; empty fields weren't found. */
+export interface SignatureCard {
+  fullName: string
+  org: string | null
+  title: string | null
+  emails: ContactField[]
+  phones: ContactField[]
+}
+
+/** What a message's signature adds: a new contact, or details yours lacks. */
+export interface ContactSuggestion {
+  /** The contact it would update; null means a new one. */
+  contactId: string | null
+  /** For the editor: the signature, merged under your own fields. */
+  card: SignatureCard
+  /** "contact", "phone", "title", "company", "email" */
+  adds: string[]
+}
+
+export interface ContactExport {
+  fileName: string
+  vcf: string
 }
 
 // ── Notes ───────────────────────────────────────────────────────────────────
