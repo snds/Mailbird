@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 #[derive(Default, Clone)]
 struct TestHost {
     events: Arc<Mutex<Vec<String>>>,
+    opened: Arc<Mutex<Vec<String>>>,
 }
 
 impl Host for TestHost {
@@ -21,8 +22,9 @@ impl Host for TestHost {
     fn notify(&self, _: &str, _: &str) -> Result<(), String> {
         Ok(())
     }
-    fn open_url(&self, _: &str) -> Result<(), String> {
-        Err("no browser in tests".into())
+    fn open_url(&self, url: &str) -> Result<(), String> {
+        self.opened.lock().unwrap().push(url.to_owned());
+        Ok(())
     }
     fn download_dir(&self) -> Result<PathBuf, String> {
         Ok(std::env::temp_dir())
@@ -85,5 +87,72 @@ async fn every_command_routes_and_works() {
     assert_eq!(note["title"], "Hello");
     let events = host.events.lock().unwrap().clone();
     assert!(events.contains(&"pim:changed".to_string()) && events.contains(&"notes:changed".to_string()), "{events:?}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn compose_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-compose-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let host = TestHost::default();
+    let app = AppHandle::new(host.clone());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+
+    // An account and two list messages, stored directly (adding one through
+    // the dispatcher would sign in to a real server).
+    let (account, by_mail, by_web) = {
+        let s = state.store.lock().unwrap();
+        let server = pim_core::ServerConfig { host: "localhost".into(), port: 143, security: pim_core::Security::Plain };
+        let a = s
+            .add_account(&pim_core::AccountConfig {
+                display_name: "Me".into(),
+                address: "me@example.com".into(),
+                username: "me".into(),
+                provider: pim_core::Provider::Generic,
+                imap: server.clone(),
+                smtp: server,
+                jmap: None,
+                dav: None,
+                oauth: None,
+            })
+            .unwrap();
+        let mail = s.insert_local(&a.id, "INBOX", b"From: news@list.example\r\nSubject: Weekly\r\nList-Unsubscribe: <mailto:leave@list.example?subject=remove%20me>\r\n\r\nx\r\n", false).unwrap();
+        let web = s.insert_local(&a.id, "INBOX", b"From: deals@shop.example\r\nSubject: Sale\r\nList-Unsubscribe: <https://shop.example/prefs>\r\n\r\nx\r\n", false).unwrap();
+        (a.id, mail, web)
+    };
+
+    // Unsubscribe: by mail queues a message to the list's address; by web opens the page.
+    assert_eq!(call("unsubscribe", json!({ "id": by_mail })).await.unwrap(), json!("mail"));
+    let outbox = call("list_outbox", Value::Null).await.unwrap();
+    assert_eq!(outbox[0]["draft"]["to"][0]["email"], "leave@list.example");
+    assert_eq!(outbox[0]["draft"]["subject"], "remove me");
+    assert_eq!(call("unsubscribe", json!({ "id": by_web })).await.unwrap(), json!("web"));
+    assert_eq!(host.opened.lock().unwrap().as_slice(), ["https://shop.example/prefs"]);
+
+    // Send later, then move it to now.
+    let draft = json!({ "accountId": account, "to": [{ "email": "ana@example.com" }], "subject": "Later", "body": "x", "followUpAfter": 86400 });
+    let at = pim_core::now() + 7200;
+    let item = call("queue_send", json!({ "draft": draft, "undoSecs": 10, "sendAt": at })).await.unwrap();
+    assert_eq!(item["scheduled"], true);
+    assert_eq!(item["draft"]["followUpAfter"], 86400);
+    let moved = call("reschedule_send", json!({ "id": item["id"], "sendAt": null })).await.unwrap();
+    assert!(moved["sendAt"].as_i64().unwrap() <= pim_core::now());
+
+    // Follow-ups need mail you sent.
+    let thread = state.store.lock().unwrap().message(&by_mail).unwrap().summary.thread_id;
+    assert!(call("set_follow_up", json!({ "threadId": thread, "dueAt": at })).await.unwrap_err().contains("you've sent"));
+
+    // Templates and signatures.
+    let t = call("save_template", json!({ "input": { "name": "Thanks", "subject": "Thank you", "html": "<p>Thanks!</p>" } })).await.unwrap();
+    assert_eq!(call("list_templates", Value::Null).await.unwrap()[0]["name"], "Thanks");
+    call("delete_template", json!({ "id": t["id"] })).await.unwrap();
+    assert_eq!(call("list_templates", Value::Null).await.unwrap(), json!([]));
+    call("set_signature", json!({ "accountId": account, "html": "<p>— Me</p>" })).await.unwrap();
+    assert_eq!(call("list_signatures", Value::Null).await.unwrap(), json!([{ "accountId": account, "html": "<p>— Me</p>" }]));
+    assert!(host.events.lock().unwrap().contains(&"compose:changed".to_string()));
     let _ = std::fs::remove_dir_all(dir);
 }

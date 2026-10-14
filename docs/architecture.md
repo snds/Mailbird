@@ -94,3 +94,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0014](decisions/0014-microsoft.md) | Microsoft: localhost sign-in, Graph mail per-folder delta with immutable ids, Graph calendars and contacts behind the DAV contract |
 | [0015](decisions/0015-mobile-groundwork.md) | Mobile groundwork: periodic checks or a self-hosted push relay, platform seams, virtualized paging list, keyboard inset |
 | [0016](decisions/0016-web-gateway.md) | Web gateway: one command layer (`crates/app`) for every shell, a single-person self-hosted server, SSE events, sealed secrets |
+| [0017](decisions/0017-mail-power.md) | Send later on the outbox, follow-ups keyed by Message-ID and cleared by replies, RFC 8058 unsubscribe with address checks, signatures and templates in the core, ⌘K |

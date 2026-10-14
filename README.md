@@ -84,6 +84,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **5 · Mobile groundwork** ✅ | New mail on phones (periodic checks, or a self-hosted push relay in Docker), background pass and push seams, 10k-row virtualized list, keyboard-safe composer ([ADR-0015](docs/decisions/0015-mobile-groundwork.md), [relay](tools/push-relay/README.md)) |
 | **5b · Device spike** | iOS and Android builds against ADR-0002's exit criteria ([checklist](docs/mobile-spike.md)), Capacitor fallback |
 | **6 · Web gateway** ✅ | Real accounts in the browser through a self-hosted server (Docker): one command layer shared with the desktop app, password sign-in, live events, sealed secrets ([ADR-0016](docs/decisions/0016-web-gateway.md), [guide](apps/gateway/README.md)) |
+| **7 · Mail power** ✅ | Send later, follow-up reminders (Waiting lane, "No reply yet"), one-tap unsubscribe, signatures and templates, ⌘K command menu ([ADR-0017](docs/decisions/0017-mail-power.md)) |
 
 ## License
 

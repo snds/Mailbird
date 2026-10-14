@@ -24,7 +24,8 @@ export function useMailShortcuts(opts: {
     if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return
     const t = e.target as HTMLElement
     if (t.closest("input, textarea, select, [contenteditable=true], [role=dialog], [role=menu]")) return
-    if (useUi.getState().composer || useUi.getState().accountsOpen) return
+    const ui = useUi.getState()
+    if (ui.composer || ui.accountsOpen || ui.writingOpen || ui.paletteOpen) return
 
     const { list, selectedId, selected, select, triage } = opts
     const index = list.findIndex((m) => m.threadId === selectedId)

@@ -8,6 +8,7 @@
 //! lock again to write the result.
 
 pub mod commands;
+pub mod compose_commands;
 pub mod dispatch;
 pub mod host;
 pub mod notes_commands;
@@ -72,4 +73,6 @@ pub mod events {
     pub const REMINDER: &str = "reminder";
     /// Notes changed (local edit, import, or sync).
     pub const NOTES_CHANGED: &str = "notes:changed";
+    /// Templates or signatures changed.
+    pub const COMPOSE_CHANGED: &str = "compose:changed";
 }

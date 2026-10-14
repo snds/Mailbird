@@ -58,3 +58,50 @@ export function snoozeOptions(now = new Date()): SnoozeOption[] {
   options.push({ label: "Next week", until: secs(monday), detail: fmt(monday) })
   return options
 }
+
+/** Send-later presets: working-hours times people actually pick. */
+export function sendLaterOptions(now = new Date()): SnoozeOption[] {
+  const secs = (d: Date) => Math.floor(d.getTime() / 1000)
+  const fmt = (d: Date) => d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })
+  const options: SnoozeOption[] = []
+  if (now.getHours() < 17) {
+    const evening = at(now, 18)
+    options.push({ label: "This evening", until: secs(evening), detail: fmt(evening) })
+  }
+  const tomorrow = new Date(now.getTime() + 86_400_000)
+  options.push({ label: "Tomorrow morning", until: secs(at(tomorrow, 8)), detail: fmt(at(tomorrow, 8)) })
+  options.push({ label: "Tomorrow afternoon", until: secs(at(tomorrow, 13)), detail: fmt(at(tomorrow, 13)) })
+  const day = now.getDay()
+  const toMonday = ((8 - day) % 7) || 7
+  if (toMonday > 1) {
+    const monday = at(new Date(now.getTime() + toMonday * 86_400_000), 8)
+    options.push({ label: "Monday morning", until: secs(monday), detail: fmt(monday) })
+  }
+  return options
+}
+
+export interface FollowUpOption {
+  label: string
+  /** Seconds after sending. */
+  after: number
+}
+
+/** "Remind me if no reply" presets, relative to when the message goes out. */
+export const FOLLOW_UP_OPTIONS: FollowUpOption[] = [
+  { label: "1 day", after: 86_400 },
+  { label: "3 days", after: 3 * 86_400 },
+  { label: "1 week", after: 7 * 86_400 },
+]
+
+/** A time as the value of an `<input type="datetime-local">`, in local time. */
+export function toLocalInput(secs: number) {
+  const d = toDate(secs)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** The inverse of `toLocalInput`; null when the field is empty or invalid. */
+export function fromLocalInput(value: string): number | null {
+  const t = new Date(value).getTime()
+  return Number.isNaN(t) ? null : Math.floor(t / 1000)
+}

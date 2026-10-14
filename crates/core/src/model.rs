@@ -136,6 +136,8 @@ pub enum Lane {
     Starred,
     Snoozed,
     Archive,
+    /// Sent mail with a follow-up reminder that hasn't come due.
+    Waiting,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +179,14 @@ pub struct MessageSummary {
     pub snoozed_until: Option<i64>,
     /// `INBOX`, or `Sent` for copies of mail sent from this device.
     pub mailbox: String,
+    /// On sent mail: when a follow-up reminder is due if nobody replies.
+    /// In the inbox lane, a past time means the thread came back for it.
+    #[serde(default)]
+    pub follow_up_at: Option<i64>,
+    /// On sent mail: who it went to (the first recipient's name or address),
+    /// so a list row can say "To Jo" instead of "Me".
+    #[serde(default)]
+    pub sent_to: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,6 +220,62 @@ pub struct MessageDetail {
     /// A meeting invitation, cancellation, or reply carried by the message.
     #[serde(default)]
     pub invite: Option<Invite>,
+    /// How to unsubscribe, from the message's `List-Unsubscribe` headers.
+    #[serde(default)]
+    pub unsubscribe: Option<Unsubscribe>,
+}
+
+/// The ways a mailing list offers to unsubscribe (RFC 2369, RFC 8058).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Unsubscribe {
+    /// An https address that unsubscribes with one POST, no page to visit.
+    pub one_click: Option<String>,
+    /// An address to mail; the request is the message itself.
+    pub mailto: Option<String>,
+    /// A page to open in the browser.
+    pub web: Option<String>,
+}
+
+/// How an unsubscribe request went out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnsubscribeMethod {
+    OneClick,
+    Mail,
+    Web,
+}
+
+/// A reusable message: inserted into the composer by name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Template {
+    pub id: String,
+    pub name: String,
+    /// Fills the subject when it's empty.
+    pub subject: String,
+    pub html: String,
+    pub updated: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateInput {
+    /// Absent for a new template.
+    #[serde(default)]
+    pub id: Option<String>,
+    pub name: String,
+    #[serde(default)]
+    pub subject: String,
+    pub html: String,
+}
+
+/// The signature added to new messages and replies from one account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Signature {
+    pub account_id: String,
+    pub html: String,
 }
 
 /// A file to attach to an outgoing message.
@@ -249,6 +315,10 @@ pub struct Draft {
     /// message's `text/calendar` alternative (iMIP, RFC 6047).
     #[serde(default)]
     pub calendar: Option<CalendarPart>,
+    /// Bring the conversation back this many seconds after sending if
+    /// nobody has replied by then.
+    #[serde(default)]
+    pub follow_up_after: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -279,6 +349,9 @@ pub struct OutboxItem {
     pub send_at: i64,
     pub state: OutboxState,
     pub error: Option<String>,
+    /// Sent later on purpose, rather than after the undo window.
+    #[serde(default)]
+    pub scheduled: bool,
 }
 
 /// A message as fetched from a server, before it is stored.

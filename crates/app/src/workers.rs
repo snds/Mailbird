@@ -35,10 +35,14 @@ pub fn start(app: AppHandle, state: Shared) {
     let (a, s) = (app.clone(), state.clone());
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(TICK);
+        // Reminders that came due while the app was closed show in the inbox
+        // without a notification each; only ones from now on announce themselves.
+        let mut checked = now();
         loop {
             tick.tick().await;
             send_due(&a, &s).await;
             wake_snoozes(&a, &s);
+            checked = announce_follow_ups(&a, &s, checked);
         }
     });
 
@@ -178,6 +182,23 @@ fn wake_snoozes(app: &AppHandle, state: &Shared) {
     }
 }
 
+/// Bring back conversations whose follow-up came due since `after`, with a
+/// notification for each. Returns the time checked up to.
+fn announce_follow_ups(app: &AppHandle, state: &Shared, after: i64) -> i64 {
+    let until = now();
+    if until <= after {
+        return after;
+    }
+    let due = state.store.lock().ok().and_then(|s| s.follow_ups_due(after, until).ok()).unwrap_or_default();
+    if !due.is_empty() {
+        let _ = app.emit(events::MAIL_CHANGED, ());
+        for (_, subject) in &due {
+            let _ = app.notify("No reply yet", subject);
+        }
+    }
+    until
+}
+
 async fn send_due(app: &AppHandle, state: &Shared) {
     let due = match state.store.lock() {
         Ok(s) => s.claim_due(now()).unwrap_or_default(),
@@ -206,6 +227,10 @@ async fn send_due(app: &AppHandle, state: &Shared) {
             // Keep a local copy so the reply shows up inside its conversation.
             if let Ok(raw) = &result {
                 let _ = s.insert_local(&item.draft.account_id, SENT, raw, true);
+                // The reminder keys on the Message-ID the message went out with.
+                if let (Some(after), Some(mid)) = (item.draft.follow_up_after, pim_core::mime::parse(raw).ok().and_then(|p| p.message_id)) {
+                    let _ = s.add_follow_up(&item.draft.account_id, &mid, now() + after);
+                }
             }
         }
         let _ = app.emit(events::OUTBOX_CHANGED, &item.id);

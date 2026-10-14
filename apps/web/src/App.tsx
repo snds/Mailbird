@@ -8,6 +8,8 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { queryClient, useCoreEvents } from "@/core/queries"
 import { AccountsDialog } from "@/features/accounts"
+import { CommandPalette } from "@/features/command-palette"
+import { WritingDialog } from "@/features/writing-settings"
 import { GatewayGate } from "@/features/gateway-sign-in"
 import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
@@ -58,6 +60,15 @@ function Root() {
       <EventEditor />
       <ContactEditor />
       <AccountsDialog />
+      <WritingDialog />
+      <CommandPalette
+        onCreate={{
+          mail: () => (setActive("mail"), openComposer()),
+          calendar: () => (setActive("calendar"), openEventEditor()),
+          contacts: () => (setActive("contacts"), openContactEditor()),
+          notes: () => (setActive("notes"), newNote()),
+        }}
+      />
       <OutboxWatcher />
       <ReminderWatcher />
       <NotesSyncRunner />

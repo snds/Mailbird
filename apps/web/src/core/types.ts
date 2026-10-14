@@ -3,7 +3,8 @@
 
 export type Provider = "google" | "microsoft" | "i_cloud" | "jmap" | "generic" | "local"
 export type Security = "tls" | "start_tls" | "plain"
-export type Lane = "inbox" | "unread" | "starred" | "snoozed" | "archive"
+/** `waiting`: mail you sent, with a follow-up reminder not yet due. */
+export type Lane = "inbox" | "unread" | "starred" | "snoozed" | "archive" | "waiting"
 export type OutboxState = "queued" | "sending" | "sent" | "failed" | "cancelled"
 
 export interface Capabilities {
@@ -155,6 +156,10 @@ export interface MessageSummary {
   snoozedUntil: number | null
   /** "INBOX", or "Sent" for copies of mail sent from this device. */
   mailbox: string
+  /** On sent mail: when the follow-up reminder is due. Past means it came back. */
+  followUpAt?: number | null
+  /** On sent mail: the first recipient's name or address. */
+  sentTo?: string | null
 }
 
 export interface AttachmentInfo {
@@ -177,6 +182,38 @@ export interface MessageDetail extends MessageSummary {
   /** References + In-Reply-To, oldest first; a reply appends this message's id. */
   references: string[]
   invite?: Invite | null
+  /** From the List-Unsubscribe headers (RFC 2369, RFC 8058). */
+  unsubscribe?: Unsubscribe | null
+}
+
+export interface Unsubscribe {
+  /** Unsubscribes with one request, no page to visit. */
+  oneClick: string | null
+  mailto: string | null
+  web: string | null
+}
+
+export type UnsubscribeMethod = "one_click" | "mail" | "web"
+
+export interface Template {
+  id: string
+  name: string
+  /** Fills the subject when it's empty. */
+  subject: string
+  html: string
+  updated: number
+}
+
+export interface TemplateInput {
+  id?: string | null
+  name: string
+  subject: string
+  html: string
+}
+
+export interface Signature {
+  accountId: string
+  html: string
 }
 
 export interface OutgoingAttachment {
@@ -197,6 +234,8 @@ export interface Draft {
   inReplyTo?: string | null
   references?: string[]
   attachments?: OutgoingAttachment[]
+  /** Bring the conversation back this many seconds after sending, if nobody replies. */
+  followUpAfter?: number | null
 }
 
 export interface OutboxItem {
@@ -205,6 +244,8 @@ export interface OutboxItem {
   sendAt: number
   state: OutboxState
   error: string | null
+  /** Sent later on purpose, not just waiting out the undo window. */
+  scheduled?: boolean
 }
 
 // ── Calendars and contacts ───────────────────────────────────────────────

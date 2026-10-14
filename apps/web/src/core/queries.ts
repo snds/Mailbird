@@ -31,6 +31,9 @@ const keys = {
   noteTags: ["notes", "tags"] as const,
   noteLink: (t: NoteTarget) => ["notes", "link", t.kind, t.id] as const,
   relay: ["notes", "relay"] as const,
+  // Templates and signatures refresh together on "compose:changed".
+  templates: ["compose", "templates"] as const,
+  signatures: ["compose", "signatures"] as const,
 }
 
 export function useCore() {
@@ -60,6 +63,7 @@ export function useCoreEvents() {
       }),
       // The open note's own query stays put: its editor is the live copy.
       core.on("notes:changed", () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" })),
+      core.on("compose:changed", () => void qc.invalidateQueries({ queryKey: ["compose"] })),
     ]
     // All-day events sit on the device clock; tell the core which one that is.
     void core.setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone).then(() => qc.invalidateQueries({ queryKey: ["pim"] }))
@@ -103,6 +107,23 @@ export function useThread(threadId: string | null) {
 
 export function useOutbox() {
   return useQuery({ queryKey: keys.outbox, queryFn: () => call((c) => c.listOutbox()) })
+}
+
+export function useTemplates() {
+  return useQuery({ queryKey: keys.templates, queryFn: () => call((c) => c.listTemplates()) })
+}
+
+export function useSignatures() {
+  return useQuery({ queryKey: keys.signatures, queryFn: () => call((c) => c.listSignatures()) })
+}
+
+/** Messages scheduled to send later, soonest first. */
+export function useScheduled() {
+  return useQuery({
+    queryKey: keys.outbox,
+    queryFn: () => call((c) => c.listOutbox()),
+    select: (items) => items.filter((i) => i.scheduled && i.state === "queued").sort((a, b) => a.sendAt - b.sendAt),
+  })
 }
 
 /** A mutation that refreshes mail lists afterwards. */

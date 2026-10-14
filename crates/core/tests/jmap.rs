@@ -237,6 +237,7 @@ async fn jmap_round_trip() {
         references: vec![],
         attachments: vec![],
         calendar: None,
+        follow_up_after: None,
     };
     match jmap::send(&config(), PASS, &draft).await {
         Ok(raw) => {

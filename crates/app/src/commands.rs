@@ -207,8 +207,8 @@ fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
         .expect("some numbered name is free")
 }
 
-pub fn queue_send(app: AppHandle, state: &Shared, draft: Draft, undo_secs: i64) -> Res<OutboxItem> {
-    let item = with_store(state, |s| s.queue_send(&draft, undo_secs))?;
+pub fn queue_send(app: AppHandle, state: &Shared, draft: Draft, undo_secs: i64, send_at: Option<i64>) -> Res<OutboxItem> {
+    let item = with_store(state, |s| s.queue_send(&draft, undo_secs, send_at))?;
     let _ = app.emit(events::OUTBOX_CHANGED, ());
     Ok(item)
 }

@@ -12,6 +12,7 @@
 //! - [`capabilities`] tells the UI what each provider supports.
 
 pub mod capabilities;
+mod compose_store;
 pub mod ical;
 pub mod itip;
 pub mod mime;
@@ -21,6 +22,7 @@ mod invite_store;
 mod notes_import;
 mod notes_store;
 pub mod store;
+pub mod unsubscribe;
 pub mod vcard;
 
 #[cfg(feature = "net")]
