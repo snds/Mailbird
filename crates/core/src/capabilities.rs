@@ -101,6 +101,7 @@ impl Provider {
                 mail_organization: Some(Folders),
                 contact_groups: true,
                 server_side_scheduling: true,
+                // Graph push needs a public webhook; the native app polls the inbox every 30 s.
                 push: true,
                 auth: AuthMethod::OAuth2,
             },

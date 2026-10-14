@@ -80,7 +80,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **2b · Calendar depth** ✅ | Month view, edit one occurrence or this-and-following, reminders with desktop notifications, meeting invitations (answer, send, cancel) ([ADR-0011](docs/decisions/0011-calendar-depth.md)) |
 | **3 · Notes** ✅ | Tiptap editor with checklists, Markdown storage, live Yjs sync through a self-hosted relay, links to events, people, and conversations, Apple Notes/Keep/Markdown import ([ADR-0012](docs/decisions/0012-notes.md)) |
 | **4 · Google** ✅ | Browser sign-in (OAuth + PKCE), Gmail API sync and send, Google Calendar and Contacts over CalDAV/CardDAV, verification checklist ([ADR-0013](docs/decisions/0013-google.md), [guide](docs/google-verification.md)) |
-| **4b · Microsoft** | Microsoft Graph mail, calendar, and contacts on the same OAuth layer |
+| **4b · Microsoft** ✅ | Outlook and Microsoft 365 sign-in, Graph mail sync and send, Outlook calendars and contacts translated to iCalendar and vCard ([ADR-0014](docs/decisions/0014-microsoft.md), [guide](docs/microsoft-setup.md)) |
 | **5 · Mobile** | Tauri mobile spike → iOS/Android builds (Capacitor fallback) |
 
 ## License

@@ -505,7 +505,7 @@ pub async fn sync(dav: &Dav, plans: Vec<DavPlan>) -> Result<Vec<DavResult>> {
                 DavOutcome::Saved(Some(etag)) => {
                     cursor.etags.insert(change.href.clone(), etag.clone());
                 }
-                DavOutcome::Saved(None) | DavOutcome::Conflict => {
+                DavOutcome::Saved(None) | DavOutcome::Conflict | DavOutcome::Created(..) => {
                     cursor.etags.remove(&change.href);
                 }
                 DavOutcome::Deleted => {

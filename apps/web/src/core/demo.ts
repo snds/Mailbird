@@ -253,10 +253,10 @@ export function createDemoClient(): CoreClient {
       else delete oauthClients[issuer]
     },
     addOAuthAccount: async () => {
-      throw new Error("Signing in with Google needs the desktop app. The web version runs on sample mail.")
+      throw new Error("Signing in with Google or Microsoft needs the desktop app. The web version runs on sample mail.")
     },
     reauthOAuthAccount: async () => {
-      throw new Error("Signing in with Google needs the desktop app.")
+      throw new Error("Signing in again needs the desktop app.")
     },
     cancelOAuthSignIn: async () => {},
     setAccountDav: async () => {

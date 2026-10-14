@@ -162,10 +162,15 @@ pub fn authorize_url(issuer: OAuthIssuer, ep: &Endpoints, client: &Client, redir
         ("code_challenge_method", "S256".to_string()),
         ("state", state.to_string()),
     ];
-    if issuer == OAuthIssuer::Google {
+    match issuer {
         // A refresh token, every time (Google only returns one on consent).
-        q.push(("access_type", "offline".into()));
-        q.push(("prompt", "consent".into()));
+        OAuthIssuer::Google => {
+            q.push(("access_type", "offline".into()));
+            q.push(("prompt", "consent".into()));
+        }
+        // Lets people pick which Microsoft account, instead of silently
+        // reusing whichever one the browser is signed in to.
+        OAuthIssuer::Microsoft => q.push(("prompt", "select_account".into())),
     }
     if let Some(h) = login_hint.filter(|h| !h.is_empty()) {
         q.push(("login_hint", h.to_string()));
@@ -242,9 +247,23 @@ fn percent_decode(s: &str) -> String {
 const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Signed in</title><body style=\"font:16px system-ui;margin:4rem auto;max-width:28rem;text-align:center\"><h1 style=\"font-size:1.25rem\">You're signed in</h1><p>You can close this tab and go back to the app.</p>";
 const FAILED_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Sign-in didn't finish</title><body style=\"font:16px system-ui;margin:4rem auto;max-width:28rem;text-align:center\"><h1 style=\"font-size:1.25rem\">Sign-in didn't finish</h1><p>Go back to the app to try again.</p>";
 
+/// The redirect a provider accepts for an installed app. Google takes the
+/// loopback IP literal (RFC 8252 §7.3). Microsoft's app registration only
+/// takes `http://localhost` without editing the manifest, and ignores the
+/// port; so Microsoft gets `localhost`, and [`Flow`] listens on both
+/// loopback addresses, since browsers may resolve it to either.
+pub fn redirect_uri(issuer: OAuthIssuer, port: u16) -> String {
+    match issuer {
+        OAuthIssuer::Google => format!("http://127.0.0.1:{port}"),
+        OAuthIssuer::Microsoft => format!("http://localhost:{port}"),
+    }
+}
+
 /// One sign-in in progress.
 pub struct Flow {
     listener: TcpListener,
+    /// The IPv6 loopback on the same port, for `localhost` redirects.
+    listener_v6: Option<TcpListener>,
     pub issuer: OAuthIssuer,
     pub endpoints: Endpoints,
     pub client: Client,
@@ -263,11 +282,13 @@ impl Flow {
         // RFC 8252 §7.3: the loopback IP literal, any free port.
         let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| Error::Network(format!("couldn't open the sign-in port: {e}")))?;
         let port = listener.local_addr().map_err(|e| Error::Network(e.to_string()))?.port();
-        let redirect = format!("http://127.0.0.1:{port}");
+        let redirect = redirect_uri(issuer, port);
+        // Best effort: a machine without IPv6 still answers on 127.0.0.1.
+        let listener_v6 = if redirect.contains("localhost") { TcpListener::bind(("::1", port)).await.ok() } else { None };
         let (verifier, challenge) = pkce();
         let state = random_state();
         let url = authorize_url(issuer, &endpoints, &client, &redirect, &challenge, &state, login_hint);
-        Ok(Self { listener, issuer, endpoints, client, redirect, url, verifier, state })
+        Ok(Self { listener, listener_v6, issuer, endpoints, client, redirect, url, verifier, state })
     }
 
     /// Waits for the browser to return, then trades the code for tokens.
@@ -280,7 +301,14 @@ impl Flow {
 
     async fn accept(&self) -> Result<String> {
         loop {
-            let (mut sock, _) = self.listener.accept().await.map_err(|e| Error::Network(e.to_string()))?;
+            let accepted = match &self.listener_v6 {
+                Some(v6) => tokio::select! {
+                    r = self.listener.accept() => r,
+                    r = v6.accept() => r,
+                },
+                None => self.listener.accept().await,
+            };
+            let (mut sock, _) = accepted.map_err(|e| Error::Network(e.to_string()))?;
             let mut buf = vec![0u8; 8192];
             let n = sock.read(&mut buf).await.unwrap_or(0);
             let head = String::from_utf8_lossy(&buf[..n]);
@@ -405,6 +433,17 @@ mod tests {
     }
 
     #[test]
+    fn microsoft_sign_in_url() {
+        let client = Client { client_id: "00000000-aaaa".into(), client_secret: None };
+        let ep = endpoints(OAuthIssuer::Microsoft);
+        let url = authorize_url(OAuthIssuer::Microsoft, &ep, &client, &redirect_uri(OAuthIssuer::Microsoft, 5555), "CH", "ST", None);
+        assert!(url.starts_with("https://login.microsoftonline.com/common/oauth2/v2.0/authorize?response_type=code&client_id=00000000-aaaa"));
+        assert!(url.contains("redirect_uri=http%3A%2F%2Flocalhost%3A5555"), "Microsoft's portal only registers localhost");
+        assert!(url.contains("offline_access%20https%3A%2F%2Fgraph.microsoft.com%2FMail.ReadWrite"));
+        assert!(url.contains("prompt=select_account") && !url.contains("access_type"));
+    }
+
+    #[test]
     fn callbacks() {
         assert_eq!(parse_callback("GET /?state=a%2Bb&code=4%2F0Ab_c HTTP/1.1").unwrap(), ("4/0Ab_c".to_string(), "a+b".to_string()));
         assert!(matches!(parse_callback("GET /?error=access_denied&state=x HTTP/1.1"), Err(Error::Auth(m)) if m.contains("cancelled")));
@@ -436,5 +475,19 @@ mod tests {
         let page = http.get(format!("{redirect}/?code=c&state=wrong")).send().await.unwrap().text().await.unwrap();
         assert!(page.contains("didn't finish"));
         assert!(matches!(task.await.unwrap(), Err(Error::Auth(_))));
+    }
+
+    #[tokio::test]
+    async fn localhost_flow_answers_on_ipv4() {
+        let client = Client { client_id: "id".into(), client_secret: None };
+        let ep = Endpoints { authorize: "https://example.test/auth".into(), token: "http://127.0.0.1:1/token".into() };
+        let flow = Flow::start(OAuthIssuer::Microsoft, ep, client, None).await.unwrap();
+        assert!(flow.redirect.starts_with("http://localhost:"));
+        let port = flow.redirect.rsplit(':').next().unwrap().to_owned();
+        let state = flow.state.clone();
+        let task = tokio::spawn(async move { flow.accept().await });
+        let page = http().unwrap().get(format!("http://127.0.0.1:{port}/?code=abc&state={state}")).send().await.unwrap().text().await.unwrap();
+        assert!(page.contains("signed in"));
+        assert_eq!(task.await.unwrap().unwrap(), "abc");
     }
 }

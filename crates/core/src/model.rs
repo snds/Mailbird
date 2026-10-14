@@ -657,6 +657,9 @@ pub struct DavChange {
 pub enum DavOutcome {
     /// Stored; the server's new etag, when it returned one.
     Saved(Option<String>),
+    /// Created where the server chose (Microsoft Graph picks its own ids):
+    /// the item's new href, and its etag when known.
+    Created(String, Option<String>),
     Deleted,
     /// The server copy changed (412) or vanished (404) first: the server wins.
     Conflict,

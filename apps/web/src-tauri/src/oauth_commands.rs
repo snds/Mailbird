@@ -1,9 +1,10 @@
-//! Browser sign-in (OAuth) for Google, and the OAuth clients it uses.
+//! Browser sign-in (OAuth) for Google and Microsoft, and the OAuth clients it uses.
 //!
 //! Each provider needs the app to be registered with it. Builds can bake in
-//! a client (`MAILBIRD_GOOGLE_CLIENT_ID` / `_SECRET` at compile time); anyone
-//! building from source can paste their own instead (Accounts → Google →
-//! "Use your own OAuth client"). See docs/google-verification.md.
+//! a client (`MAILBIRD_GOOGLE_CLIENT_ID` / `_SECRET`, `MAILBIRD_MICROSOFT_CLIENT_ID`
+//! at compile time); anyone building from source can paste their own instead
+//! (Accounts → Gmail or Outlook → "Use your own OAuth client"). See
+//! docs/google-verification.md and docs/microsoft-setup.md.
 
 use pim_core::{Account, AccountConfig, OAuthAccount, OAuthIssuer, Provider, Security, ServerConfig, net, net::oauth};
 use serde::Serialize;
@@ -108,20 +109,51 @@ fn google_config(address: &str, name: Option<&str>, client_id: &str) -> AccountC
     }
 }
 
+fn microsoft_config(address: &str, name: Option<&str>, client_id: &str) -> AccountConfig {
+    let imap = ServerConfig { host: "outlook.office365.com".into(), port: 993, security: Security::Tls };
+    AccountConfig {
+        display_name: name.unwrap_or(address).to_owned(),
+        address: address.to_owned(),
+        username: address.to_owned(),
+        provider: Provider::Microsoft,
+        // Mail goes through Microsoft Graph; these are only for reference.
+        smtp: ServerConfig { host: "smtp.office365.com".into(), port: 587, security: Security::StartTls },
+        imap,
+        jmap: None,
+        // Calendars and contacts go through Graph too (not CalDAV); the URL
+        // only marks them as connected.
+        dav: Some(pim_core::DavConfig { calendar_url: Some(net::graph::API.into()), contacts_url: Some(net::graph::API.into()), separate_secret: false }),
+        oauth: Some(OAuthAccount { issuer: OAuthIssuer::Microsoft, client_id: client_id.to_owned(), api_base: None, token_url: None }),
+    }
+}
+
+/// The mailbox's own address (which beats the ID token's), proving mail access was granted.
+async fn verify(issuer: OAuthIssuer, config: &AccountConfig, token: &str) -> Res<String> {
+    match issuer {
+        OAuthIssuer::Google => net::gmail::verify(config, token).await,
+        OAuthIssuer::Microsoft => net::graph::verify(config, token).await,
+    }
+    .map_err(|e| e.to_string())
+}
+
 /// Adds an account by signing in with the provider in the browser.
 #[tauri::command]
 pub async fn add_oauth_account(app: AppHandle, state: State<'_, Shared>, issuer: OAuthIssuer, login_hint: Option<String>) -> Res<Account> {
-    if issuer == OAuthIssuer::Microsoft {
-        return Err("Microsoft sign-in is coming in the next release".into());
-    }
     let (client, tokens, who) = sign_in(&app, state.inner(), issuer, login_hint.as_deref()).await?;
-    let probe = google_config(who.email.as_deref().unwrap_or_default(), None, &client.client_id);
-    // The mailbox's own address beats the ID token's, and proves Gmail access was granted.
-    let address = net::gmail::verify(&probe, &tokens.access_token).await.map_err(|e| e.to_string())?;
+    let make = |address: &str, name: Option<&str>| match issuer {
+        OAuthIssuer::Google => google_config(address, name, &client.client_id),
+        OAuthIssuer::Microsoft => microsoft_config(address, name, &client.client_id),
+    };
+    let address = verify(issuer, &make(who.email.as_deref().unwrap_or_default(), None), &tokens.access_token).await?;
     if with_store(&state, |s| s.accounts())?.iter().any(|a| a.config.address.eq_ignore_ascii_case(&address)) {
         return Err(format!("{address} is already added"));
     }
-    let config = google_config(&address, who.name.as_deref(), &client.client_id);
+    let name = match (issuer, &who.name) {
+        // Personal Microsoft accounts' ID tokens often carry no name; /me does.
+        (OAuthIssuer::Microsoft, None) => net::graph::me(&make(&address, None), &tokens.access_token).await.ok().and_then(|(_, n)| n),
+        _ => who.name.clone(),
+    };
+    let config = make(&address, name.as_deref());
     let account = with_store(&state, |s| s.add_account(&config))?;
     if let Err(e) = secrets::set_tokens(&account.id, &tokens) {
         let _ = with_store(&state, |s| s.remove_account(&account.id));
@@ -144,7 +176,7 @@ pub async fn reauth_oauth_account(app: AppHandle, state: State<'_, Shared>, id: 
     let (client, tokens, _) = sign_in(&app, state.inner(), o.issuer, Some(&account.config.address)).await?;
     let mut config = account.config.clone();
     config.oauth = Some(OAuthAccount { client_id: client.client_id.clone(), ..o });
-    let address = net::gmail::verify(&config, &tokens.access_token).await.map_err(|e| e.to_string())?;
+    let address = verify(o.issuer, &config, &tokens.access_token).await?;
     if !address.eq_ignore_ascii_case(&account.config.address) {
         return Err(format!("that was {address}; sign in as {} to reconnect this account", account.config.address));
     }

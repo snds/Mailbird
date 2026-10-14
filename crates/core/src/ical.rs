@@ -266,7 +266,7 @@ pub fn occurrences(ics: &str, local_tz: &str, from: i64, to: i64) -> Result<Vec<
 // ── Writing ──────────────────────────────────────────────────────────────────
 
 /// RFC 5545 §3.3.11 text escaping.
-fn esc(s: &str) -> String {
+pub(crate) fn esc(s: &str) -> String {
     s.replace('\\', "\\\\").replace(';', "\\;").replace(',', "\\,").replace("\r\n", "\\n").replace('\n', "\\n")
 }
 
@@ -589,6 +589,156 @@ pub fn split_series(ics: &str, original: i64, new_uid: &str, input: &EventInput,
     Ok(finish(cal))
 }
 
+
+// ── Shape: an event in plain terms, for APIs that don't speak iCalendar ─────
+
+/// A recurrence rule's parts (RFC 5545 §3.3.10), as written.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Rule {
+    /// "DAILY", "WEEKLY", "MONTHLY", "YEARLY", …
+    pub freq: String,
+    pub interval: u32,
+    pub count: Option<u32>,
+    /// The last day the series may run, in the event's zone ("YYYY-MM-DD").
+    pub until: Option<String>,
+    /// (ordinal, weekday): `(0, "MO")` every Monday, `(-1, "FR")` the last Friday.
+    pub byday: Vec<(i32, String)>,
+    pub bymonthday: Vec<i32>,
+    pub bymonth: Vec<u32>,
+    pub bysetpos: Vec<i32>,
+    pub wkst: Option<String>,
+    /// Parts not listed above (BYHOUR, BYWEEKNO…).
+    pub other: Vec<String>,
+}
+
+/// One moved or edited occurrence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverrideShape {
+    /// The slot it fills (RECURRENCE-ID), Unix seconds.
+    pub original: i64,
+    pub start: i64,
+    pub end: i64,
+    pub title: String,
+    pub location: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// What another calendar API needs to recreate an event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shape {
+    pub meta: EventMeta,
+    /// The master's own start and end (Unix seconds). All-day events start
+    /// at midnight on `local_tz`'s clock.
+    pub start: i64,
+    pub end: i64,
+    pub rule: Option<Rule>,
+    pub exdates: Vec<i64>,
+    pub overrides: Vec<OverrideShape>,
+}
+
+fn prop_ts(cal: &ICalendar, c: &ICalendarComponent, prop: ICalendarProperty, local_tz: &str) -> Option<i64> {
+    let e = c.property(&prop)?;
+    let Some(ICalendarValue::PartialDateTime(dt)) = e.values.first() else { return None };
+    dt.to_date_time_with_tz(zone(cal, e.tz_id(), local_tz)).map(|d| d.timestamp())
+}
+
+/// The master's RRULE, read from the text (calcard keeps the parts typed;
+/// other APIs want them by name).
+fn rule_of(ics: &str, until_tz: &Tz) -> Option<Rule> {
+    let unfolded = ics.replace("\r\n ", "").replace("\r\n\t", "").replace("\n ", "");
+    // Only a VEVENT's own rule: VTIMEZONEs carry RRULEs for their DST changes.
+    let (mut in_event, mut in_override) = (false, false);
+    let mut line = None;
+    for l in unfolded.lines() {
+        match l.trim_end() {
+            "BEGIN:VEVENT" => (in_event, in_override) = (true, false),
+            "END:VEVENT" => in_event = false,
+            l if l.starts_with("RECURRENCE-ID") => in_override = true,
+            l if l.starts_with("RRULE") && in_event && !in_override && line.is_none() => line = Some(l.to_string()),
+            _ => {}
+        }
+    }
+    let value = line?.split_once(':')?.1.to_string();
+    let mut r = Rule { interval: 1, ..Default::default() };
+    for part in value.split(';') {
+        let Some((k, v)) = part.split_once('=') else { continue };
+        let ints = |v: &str| v.split(',').filter_map(|x| x.trim().parse::<i32>().ok()).collect::<Vec<_>>();
+        match k.to_ascii_uppercase().as_str() {
+            "FREQ" => r.freq = v.to_ascii_uppercase(),
+            "INTERVAL" => r.interval = v.parse().unwrap_or(1).max(1),
+            "COUNT" => r.count = v.parse().ok(),
+            "UNTIL" => {
+                let digits: String = v.chars().filter(char::is_ascii_digit).collect();
+                r.until = if v.ends_with('Z') && digits.len() >= 14 {
+                    chrono::NaiveDateTime::parse_from_str(&digits[..14], "%Y%m%d%H%M%S")
+                        .ok()
+                        .map(|n| n.and_utc().with_timezone(until_tz).format("%Y-%m-%d").to_string())
+                } else {
+                    digits.get(..8).map(|d| format!("{}-{}-{}", &d[..4], &d[4..6], &d[6..8]))
+                };
+            }
+            "BYDAY" => {
+                r.byday = v
+                    .split(',')
+                    .filter_map(|d| {
+                        let d = d.trim();
+                        let (n, day) = d.split_at(d.len().checked_sub(2)?);
+                        Some((if n.is_empty() { 0 } else { n.trim_start_matches('+').parse().ok()? }, day.to_ascii_uppercase()))
+                    })
+                    .collect()
+            }
+            "BYMONTHDAY" => r.bymonthday = ints(v),
+            "BYMONTH" => r.bymonth = ints(v).into_iter().filter_map(|m| u32::try_from(m).ok()).collect(),
+            "BYSETPOS" => r.bysetpos = ints(v),
+            "WKST" => r.wkst = Some(v.to_ascii_uppercase()),
+            _ => r.other.push(part.to_string()),
+        }
+    }
+    Some(r)
+}
+
+/// The event in plain terms: the master's times and rule, its skipped
+/// slots, and its moved or edited occurrences.
+pub fn shape(ics: &str, local_tz: &str) -> Result<Shape> {
+    let meta = read_event(ics, local_tz)?;
+    let cal = parse(ics)?;
+    let m = master_index(&cal).ok_or_else(|| Error::Parse("no event in this calendar object".into()))?;
+    let c = &cal.components[m];
+    let start = prop_ts(&cal, c, ICalendarProperty::Dtstart, local_tz).unwrap_or(meta.first_start);
+    let end = prop_ts(&cal, c, ICalendarProperty::Dtend, local_tz)
+        .or_else(|| expand_all(&cal, local_tz).into_iter().find(|o| o.original == start).map(|o| o.end))
+        .unwrap_or(if meta.all_day { start + 86_400 } else { start });
+    let event_tz = zone(&cal, c.property(&ICalendarProperty::Dtstart).and_then(|e| e.tz_id()), local_tz);
+    let exdates = c
+        .properties(&ICalendarProperty::Exdate)
+        .flat_map(|e| {
+            let z = zone(&cal, e.tz_id(), local_tz);
+            e.values.iter().filter_map(move |v| match v {
+                ICalendarValue::PartialDateTime(dt) => dt.to_date_time_with_tz(z).map(|d| d.timestamp()),
+                _ => None,
+            })
+        })
+        .collect();
+    let overrides = cal
+        .components
+        .iter()
+        .filter(|o| o.component_type == ICalendarComponentType::VEvent && o.has_property(&ICalendarProperty::RecurrenceId))
+        .filter_map(|o| {
+            let original = rid_ts(&cal, o, local_tz)?;
+            let start = prop_ts(&cal, o, ICalendarProperty::Dtstart, local_tz).unwrap_or(original);
+            Some(OverrideShape {
+                original,
+                start,
+                end: prop_ts(&cal, o, ICalendarProperty::Dtend, local_tz).unwrap_or(start),
+                title: text(o, ICalendarProperty::Summary).unwrap_or_else(|| meta.title.clone()),
+                location: text(o, ICalendarProperty::Location),
+                notes: text(o, ICalendarProperty::Description),
+            })
+        })
+        .collect();
+    Ok(Shape { rule: if meta.recurring { rule_of(ics, &event_tz) } else { None }, meta, start, end, exdates, overrides })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -807,5 +957,26 @@ mod tests {
         let all = occurrences(&skipped, "UTC", 0, i64::MAX).unwrap();
         assert_eq!(all.len(), 2);
         assert!(all.iter().all(|o| o.start != 1_794_303_000));
+    }
+
+    #[test]
+    fn shape_names_rule_slots_and_overrides() {
+        let sh = shape(SERIES, "America/New_York").unwrap();
+        let lisbon = |d: &str| chrono::NaiveDateTime::parse_from_str(d, "%Y%m%dT%H%M%S").unwrap().and_local_timezone(tz("Europe/Lisbon")).unwrap().timestamp();
+        assert_eq!((sh.start, sh.end), (lisbon("20261020T093000"), lisbon("20261020T094500")));
+        let r = sh.rule.unwrap();
+        assert_eq!((r.freq.as_str(), r.interval, r.count, r.byday.clone()), ("WEEKLY", 1, Some(4), vec![(0, "TU".to_string())]));
+        assert_eq!(sh.exdates, vec![lisbon("20261027T093000")]);
+        assert_eq!(sh.overrides.len(), 1);
+        let o = &sh.overrides[0];
+        assert_eq!((o.original, o.start, o.title.as_str()), (lisbon("20261103T093000"), lisbon("20261103T110000"), "Standup (moved)"));
+
+        let monthly = SERIES.replace("RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=4", "RRULE:FREQ=MONTHLY;INTERVAL=2;BYDAY=-1FR;UNTIL=20270101T000000Z");
+        let r = shape(&monthly, "UTC").unwrap().rule.unwrap();
+        assert_eq!((r.interval, r.byday.clone(), r.until.as_deref()), (2, vec![(-1, "FR".to_string())], Some("2027-01-01")));
+        assert!(shape(&SERIES.replace("RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=4\r\n", ""), "UTC").unwrap().rule.is_none());
+        let zoned = new_event("z", &EventInput { repeat: Repeat::Weekly, ..input("2026-10-20T15:00", "2026-10-20T16:00") }).unwrap();
+        assert!(zoned.contains("BEGIN:VTIMEZONE"));
+        assert_eq!(shape(&zoned, "UTC").unwrap().rule.map(|r| (r.freq, r.byday)), Some(("WEEKLY".to_string(), vec![])), "the zone's DST rules aren't the event's");
     }
 }

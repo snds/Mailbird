@@ -15,7 +15,7 @@ import { useAccounts, useCore } from "@/core/queries"
 import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
 
-import { GoogleSignIn } from "./oauth-sign-in"
+import { OAuthSignIn } from "./oauth-sign-in"
 
 interface Preset {
   id: string
@@ -74,7 +74,7 @@ const PRESETS: Preset[] = [
     dav: "ask",
   },
   { id: "google", label: "Gmail", icon: "mail", provider: "google", passwordLabel: "", oauth: "google" },
-  { id: "microsoft", label: "Outlook / Microsoft 365", icon: "mail", provider: "microsoft", passwordLabel: "", unavailable: "Microsoft sign-in is coming in the next release." },
+  { id: "microsoft", label: "Outlook / Microsoft 365", icon: "mail", provider: "microsoft", passwordLabel: "", oauth: "microsoft" },
 ]
 
 export function AccountsDialog() {
@@ -86,8 +86,8 @@ export function AccountsDialog() {
   return (
     <Dialog open={open} onOpenChange={(o) => (setOpen(o), !o && setPreset(null))}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-        {preset?.oauth === "google" ? (
-          <GoogleSignIn onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
+        {preset?.oauth ? (
+          <OAuthSignIn issuer={preset.oauth} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
         ) : preset ? (
           <AddAccountForm preset={preset} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
         ) : connecting ? (
