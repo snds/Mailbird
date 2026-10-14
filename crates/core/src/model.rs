@@ -55,6 +55,34 @@ pub struct AccountConfig {
     /// Calendars and contacts over CalDAV/CardDAV, when the provider has them.
     #[serde(default)]
     pub dav: Option<DavConfig>,
+    /// Signed in with OAuth instead of a password. The secret in the keychain
+    /// is then a token set (see `oauth::TokenSet`), and every protocol sends
+    /// `Authorization: Bearer`. For Google, mail uses the Gmail API.
+    #[serde(default)]
+    pub oauth: Option<OAuthAccount>,
+}
+
+/// Who issued an account's OAuth tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OAuthIssuer {
+    Google,
+    Microsoft,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthAccount {
+    pub issuer: OAuthIssuer,
+    /// The OAuth client the tokens were issued to; refresh tokens only work
+    /// with the client that got them.
+    pub client_id: String,
+    /// Overrides the provider's API root (tests, or a self-hosted proxy).
+    #[serde(default)]
+    pub api_base: Option<String>,
+    /// Overrides the provider's token endpoint (tests).
+    #[serde(default)]
+    pub token_url: Option<String>,
 }
 
 /// Where an account's calendars and contacts live.

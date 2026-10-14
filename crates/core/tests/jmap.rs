@@ -30,6 +30,7 @@ fn config() -> AccountConfig {
         smtp: unused,
         jmap: Some(JmapConfig { session_url: URL.into(), bearer: false }),
         dav: None,
+        oauth: None,
     }
 }
 

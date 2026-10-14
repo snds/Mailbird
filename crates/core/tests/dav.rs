@@ -29,6 +29,7 @@ fn config() -> AccountConfig {
         smtp: unused,
         jmap: None,
         dav: None,
+        oauth: None,
     }
 }
 

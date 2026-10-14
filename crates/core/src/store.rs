@@ -252,6 +252,12 @@ impl Store {
         self.account(id)
     }
 
+    /// Replaces an account's settings (after signing in again, say), keeping its mail.
+    pub fn update_account_config(&self, id: &str, config: &AccountConfig) -> Result<Account> {
+        self.db.execute("UPDATE accounts SET config = ?2, dav_error = NULL WHERE id = ?1", params![id, json(config)])?;
+        self.account(id)
+    }
+
     pub fn record_dav_result(&self, account_id: &str, error: Option<&str>) -> Result<()> {
         match error {
             None => self.db.execute("UPDATE accounts SET dav_last_sync = ?2, dav_error = NULL WHERE id = ?1", params![account_id, now()])?,
@@ -1230,6 +1236,7 @@ mod tests {
                 smtp: ServerConfig { port: 25, ..server },
                 jmap: None,
                 dav: None,
+                oauth: None,
             })
             .unwrap();
         (s, a.id)

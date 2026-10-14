@@ -103,8 +103,11 @@ pub async fn set_account_dav(app: AppHandle, state: State<'_, Shared>, id: Strin
     Ok(account)
 }
 
+/// Removes the account and its mail. An OAuth sign-in is revoked with the provider too.
 #[tauri::command]
-pub fn remove_account(app: AppHandle, state: State<'_, Shared>, id: String) -> Res<()> {
+pub async fn remove_account(app: AppHandle, state: State<'_, Shared>, id: String) -> Res<()> {
+    let account = with_store(&state, |s| s.account(&id))?;
+    secrets::revoke(&account).await;
     with_store(&state, |s| s.remove_account(&id))?;
     secrets::delete(&id);
     secrets::delete(&secrets::dav_key(&id));

@@ -38,7 +38,9 @@ pub(crate) const TIMEOUT: Duration = Duration::from_secs(30);
 pub const INBOX: &str = "INBOX";
 
 pub mod dav;
+pub mod gmail;
 pub mod jmap;
+pub mod oauth;
 
 trait Io: AsyncRead + AsyncWrite + Unpin + Send + Debug {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Debug> Io for T {}
@@ -552,6 +554,7 @@ mod tests {
             smtp: ServerConfig { port: 465, ..server },
             jmap: None,
             dav: None,
+            oauth: None,
         }
     }
 

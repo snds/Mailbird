@@ -38,7 +38,18 @@ fn is_local(u: &reqwest::Url) -> bool {
 }
 
 impl Dav {
+    /// Signs in with a username and password (HTTP Basic).
     pub fn new(url: &str, username: &str, secret: &str) -> Result<Self> {
+        let pair = format!("{username}:{secret}");
+        Self::with_auth(url, format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(pair)))
+    }
+
+    /// Signs in with an OAuth access token (Google's CalDAV and CardDAV).
+    pub fn with_bearer(url: &str, token: &str) -> Result<Self> {
+        Self::with_auth(url, format!("Bearer {token}"))
+    }
+
+    fn with_auth(url: &str, auth: String) -> Result<Self> {
         let base = reqwest::Url::parse(url.trim()).map_err(|_| Error::Invalid(format!("“{url}” isn't a valid URL")))?;
         if base.scheme() != "https" && !(base.scheme() == "http" && is_local(&base)) {
             return Err(Error::Invalid("CalDAV and CardDAV need https:// (plain http is only allowed for localhost)".into()));
@@ -50,8 +61,7 @@ impl Dav {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(http_err)?;
-        let pair = format!("{username}:{secret}");
-        Ok(Self { http, auth: format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(pair)), base })
+        Ok(Self { http, auth, base })
     }
 
     fn resolve(&self, href: &str) -> Result<reqwest::Url> {

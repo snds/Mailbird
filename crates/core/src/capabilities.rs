@@ -89,6 +89,7 @@ impl Provider {
                 // Groups need the People API — Google's CardDAV omits them.
                 contact_groups: true,
                 server_side_scheduling: true,
+                // Gmail push needs a Pub/Sub server; the native app polls the history id every 30 s.
                 push: true,
                 auth: AuthMethod::OAuth2,
             },
