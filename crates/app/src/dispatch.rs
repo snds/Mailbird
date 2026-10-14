@@ -42,6 +42,14 @@ macro_rules! args {
 
 /// Every command the UI can call.
 pub const COMMANDS: &[&str] = &[
+    "list_splits",
+    "save_split",
+    "delete_split",
+    "move_split",
+    "inbox_overview",
+    "bundle_mark_read",
+    "bundle_archive",
+    "unarchive_bundle",
     "provider_capabilities",
     "list_accounts",
     "add_account",
@@ -282,6 +290,35 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "list_contacts" => {
             args!(args, search: Option<String>, label: Option<String>);
             Output::json(pim_commands::list_contacts(state, search, label)?)
+        }
+        "list_splits" => Output::json(commands::list_splits(state)?),
+        "save_split" => {
+            args!(args, id: Option<String>, input: pim_core::SplitInput);
+            Output::json(commands::save_split(app.clone(), state, id, input)?)
+        }
+        "delete_split" => {
+            args!(args, id: String);
+            Output::json(commands::delete_split(app.clone(), state, id)?)
+        }
+        "move_split" => {
+            args!(args, id: String, index: usize);
+            Output::json(commands::move_split(app.clone(), state, id, index)?)
+        }
+        "inbox_overview" => {
+            args!(args, account_id: Option<String>);
+            Output::json(commands::inbox_overview(state, account_id)?)
+        }
+        "bundle_mark_read" => {
+            args!(args, account_id: Option<String>);
+            Output::json(commands::bundle_mark_read(app.clone(), state, account_id)?)
+        }
+        "bundle_archive" => {
+            args!(args, account_id: Option<String>);
+            Output::json(commands::bundle_archive(app.clone(), state, account_id)?)
+        }
+        "unarchive_bundle" => {
+            args!(args, keys: Vec<String>);
+            Output::json(commands::unarchive_bundle(app.clone(), state, keys)?)
         }
         "contact_labels" => Output::json(pim_commands::contact_labels(state)?),
         "deleted_contacts" => Output::json(pim_commands::deleted_contacts(state)?),

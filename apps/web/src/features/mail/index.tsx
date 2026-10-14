@@ -12,7 +12,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAccounts, useCore, useMailAction, useMessagePages, useScreener, useThread } from "@/core/queries"
+import { useAccounts, useCore, useInboxOverview, useMailAction, useMessagePages, useScreener, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -24,6 +24,7 @@ import { CATEGORIES, LANES, type MailTab } from "./lanes"
 import { useSenderActions } from "./sender-actions"
 import { displayName, initials } from "./format"
 import { ScheduledList } from "./scheduled-list"
+import { BundleRow, SplitChips } from "./splits"
 import { SwipeRow } from "./swipe-row"
 import { useMailShortcuts } from "./use-shortcuts"
 
@@ -35,6 +36,7 @@ export function MailView() {
   // People / Updates / Newsletters chips filter the inbox.
   const category = useUi((s) => s.mailCategory)
   const setCategory = useUi((s) => s.setMailCategory)
+  const split = useUi((s) => s.mailSplit)
   const { data: screener } = useScreener()
   const senderActions = useSenderActions()
   const now = useNowSecs()
@@ -51,8 +53,18 @@ export function MailView() {
 
   const { data: core } = useCore()
   const { data: accounts = [] } = useAccounts()
-  const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessagePages({ lane, accountId, search: deferredSearch || null, category: tab === "inbox" ? category : null })
+  // All of the inbox (no chip, no search) folds newsletters into the bundle row.
+  const bundling = tab === "inbox" && !category && !split && !deferredSearch
+  const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessagePages({
+    lane,
+    accountId,
+    search: deferredSearch || null,
+    category: tab === "inbox" ? category : null,
+    split: tab === "inbox" ? split : null,
+    bundle: bundling,
+  })
   const { data: thread } = useThread(selectedId)
+  const { data: overview } = useInboxOverview(accountId)
   const openComposer = useUi((s) => s.openComposer)
   const setAccountsOpen = useUi((s) => s.setAccountsOpen)
   const sync = useMailAction<void>((c) => c.syncNow())
@@ -175,6 +187,7 @@ export function MailView() {
                     {c.label}
                   </Button>
                 ))}
+                <SplitChips accountId={accountId} onPick={() => setSelected(null)} />
               </div>
             )}
             {tab === "screener" && (
@@ -201,6 +214,8 @@ export function MailView() {
               <Icon name="add" data-icon="inline-start" /> Add account
             </Button>
           </Empty>
+        ) : list.length === 0 && bundling && overview?.bundle ? (
+          <BundleRow accountId={accountId} onOpen={() => (setCategory("newsletters"), setSelected(null))} />
         ) : list.length === 0 ? (
           <Empty className="py-16">
             <EmptyHeader>
@@ -212,6 +227,8 @@ export function MailView() {
             </EmptyHeader>
           </Empty>
         ) : (
+          <>
+          {bundling && <BundleRow accountId={accountId} onOpen={() => (setCategory("newsletters"), setSelected(null))} />}
           <VirtualList
             items={list}
             itemKey={(m) => m.threadId}
@@ -244,6 +261,7 @@ export function MailView() {
               </SwipeRow>
             )}
           />
+          </>
         )
       }
       detail={

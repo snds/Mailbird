@@ -235,7 +235,7 @@ mod tests {
     }
 
     fn lane(s: &Store, lane: Lane) -> Vec<crate::MessageSummary> {
-        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap()
+        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap()
     }
 
     fn make_due(s: &Store) {

@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-import type { Category, ContactInput, Draft, EditScope, EventInput, MessageSummary } from "@/core/types"
+import type { Category, ContactInput, Draft, EditScope, EventInput, MessageSummary, SplitInput } from "@/core/types"
 
 import type { MailTab } from "@/features/mail/lanes"
 
@@ -77,6 +77,12 @@ interface UiState {
   /** People, Updates, or Newsletters in the inbox; null for all. */
   mailCategory: Category | null
   setMailCategory: (category: Category | null) => void
+  /** A split tab in the inbox; null for none. Exclusive with the category. */
+  mailSplit: string | null
+  setMailSplit: (split: string | null) => void
+  /** The split editor: a new split (no id) or one being changed. */
+  splitEditor: { id?: string; initial: Partial<SplitInput> } | null
+  openSplitEditor: (state: { id?: string; initial: Partial<SplitInput> } | null) => void
 }
 
 /** A draft for the composer; `sendAt` reopens a scheduled message with its time. */
@@ -84,7 +90,7 @@ export type ComposerDraft = Partial<Draft> & { sendAt?: number | null }
 
 export const useUi = create<UiState>((set, get) => ({
   vertical: "mail",
-  setVertical: (vertical) => set({ vertical, jump: null, openNote: null, mailTab: "inbox", mailSearch: "", mailCategory: null }),
+  setVertical: (vertical) => set({ vertical, jump: null, openNote: null, mailTab: "inbox", mailSearch: "", mailCategory: null, mailSplit: null }),
   jump: null,
   jumpTo: (jump) =>
     jump.kind === "note"
@@ -115,9 +121,13 @@ export const useUi = create<UiState>((set, get) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   mailTab: "inbox",
   setMailTab: (mailTab) => set({ mailTab }),
-  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, mailCategory: null, jump: null, openNote: null }),
+  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
   mailCategory: null,
-  setMailCategory: (mailCategory) => set({ mailCategory }),
+  setMailCategory: (mailCategory) => set({ mailCategory, mailSplit: null }),
+  mailSplit: null,
+  splitEditor: null,
+  openSplitEditor: (splitEditor) => set({ splitEditor }),
+  setMailSplit: (mailSplit) => set({ mailSplit, mailCategory: null }),
   mailSearch: "",
   setMailSearch: (mailSearch) => set({ mailSearch }),
 }))

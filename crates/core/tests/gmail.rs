@@ -287,7 +287,7 @@ async fn sync(store: &Store, account: &str, cfg: &AccountConfig, token: &str) ->
 }
 
 fn subjects(store: &Store, lane: Lane) -> Vec<String> {
-    let mut s: Vec<String> = store.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap().into_iter().map(|m| m.subject).collect();
+    let mut s: Vec<String> = store.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap().into_iter().map(|m| m.subject).collect();
     s.sort();
     s
 }
@@ -359,7 +359,7 @@ async fn gmail_end_to_end() {
     assert_eq!(b.new_messages.len(), 1, "trashed mail never arrives");
 
     // Local changes reach Gmail as label changes.
-    let row = |s: &str| store.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap().into_iter().find(|m| m.subject == s).unwrap();
+    let row = |s: &str| store.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap().into_iter().find(|m| m.subject == s).unwrap();
     store.set_thread_seen(&row("Fresh news").thread_id, true).unwrap();
     store.set_thread_flagged(&row("Welcome").thread_id, true).unwrap();
     store.set_thread_archived(&row("Welcome").thread_id, true).unwrap();
@@ -401,7 +401,7 @@ async fn gmail_end_to_end() {
     assert_eq!(fake.lock().unwrap().sent.len(), 1);
     store.insert_local(&account, pim_core::store::SENT, &raw, true).unwrap();
     sync(&store, &account, &cfg, &token).await;
-    let welcome_row = store.messages(&MessageQuery { lane: Lane::Starred, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap().into_iter().find(|m| m.subject.ends_with("Welcome")).unwrap();
+    let welcome_row = store.messages(&MessageQuery { lane: Lane::Starred, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap().into_iter().find(|m| m.subject.ends_with("Welcome")).unwrap();
     let thread = store.thread(&welcome_row.thread_id).unwrap();
     let sent: Vec<_> = thread.iter().filter(|m| m.summary.mailbox == pim_core::store::SENT).collect();
     assert_eq!(sent.len(), 1, "one Sent copy in the conversation, not two");

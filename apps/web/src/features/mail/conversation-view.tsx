@@ -288,6 +288,18 @@ export function ConversationView({
                   </DropdownMenuRadioGroup>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    // A split for the sender's whole domain, unless it's a mailbox provider's.
+                    const domain = target.from.email.split("@")[1]?.toLowerCase() ?? ""
+                    const shared = /^(gmail|googlemail|outlook|hotmail|live|icloud|me|yahoo|proton|protonmail|fastmail)\./.test(domain)
+                    const name = shared ? displayName(target.from) : domain.split(".").at(-2)?.replace(/^./, (c) => c.toUpperCase()) ?? domain
+                    useUi.getState().openSplitEditor({ initial: { name, senders: [shared ? target.from.email.toLowerCase() : `@${domain}`], exclusive: true } })
+                  }}
+                >
+                  <Icon name="tab_new_right" />
+                  Make a split for {target.from.email.split("@")[1] && !/^(gmail|googlemail|outlook|hotmail|live|icloud|me|yahoo|proton|protonmail|fastmail)\./.test(target.from.email.split("@")[1]!.toLowerCase()) ? `@${target.from.email.split("@")[1]}` : "this sender"}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => senders.decide(target.from, "screened_out")}>
                   <Icon name="person_off" />
                   Screen out sender

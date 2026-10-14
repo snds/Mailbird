@@ -89,7 +89,7 @@ async fn sync(store: &Store, account: &str) -> usize {
 }
 
 fn lane(store: &Store, lane: Lane) -> Vec<pim_core::MessageSummary> {
-    store.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap()
+    store.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap()
 }
 
 #[tokio::test]
@@ -155,7 +155,7 @@ async fn full_round_trip() {
 
     // Search over synced mail.
     let found = store
-        .messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some("fourth".into()), limit: None, offset: None, category: None })
+        .messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some("fourth".into()), limit: None, offset: None, category: None, split: None, bundle: false })
         .unwrap();
     assert_eq!(found.len(), 1);
 
@@ -250,7 +250,7 @@ async fn full_round_trip() {
     assert_eq!(first.new_messages.len(), net::INITIAL_SYNC_LIMIT);
     assert!(first.more_older);
     fresh.apply_sync(&acct2, &first).unwrap();
-    let all = |s: &Store| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(1000), offset: None, category: None }).unwrap();
+    let all = |s: &Store| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(1000), offset: None, category: None, split: None, bundle: false }).unwrap();
     assert!(all(&fresh).iter().any(|m| m.subject == format!("Bulk {:04}", total - 1)), "newest first");
     let second = pass(&fresh, &acct2).await;
     assert_eq!(second.new_messages.len(), 60);

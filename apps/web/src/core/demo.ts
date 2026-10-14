@@ -2,6 +2,8 @@ import type { CoreClient, CoreEvent } from "./client"
 import type {
   Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OAuthClientInfo, OAuthIssuer, OutboxItem, Provider, PushSettings,
   Signature, Template, Category, Sender, SenderDecision,
+  Split,
+  SplitInput,
 } from "./types"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
@@ -132,6 +134,14 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
 <script>document.body.innerHTML = "pwned"</script>
 <p><a href="https://example.com/issue-212">Read the issue →</a></p>`,
         }),
+      // `?newsletters`: a second newsletter, so the inbox bundles them.
+      ...(new URLSearchParams(globalThis.location?.search ?? "").has("newsletters")
+        ? [
+            msg("personal", { name: "Clay Club", email: "news@clayclub.example" }, "October at the studio", "Open kiln nights are back on Thursdays.", 5 * HOUR, {
+              unsubscribe: { oneClick: null, mailto: "mailto:leave@clayclub.example", web: null },
+            }),
+          ]
+        : []),
       msg("personal", { name: "Ana Duarte", email: "ana@example.com" }, "Photos from the trip",
         "Finally sorted them. The lighthouse ones came out great — two favorites attached.\n\nAna Duarte\nLighthouse Studio\nm: +351 913 555 010", 3 * 24 * HOUR, {
           seen: true, flagged: true,
@@ -232,6 +242,37 @@ export function createDemoClient(): CoreClient {
   }
   /** Message-IDs of your mail in a thread that carry a reminder. */
   const sentIn = (threadId: string) => thread(threadId).flatMap((m) => (m.mailbox === SENT && m.messageId && followUps.has(m.messageId) ? [m.messageId] : []))
+  // Splits (ADR-0022): your own inbox tabs, by rule.
+  let splits: Split[] = []
+  let nSplits = 0
+  const splitMatch = (s: SplitInput, m: MessageDetail) => {
+    const from = key(m.from.email)
+    const senders = s.senders.map(key).filter(Boolean)
+    if (senders.length && !senders.some((x) => (x.startsWith("@") ? from.endsWith(x) || from.endsWith(`.${x.slice(1)}`) : from === x))) return false
+    if (s.subject?.trim() && !m.subject.toLowerCase().includes(s.subject.trim().toLowerCase())) return false
+    if (s.hasAttachments && !m.hasAttachments) return false
+    if (s.accountId && m.accountId !== s.accountId) return false
+    return true
+  }
+  const checkSplit = (input: SplitInput): SplitInput => {
+    const r = { ...input, name: input.name.trim(), senders: input.senders.map((x) => x.trim().toLowerCase()).filter(Boolean), subject: input.subject?.trim() || null }
+    if (!r.name) throw new Error("give the split a name")
+    if (!r.senders.length && !r.subject && !r.hasAttachments && !r.accountId) throw new Error("say what goes in it: a sender, a domain, or subject words")
+    const bad = r.senders.find((x) => !x.includes("@") || x.endsWith("@"))
+    if (bad) throw new Error(`“${bad}” isn't an address or a domain like @example.com`)
+    return r
+  }
+  /** Newsletters in the main inbox: what the bundle holds. */
+  const bundleMessages = (accountId: string | null, t: number) => {
+    const list = state.messages.filter((m) => (!accountId || m.accountId === accountId) && m.mailbox !== SENT && inLane(m, "inbox", t) && inMainInbox(m) && categoryOf(m) === "newsletters")
+    const threads = new Map<string, MessageDetail[]>()
+    for (const m of list) threads.set(m.threadId, [...(threads.get(m.threadId) ?? []), m])
+    const newest = [...list].sort((a, b) => b.date - a.date)
+    const senders = [...new Set(newest.map((m) => m.from.name || m.from.email))].slice(0, 3)
+    return { list, threads: threads.size, unread: [...threads.values()].filter((ms) => ms.some((m) => !m.seen)).length, latest: newest[0]?.date ?? 0, senders }
+  }
+  /** The main inbox leaves out what exclusive splits take. */
+  const inMainInbox = (m: MessageDetail) => !splits.some((s) => s.exclusive && splitMatch(s, m))
   const inLane = (m: MessageDetail, lane: Lane, t: number) => {
     const r = m.mailbox !== SENT
     const due = followUpAt(m)
@@ -444,10 +485,17 @@ export function createDemoClient(): CoreClient {
     listMessages: (q: MessageQuery) => {
       const t = now()
       const needle = q.search?.trim().toLowerCase()
+      const split = q.lane === "inbox" && q.split ? splits.find((s) => s.id === q.split) : undefined
+      if (q.lane === "inbox" && q.split && !split) throw new Error("that split was deleted")
+      const bundled = q.lane === "inbox" && q.bundle && !q.category && !q.split && bundleMessages(q.accountId ?? null, t).threads >= 2
       const matching = state.messages.filter((m) => {
         if (q.accountId && m.accountId !== q.accountId) return false
         if (needle && ![m.subject, m.from.name ?? "", m.from.email, m.bodyText].some((f) => f.toLowerCase().includes(needle))) return false
         if (q.category && categoryOf(m) !== q.category) return false
+        if (q.lane === "inbox") {
+          if (split ? !splitMatch(split, m) : !inMainInbox(m)) return false
+          if (bundled && categoryOf(m) === "newsletters") return false
+        }
         return inLane(m, q.lane, t)
       })
       // Group by conversation: newest matching message, rolled-up state.
@@ -481,6 +529,55 @@ export function createDemoClient(): CoreClient {
       return later(list.map((m) => ({ ...withInvite(m), followUpAt: followUpAt(m), threadCount: list.length })))
     },
 
+    listSplits: async () => later(splits),
+    saveSplit: async (id, input) => {
+      const rule = checkSplit(input)
+      if (id && !splits.some((s) => s.id === id)) throw new Error("that split was deleted")
+      const split = { ...rule, id: id ?? `split-${++nSplits}` }
+      splits = id ? splits.map((s) => (s.id === id ? split : s)) : [...splits, split]
+      done()
+      return later(split)
+    },
+    deleteSplit: async (id) => {
+      splits = splits.filter((s) => s.id !== id)
+      done()
+      return later(splits)
+    },
+    moveSplit: async (id, index) => {
+      const s = splits.find((x) => x.id === id)
+      if (!s) throw new Error("that split was deleted")
+      splits = splits.filter((x) => x !== s)
+      splits.splice(Math.min(index, splits.length), 0, s)
+      done()
+      return later(splits)
+    },
+    inboxOverview: async (accountId) => {
+      const t = now()
+      const count = (s: Split) => {
+        const threads = new Map<string, boolean>()
+        for (const m of state.messages.filter((x) => (!accountId || x.accountId === accountId) && inLane(x, "inbox", t) && splitMatch(s, x))) threads.set(m.threadId, (threads.get(m.threadId) ?? true) && m.seen)
+        return { id: s.id, threads: threads.size, unread: [...threads.values()].filter((seen) => !seen).length }
+      }
+      const b = bundleMessages(accountId ?? null, t)
+      return later({ splits: splits.map(count), bundle: b.threads >= 2 ? { threads: b.threads, unread: b.unread, latest: b.latest, senders: b.senders } : null })
+    },
+    bundleMarkRead: async (accountId) => {
+      const { list } = bundleMessages(accountId ?? null, now())
+      const n = list.filter((m) => !m.seen).length
+      list.forEach((m) => (m.seen = true))
+      done()
+      return later(n)
+    },
+    bundleArchive: async (accountId) => {
+      const { list } = bundleMessages(accountId ?? null, now())
+      list.forEach((m) => (m.archived = true))
+      done()
+      return later(list.map((m) => m.id))
+    },
+    unarchiveBundle: async (keys) => {
+      state.messages.filter((m) => keys.includes(m.id)).forEach((m) => (m.archived = false))
+      done()
+    },
     setThreadSeen: async (threadId, seen) => { received(threadId).forEach((m) => (m.seen = seen)); done() },
     setThreadFlagged: async (threadId, flagged) => {
       const list = received(threadId)

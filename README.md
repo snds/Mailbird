@@ -89,6 +89,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **9 · Connected calendar** ✅ | Join buttons from meeting links, a Birthdays calendar from contacts, mail and meetings on each contact card, a second time zone, reminders missed while closed ([ADR-0019](docs/decisions/0019-connected-calendar.md)) |
 | **10 · Contacts depth** ✅ | Contacts from email signatures (pasted or suggested under a message), labels, Recently deleted for 30 days, share as a vCard file or QR code ([ADR-0020](docs/decisions/0020-contacts-depth.md)) |
 | **11 · Calendar planning** ✅ | Clashes on every invitation, propose a new time (iTIP COUNTER) and answer proposals, find a time in your calendars, calendar sets ([ADR-0021](docs/decisions/0021-calendar-planning.md)) |
+| **12 · Inbox your way** ✅ | Split inboxes from your own rules (senders, domains, subject words), kept out of All or not; newsletters folded into one row with mark-all-read and archive-all ([ADR-0022](docs/decisions/0022-inbox-your-way.md)) |
 
 ## License
 
