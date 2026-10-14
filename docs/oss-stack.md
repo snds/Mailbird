@@ -37,6 +37,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | temporal-polyfill | Dates and time zones | 1.0 | MIT | 🟦 | Prefer Temporal over date-fns for time-zone-correct calendar math. |
 | cmdk | Command palette | 1.1 | MIT | 🟦 | shadcn Command. |
 | sonner | Toasts / undo | 2.0 | MIT | 🟦 | — |
+| cmdk | ⌘K command menu (shadcn Command) | 1.1 | MIT | ✅ | Uses four small Radix packages (dialog, id, primitive, compose-refs), all MIT. |
 | react-hook-form + zod | Forms | 7.90 / 4.6 | MIT | 🟦 | — |
 | i18next | Localization | 26 | MIT | 🟦 | — |
 | vite-plugin-pwa | Installable web app | 2.0 | MIT | 🟦 | Confirm Vite 8 compatibility. |

@@ -17,6 +17,8 @@ use std::collections::BTreeSet;
 use base64::Engine;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
+use crate::compose_store::FOLLOW_UP_AT;
+
 use crate::{
     Account, AccountConfig, Address, AttachmentInfo, Draft, Error, Lane,
     MessageDetail, MessageQuery, MessageSummary, OpKind, OutboxItem, OutboxState, PendingOp,
@@ -33,7 +35,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -197,6 +199,9 @@ impl Store {
         if version < 6 {
             tx.execute_batch(crate::notes_store::MIGRATE_V6)?;
         }
+        if version < 7 {
+            tx.execute_batch(crate::compose_store::MIGRATE_V7)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
         let store = Self { db };
@@ -305,11 +310,13 @@ impl Store {
             args.push(account.clone().into());
         }
         let awake = "(m.snoozed_until IS NULL OR m.snoozed_until <= ?)";
-        // Sent copies belong to conversations but never make a thread "in the inbox".
+        // Sent copies belong to conversations but never make a thread "in the
+        // inbox", unless a follow-up reminder brought them back.
         let received = format!("m.mailbox <> '{SENT}'");
         match q.lane {
             Lane::Inbox => {
-                clauses.push(format!("{received} AND m.archived = 0 AND {awake}"));
+                clauses.push(format!("(({received} AND m.archived = 0 AND {awake}) OR {FOLLOW_UP_AT} <= ?)"));
+                args.push(t.into());
                 args.push(t.into());
             }
             Lane::Unread => {
@@ -322,17 +329,29 @@ impl Store {
                 args.push(t.into());
             }
             Lane::Archive => clauses.push(format!("{received} AND m.archived = 1")),
+            Lane::Waiting => {
+                clauses.push(format!("{FOLLOW_UP_AT} > ?"));
+                args.push(t.into());
+            }
         }
-        let order = if q.lane == Lane::Snoozed { "snoozed_until ASC" } else { "sort_at DESC" };
+        let order = match q.lane {
+            Lane::Snoozed => "snoozed_until ASC",
+            Lane::Waiting => "follow_up_at ASC",
+            _ => "rank_at DESC",
+        };
+        // A conversation a reminder brought back sorts by when it came due.
+        let due = i64::from(q.lane == Lane::Inbox) * t;
         args.push(i64::from(q.limit.unwrap_or(200).min(1000)).into());
         args.push(i64::from(q.offset.unwrap_or(0)).into());
 
         let sql = format!(
             "WITH lane AS (
-               SELECT m.* FROM {from} WHERE {where_}
+               SELECT m.*, {FOLLOW_UP_AT} AS follow_up_at FROM {from} WHERE {where_}
              ), ranked AS (
                SELECT lane.*,
-                 ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sort_at DESC) AS rn,
+                 CASE WHEN follow_up_at <= {due} THEN MAX(follow_up_at, sort_at) ELSE sort_at END AS rank_at,
+                 ROW_NUMBER() OVER (PARTITION BY thread_id
+                   ORDER BY CASE WHEN follow_up_at <= {due} THEN MAX(follow_up_at, sort_at) ELSE sort_at END DESC) AS rn,
                  MIN(seen) OVER (PARTITION BY thread_id) AS thread_seen
                FROM lane
              )
@@ -368,6 +387,11 @@ impl Store {
         }
         // An unreadable invitation is just mail.
         detail.invite = self.message_invite(id).unwrap_or(None);
+        // Your own mail has nothing to unsubscribe from.
+        if detail.summary.mailbox != SENT {
+            let raw: Option<Vec<u8>> = self.db.query_row("SELECT raw FROM messages WHERE id = ?1", [id], |r| r.get(0))?;
+            detail.unsubscribe = raw.as_deref().and_then(crate::unsubscribe::from_raw);
+        }
         Ok(detail)
     }
 
@@ -578,7 +602,12 @@ impl Store {
 
     pub fn set_thread_archived(&self, thread_id: &str, archived: bool) -> Result<()> {
         let tx = self.db.unchecked_transaction()?;
-        self.thread_members(thread_id, "")?;
+        // Archiving a conversation a reminder brought back dismisses the
+        // reminder; a conversation of only your own mail has nothing else to move.
+        let dismissed = if archived { self.dismiss_due_follow_ups(thread_id)? } else { 0 };
+        if dismissed == 0 {
+            self.thread_members(thread_id, "")?;
+        }
         for id in self.thread_members(thread_id, &format!("AND archived <> {}", archived as i32))? {
             self.set_archived(&id, archived)?;
         }
@@ -893,8 +922,9 @@ impl Store {
 
     // ── Outbox (undo send) ───────────────────────────────────────────────
 
-    /// Queue a message to send after `undo_secs`. Until then it can be cancelled.
-    pub fn queue_send(&self, draft: &Draft, undo_secs: i64) -> Result<OutboxItem> {
+    /// Queue a message to send after `undo_secs`, or at `send_at` when it's
+    /// scheduled. Until then it can be cancelled.
+    pub fn queue_send(&self, draft: &Draft, undo_secs: i64, send_at: Option<i64>) -> Result<OutboxItem> {
         if draft.to.is_empty() && draft.cc.is_empty() {
             return Err(Error::Invalid("add at least one recipient".into()));
         }
@@ -907,9 +937,19 @@ impl Store {
                 "attachments are over 25 MB — most mail servers will refuse the message".into(),
             ));
         }
+        if let Some(after) = draft.follow_up_after
+            && !(60..=MAX_FOLLOW_UP_AFTER).contains(&after)
+        {
+            return Err(Error::Invalid("pick a follow-up between a minute and a year after sending".into()));
+        }
         self.account(&draft.account_id)?;
         let id = uuid::Uuid::new_v4().to_string();
-        let send_at = now() + undo_secs.clamp(0, 120);
+        let send_at = match send_at {
+            Some(at) if at <= now() + 60 => return Err(Error::Invalid("pick a time at least a minute from now".into())),
+            Some(at) if at > now() + MAX_SCHEDULE => return Err(Error::Invalid("mail can be scheduled up to a year ahead".into())),
+            Some(at) => at,
+            None => now() + undo_secs.clamp(0, 120),
+        };
         self.db.execute(
             "INSERT INTO outbox (id, account_id, draft, send_at, state, created_at)
              VALUES (?1, ?2, ?3, ?4, 'queued', ?5)",
@@ -929,6 +969,21 @@ impl Store {
             return Err(Error::Invalid("too late to undo — it has already been sent".into()));
         }
         Ok(self.outbox_item(id)?.draft)
+    }
+
+    /// Move a waiting message to another time, or `None` to send it now.
+    pub fn reschedule_send(&self, id: &str, send_at: Option<i64>) -> Result<OutboxItem> {
+        let at = match send_at {
+            None => now(),
+            Some(at) if at <= now() + 60 => return Err(Error::Invalid("pick a time at least a minute from now".into())),
+            Some(at) if at > now() + MAX_SCHEDULE => return Err(Error::Invalid("mail can be scheduled up to a year ahead".into())),
+            Some(at) => at,
+        };
+        let n = self.db.execute("UPDATE outbox SET send_at = ?2 WHERE id = ?1 AND state = 'queued'", params![id, at])?;
+        if n == 0 {
+            return Err(Error::Invalid("it has already been sent".into()));
+        }
+        self.outbox_item(id)
     }
 
     /// Claim every item whose undo window has closed. Claiming flips the state
@@ -966,7 +1021,7 @@ impl Store {
     /// Items that are waiting or failed, for an "Outbox" view.
     pub fn outbox(&self) -> Result<Vec<OutboxItem>> {
         let mut stmt = self.db.prepare(
-            "SELECT id, draft, send_at, state, error FROM outbox
+            "SELECT id, draft, send_at, state, error, send_at - created_at > 120 FROM outbox
              WHERE state IN ('queued','sending','failed') ORDER BY send_at",
         )?;
         let rows = stmt.query_map([], outbox_row)?;
@@ -976,7 +1031,7 @@ impl Store {
     fn outbox_item(&self, id: &str) -> Result<OutboxItem> {
         self.db
             .query_row(
-                "SELECT id, draft, send_at, state, error FROM outbox WHERE id = ?1",
+                "SELECT id, draft, send_at, state, error, send_at - created_at > 120 FROM outbox WHERE id = ?1",
                 [id],
                 outbox_row,
             )
@@ -984,6 +1039,10 @@ impl Store {
             .ok_or_else(|| Error::NotFound("that message isn't in the outbox".into()))
     }
 }
+
+/// Scheduled sends and follow-ups reach up to a year out.
+const MAX_SCHEDULE: i64 = 366 * 24 * 3600;
+const MAX_FOLLOW_UP_AFTER: i64 = MAX_SCHEDULE;
 
 /// The usual provider limit on a whole message is 25 MB.
 const MAX_OUTGOING_ATTACHMENTS: usize = 25 * 1024 * 1024;
@@ -1083,6 +1142,12 @@ fn insert_message(
     }
     let refs: BTreeSet<&str> = chain.iter().copied().collect();
     assign_thread(tx, account_id, &id, p.message_id.as_deref(), &refs)?;
+    // A reply to something you're waiting on ends the wait.
+    if mailbox != SENT {
+        for r in &chain {
+            tx.execute("DELETE FROM follow_ups WHERE account_id = ?1 AND message_id = ?2", params![account_id, r])?;
+        }
+    }
     Ok(Some(id))
 }
 
@@ -1125,7 +1190,9 @@ const SUMMARY_COLS_PLAIN: &str = "m.id, m.account_id, m.thread_id, \
      (SELECT COUNT(*) FROM messages t WHERE t.thread_id = m.thread_id), \
      EXISTS (SELECT 1 FROM messages t WHERE t.thread_id = m.thread_id AND t.has_attachments = 1), \
      m.from_name, m.from_email, m.subject, m.preview, m.date, m.sort_at, m.seen, m.flagged, \
-     m.archived, m.snoozed_until, m.mailbox";
+     m.archived, m.snoozed_until, m.mailbox, \
+     (SELECT f.due_at FROM follow_ups f WHERE m.mailbox = 'Sent' AND f.account_id = m.account_id AND f.message_id = m.message_id), \
+     CASE WHEN m.mailbox = 'Sent' THEN COALESCE(json_extract(m.to_json, '$[0].name'), json_extract(m.to_json, '$[0].email')) END";
 
 /// Same columns for list rows, with read and starred rolled up per thread.
 const SUMMARY_COLS_RANKED: &str = "m.id, m.account_id, m.thread_id, \
@@ -1133,7 +1200,8 @@ const SUMMARY_COLS_RANKED: &str = "m.id, m.account_id, m.thread_id, \
      EXISTS (SELECT 1 FROM messages t WHERE t.thread_id = m.thread_id AND t.has_attachments = 1), \
      m.from_name, m.from_email, m.subject, m.preview, m.date, m.sort_at, m.thread_seen, \
      EXISTS (SELECT 1 FROM messages t WHERE t.thread_id = m.thread_id AND t.flagged = 1), \
-     m.archived, m.snoozed_until, m.mailbox";
+     m.archived, m.snoozed_until, m.mailbox, m.follow_up_at, \
+     CASE WHEN m.mailbox = 'Sent' THEN COALESCE(json_extract(m.to_json, '$[0].name'), json_extract(m.to_json, '$[0].email')) END";
 
 fn summary_row(r: &Row) -> rusqlite::Result<MessageSummary> {
     Ok(MessageSummary {
@@ -1152,20 +1220,23 @@ fn summary_row(r: &Row) -> rusqlite::Result<MessageSummary> {
         archived: r.get(13)?,
         snoozed_until: r.get(14)?,
         mailbox: r.get(15)?,
+        follow_up_at: r.get(16)?,
+        sent_to: r.get(17)?,
     })
 }
 
 fn detail_row(r: &Row) -> rusqlite::Result<MessageDetail> {
     Ok(MessageDetail {
         summary: summary_row(r)?,
-        to: from_json(r.get(16)?),
-        cc: from_json(r.get(17)?),
-        message_id: r.get(18)?,
-        body_text: r.get(19)?,
-        body_html: r.get(20)?,
+        to: from_json(r.get(18)?),
+        cc: from_json(r.get(19)?),
+        message_id: r.get(20)?,
+        body_text: r.get(21)?,
+        body_html: r.get(22)?,
         attachments: vec![],
         references: vec![],
         invite: None,
+        unsubscribe: None,
     })
 }
 
@@ -1196,6 +1267,7 @@ fn outbox_row(r: &Row) -> rusqlite::Result<OutboxItem> {
             _ => OutboxState::Failed,
         },
         error: r.get(4)?,
+        scheduled: r.get(5)?,
     })
 }
 
@@ -1431,6 +1503,7 @@ mod tests {
             references: vec![],
             attachments: vec![],
             calendar: None,
+            follow_up_after: None,
         }
     }
 
@@ -1438,12 +1511,12 @@ mod tests {
     fn undo_send_window() {
         let (s, acct) = store_with_account();
         let draft = draft(&acct);
-        let item = s.queue_send(&draft, 10).unwrap();
+        let item = s.queue_send(&draft, 10, None).unwrap();
         assert_eq!(item.state, OutboxState::Queued);
         assert!(s.claim_due(now()).unwrap().is_empty(), "not due inside the undo window");
         assert_eq!(s.cancel_send(&item.id).unwrap(), draft);
 
-        let item = s.queue_send(&draft, 10).unwrap();
+        let item = s.queue_send(&draft, 10, None).unwrap();
         let claimed = s.claim_due(item.send_at).unwrap();
         assert_eq!(claimed.len(), 1);
         assert!(s.cancel_send(&item.id).is_err(), "can't undo once sending started");
@@ -1456,16 +1529,16 @@ mod tests {
         let (s, acct) = store_with_account();
         let mut d = draft(&acct);
         d.to.clear();
-        assert!(s.queue_send(&d, 10).is_err());
+        assert!(s.queue_send(&d, 10, None).is_err());
         d.to.push(Address { name: None, email: "not-an-address".into() });
-        assert!(s.queue_send(&d, 10).is_err());
+        assert!(s.queue_send(&d, 10, None).is_err());
         let mut d = draft(&acct);
         d.attachments.push(crate::OutgoingAttachment {
             filename: "huge.bin".into(),
             mime_type: "application/octet-stream".into(),
             data_base64: "A".repeat(36 * 1024 * 1024),
         });
-        assert!(matches!(s.queue_send(&d, 10), Err(Error::Invalid(m)) if m.contains("25 MB")));
+        assert!(matches!(s.queue_send(&d, 10, None), Err(Error::Invalid(m)) if m.contains("25 MB")));
     }
 
     #[test]

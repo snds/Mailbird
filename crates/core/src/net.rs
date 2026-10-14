@@ -42,6 +42,7 @@ pub mod gmail;
 pub mod graph;
 pub mod graph_pim;
 pub mod push_relay;
+pub mod unsubscribe;
 pub mod jmap;
 pub mod oauth;
 
@@ -574,6 +575,7 @@ mod tests {
             references: vec!["root@example.com".into()],
             attachments: vec![],
             calendar: None,
+            follow_up_after: None,
         };
         let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
         assert!(raw.contains("From: Sean <sean@example.com>"));
@@ -601,6 +603,7 @@ mod tests {
             references: vec![],
             attachments: vec![],
             calendar: None,
+            follow_up_after: None,
         };
         assert!(matches!(build_message(&config(), &draft), Err(Error::Invalid(_))));
     }
@@ -622,6 +625,7 @@ mod tests {
                 data_base64: base64::engine::general_purpose::STANDARD.encode(b"%PDF-1.7 hello"),
             }],
             calendar: None,
+            follow_up_after: None,
         };
         let raw = build_message(&config(), &draft).unwrap().formatted();
         let parsed = crate::mime::parse(&raw).unwrap();
@@ -644,6 +648,7 @@ mod tests {
             references: vec![],
             attachments: vec![],
             calendar: None,
+            follow_up_after: None,
         };
         let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
         assert!(raw.contains("multipart/alternative"));
@@ -678,6 +683,7 @@ mod tests {
             references: vec![],
             attachments: vec![],
             calendar: Some(crate::CalendarPart { method: "request".into(), ics: "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n".into() }),
+            follow_up_after: None,
         };
         let raw = build_message(&config(), &draft).unwrap().formatted();
         let text = String::from_utf8_lossy(&raw);

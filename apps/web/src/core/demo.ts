@@ -1,12 +1,16 @@
 import type { CoreClient, CoreEvent } from "./client"
-import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OAuthClientInfo, OAuthIssuer, OutboxItem, Provider, PushSettings } from "./types"
+import type {
+  Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OAuthClientInfo, OAuthIssuer, OutboxItem, Provider, PushSettings,
+  Signature, Template,
+} from "./types"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
 
 // An in-memory stand-in for the Rust core, so the web build is usable before
 // the gateway exists. It follows the same rules as crates/core/src/store.rs:
 // conversations, lanes (Sent copies never fill the inbox), snooze wake-ups
-// (unread, back on top), thread-level triage, and an undo-send window.
+// (unread, back on top), thread-level triage, an undo-send window, scheduled
+// sends, and follow-up reminders keyed by Message-ID (ADR-0017).
 
 const now = () => Math.floor(Date.now() / 1000)
 const HOUR = 3600
@@ -43,7 +47,7 @@ interface DemoMessage extends MessageDetail {
   inviteSeed?: DemoInviteSeed
 }
 
-function seed(): { accounts: Account[]; messages: DemoMessage[] } {
+function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<string, number> } {
   const t = now()
   const server = { host: "demo.invalid", port: 993, security: "tls" as const }
   const account = (id: string, displayName: string, address: string): Account => ({
@@ -118,6 +122,7 @@ function seed(): { accounts: Account[]; messages: DemoMessage[] } {
       msg("personal", { name: "Design Systems Weekly", email: "digest@dsweekly.example" }, "Issue 212: Variable fonts in production",
         "This week: shipping icon fonts with live axes, plus a look at density modes.", 2 * 24 * HOUR, {
           seen: true,
+          unsubscribe: { oneClick: "https://dsweekly.example/u/212", mailto: "mailto:leave@dsweekly.example", web: "https://dsweekly.example/u/212" },
           // Exercises the HTML path: the script must be stripped, the pixel blocked.
           bodyHtml: `<h2 style="margin:0 0 8px">Variable fonts in production</h2>
 <p>This week: shipping icon fonts with <b>live axes</b>, plus a look at density modes.</p>
@@ -135,7 +140,13 @@ function seed(): { accounts: Account[]; messages: DemoMessage[] } {
         }),
       msg("work", { name: "Sam Okafor", email: "sam@example.com" }, "Density modes proposal",
         "Attached the comfortable / compact spec. The list row drops to 56px in compact.", 4 * 24 * HOUR, { seen: true, archived: true }),
+      // Sent with a follow-up reminder that hasn't come due (the Waiting lane).
+      msg("personal", me("personal"), "Quote for the kitchen shelves", "Hi Jo, could you send a quote for the oak shelves we talked about?", 22 * HOUR, {
+        threadId: "t-quote", seen: true, mailbox: SENT, to: [{ name: "Jo Tanaka", email: "jo@joinery.example" }], messageId: "quote@demo.example",
+      }),
     ],
+    // `?nudge` makes it already due, to see a conversation a reminder brought back.
+    followUps: new Map([["quote@demo.example", new URLSearchParams(globalThis.location?.search ?? "").has("nudge") ? t - HOUR : t + 2 * 24 * HOUR]]),
   }
 }
 
@@ -165,6 +176,12 @@ export function createDemoClient(): CoreClient {
   const state = seed()
   state.messages.push(...bulkMessages())
   const outbox = new Map<string, OutboxItem>()
+  const { followUps } = state
+  const templates: Template[] = [
+    { id: "tpl-thanks", name: "Thanks, will reply soon", subject: "", html: "<p>Thanks for this — I'll get back to you by the end of the week.</p>", updated: now() },
+  ]
+  const signatures: Signature[] = []
+  const followUpAt = (m: MessageDetail) => (m.mailbox === SENT && m.messageId ? (followUps.get(m.messageId) ?? null) : null)
   const listeners = new Map<CoreEvent, Set<(p?: unknown) => void>>()
   const emit = (e: CoreEvent, p?: unknown) => listeners.get(e)?.forEach((h) => h(p))
   const awake = (m: MessageDetail, t: number) => m.snoozedUntil === null || m.snoozedUntil <= t
@@ -174,22 +191,34 @@ export function createDemoClient(): CoreClient {
     if (!thread(threadId).length) throw new Error("that conversation is no longer here")
     return list
   }
+  /** Message-IDs of your mail in a thread that carry a reminder. */
+  const sentIn = (threadId: string) => thread(threadId).flatMap((m) => (m.mailbox === SENT && m.messageId && followUps.has(m.messageId) ? [m.messageId] : []))
   const inLane = (m: MessageDetail, lane: Lane, t: number) => {
     const r = m.mailbox !== SENT
+    const due = followUpAt(m)
     switch (lane) {
-      case "inbox": return r && !m.archived && awake(m, t)
+      case "inbox": return (r && !m.archived && awake(m, t)) || (due !== null && due <= t)
+      case "waiting": return due !== null && due > t
       case "unread": return r && !m.archived && !m.seen && awake(m, t)
       case "starred": return m.flagged
       case "snoozed": return r && m.snoozedUntil !== null && m.snoozedUntil > t
       case "archive": return r && m.archived
     }
   }
-  const summary = ({ to: _t, cc: _c, messageId: _m, bodyText: _b, bodyHtml: _h, attachments: _a, references: _r, files: _f, inviteSeed: _i, invite: _v, ...s }: DemoMessage): MessageSummary => s
+  const summary = ({ to: _t, cc: _c, messageId: _m, bodyText: _b, bodyHtml: _h, attachments: _a, references: _r, files: _f, inviteSeed: _i, invite: _v, unsubscribe: _u, ...s }: DemoMessage): MessageSummary => s
+  // A reminder that came due sorts the conversation by when it came back.
+  const rankAt = (m: MessageDetail, lane: Lane, t: number) => {
+    const due = followUpAt(m)
+    return lane === "inbox" && due !== null && due <= t ? Math.max(due, m.sortAt) : m.sortAt
+  }
 
   // The same 1-second tick the native workers run.
+  let checked = now()
   setInterval(() => {
     const t = now()
     let changed = false
+    for (const due of followUps.values()) if (due > checked && due <= t) changed = true
+    checked = t
     for (const m of state.messages) {
       if (m.snoozedUntil !== null && m.snoozedUntil <= t) {
         Object.assign(m, { snoozedUntil: null, sortAt: t, seen: false })
@@ -213,6 +242,7 @@ export function createDemoClient(): CoreClient {
           attachments: (item.draft.attachments ?? []).map((a, i) => ({ id: `${id}-a${i}`, filename: a.filename, mimeType: a.mimeType, size: Math.floor((a.dataBase64.length * 3) / 4), inline: false })),
           references: [...(item.draft.references ?? [])], files: Object.fromEntries((item.draft.attachments ?? []).map((a, i) => [`${id}-a${i}`, a.dataBase64])),
         })
+        if (item.draft.followUpAfter) followUps.set(`${id}@demo.example`, t + item.draft.followUpAfter)
         emit("outbox:changed", item.id)
         changed = true
       }
@@ -343,7 +373,7 @@ export function createDemoClient(): CoreClient {
       })
       // Group by conversation: newest matching message, rolled-up state.
       const rows = new Map<string, MessageSummary>()
-      for (const m of [...matching].sort((a, b) => b.sortAt - a.sortAt)) {
+      for (const m of [...matching].sort((a, b) => rankAt(b, q.lane, t) - rankAt(a, q.lane, t))) {
         const row = rows.get(m.threadId)
         if (row) {
           row.seen &&= m.seen
@@ -352,6 +382,8 @@ export function createDemoClient(): CoreClient {
         const all = thread(m.threadId)
         rows.set(m.threadId, {
           ...summary(m),
+          followUpAt: followUpAt(m),
+          sentTo: m.mailbox === SENT ? (m.to[0]?.name ?? m.to[0]?.email ?? null) : null,
           threadCount: all.length,
           hasAttachments: all.some((x) => x.hasAttachments),
           flagged: all.some((x) => x.flagged),
@@ -359,13 +391,14 @@ export function createDemoClient(): CoreClient {
       }
       let list = [...rows.values()]
       if (q.lane === "snoozed") list = list.sort((a, b) => a.snoozedUntil! - b.snoozedUntil!)
+      if (q.lane === "waiting") list = list.sort((a, b) => a.followUpAt! - b.followUpAt!)
       const offset = q.offset ?? 0
       return later(list.slice(offset, offset + (q.limit ?? 200)))
     },
     getThread: async (threadId) => {
       const list = thread(threadId).sort((a, b) => a.date - b.date)
       if (!list.length) throw new Error("that conversation is no longer here")
-      return later(list.map((m) => ({ ...withInvite(m), threadCount: list.length })))
+      return later(list.map((m) => ({ ...withInvite(m), followUpAt: followUpAt(m), threadCount: list.length })))
     },
 
     setThreadSeen: async (threadId, seen) => { received(threadId).forEach((m) => (m.seen = seen)); done() },
@@ -377,7 +410,61 @@ export function createDemoClient(): CoreClient {
       } else list.forEach((m) => (m.flagged = false))
       done()
     },
-    setThreadArchived: async (threadId, archived) => { received(threadId).forEach((m) => (m.archived = archived)); done() },
+    setThreadArchived: async (threadId, archived) => {
+      // Archiving a conversation a reminder brought back dismisses the reminder.
+      const t = now()
+      const due = archived ? sentIn(threadId).filter((id) => followUps.get(id)! <= t) : []
+      due.forEach((id) => followUps.delete(id))
+      ;(due.length ? thread(threadId).filter((m) => m.mailbox !== SENT) : received(threadId)).forEach((m) => (m.archived = archived))
+      done()
+    },
+    setFollowUp: async (threadId, dueAt) => {
+      if (dueAt <= now()) throw new Error("pick a time in the future")
+      if (dueAt > now() + 366 * 24 * HOUR) throw new Error("reminders can be set up to a year ahead")
+      const mine = thread(threadId).filter((m) => m.mailbox === SENT && m.messageId).sort((a, b) => b.date - a.date)[0]
+      if (!mine) throw new Error("follow-up reminders are for conversations where you've sent a message")
+      followUps.set(mine.messageId!, dueAt)
+      done()
+    },
+    cancelFollowUp: async (threadId) => {
+      sentIn(threadId).forEach((id) => followUps.delete(id))
+      done()
+    },
+    unsubscribe: async (messageId) => {
+      const m = state.messages.find((x) => x.id === messageId)
+      const u = m?.unsubscribe
+      if (!m || !u) throw new Error("this message doesn't say how to unsubscribe")
+      // Sample lists don't exist: one-click and mail succeed without sending anything.
+      if (u.oneClick) return later("one_click" as const)
+      if (u.mailto) return later("mail" as const)
+      window.open(u.web!, "_blank", "noopener")
+      return later("web" as const)
+    },
+    listTemplates: () => later([...templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))),
+    saveTemplate: async (input) => {
+      if (!input.name.trim()) throw new Error("give the template a name")
+      if (!input.html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim()) throw new Error("the template is empty")
+      const t: Template = { id: input.id ?? crypto.randomUUID(), name: input.name.trim(), subject: input.subject.trim(), html: input.html, updated: now() }
+      const i = templates.findIndex((x) => x.id === t.id)
+      if (input.id && i < 0) throw new Error("that template was deleted")
+      if (i >= 0) templates[i] = t
+      else templates.push(t)
+      emit("compose:changed")
+      return later(t)
+    },
+    deleteTemplate: async (id) => {
+      const i = templates.findIndex((x) => x.id === id)
+      if (i >= 0) templates.splice(i, 1)
+      emit("compose:changed")
+    },
+    listSignatures: () => later(signatures),
+    setSignature: async (accountId, html) => {
+      if (!state.accounts.some((a) => a.id === accountId)) throw new Error("that account is no longer here")
+      const i = signatures.findIndex((s) => s.accountId === accountId)
+      if (i >= 0) signatures.splice(i, 1)
+      if (html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim()) signatures.push({ accountId, html })
+      emit("compose:changed")
+    },
     snoozeThread: async (threadId, until) => {
       if (until <= now()) throw new Error("pick a time in the future")
       received(threadId).filter((m) => !m.archived).forEach((m) => (m.snoozedUntil = until))
@@ -403,15 +490,18 @@ export function createDemoClient(): CoreClient {
       return Uint8Array.from(atob(m.files[id]!), (c) => c.charCodeAt(0)).buffer
     },
 
-    queueSend: async (draft: Draft, undoSecs) => {
+    queueSend: async (draft: Draft, undoSecs, sendAt) => {
+      if (sendAt != null && sendAt <= now() + 60) throw new Error("pick a time at least a minute from now")
+      if (sendAt != null && sendAt > now() + 366 * 24 * HOUR) throw new Error("mail can be scheduled up to a year ahead")
+      if (draft.followUpAfter != null && (draft.followUpAfter < 60 || draft.followUpAfter > 366 * 24 * HOUR)) throw new Error("pick a follow-up between a minute and a year after sending")
       if (draft.to.length + draft.cc.length === 0) throw new Error("add at least one recipient")
       const bad = [...draft.to, ...draft.cc].find((a) => !a.email.includes("@"))
       if (bad) throw new Error(`“${bad.email}” isn't an email address`)
       const bytes = (draft.attachments ?? []).reduce((n, a) => n + (a.dataBase64.length * 3) / 4, 0)
       if (bytes > 25 * 1024 * 1024) throw new Error("attachments are over 25 MB — most mail servers will refuse the message")
       const item: OutboxItem = {
-        id: crypto.randomUUID(), draft, sendAt: now() + Math.min(Math.max(undoSecs, 0), 120),
-        state: "queued", error: null,
+        id: crypto.randomUUID(), draft, sendAt: sendAt ?? now() + Math.min(Math.max(undoSecs, 0), 120),
+        state: "queued", error: null, scheduled: sendAt != null,
       }
       outbox.set(item.id, item)
       emit("outbox:changed")
@@ -425,6 +515,14 @@ export function createDemoClient(): CoreClient {
       return structuredClone(item.draft)
     },
     listOutbox: () => later([...outbox.values()].filter((i) => i.state === "queued" || i.state === "failed")),
+    rescheduleSend: async (id, sendAt) => {
+      const item = outbox.get(id)
+      if (!item || item.state !== "queued") throw new Error("it has already been sent")
+      if (sendAt != null && sendAt <= now() + 60) throw new Error("pick a time at least a minute from now")
+      item.sendAt = sendAt ?? now()
+      emit("outbox:changed")
+      return structuredClone(item)
+    },
     on(event, handler) {
       if (!listeners.has(event)) listeners.set(event, new Set())
       listeners.get(event)!.add(handler)

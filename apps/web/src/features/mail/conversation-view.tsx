@@ -20,7 +20,11 @@ import { displayName, formatSize, forwardDraft, initials, replyDraft, replyTarge
 import { HtmlBody } from "./html-body"
 import { LinkedNotes } from "../notes/linked-notes"
 import { InviteCard } from "./invite-card"
+import { FollowUpAtMenu } from "./send-later"
 import { SnoozeMenu } from "./snooze-menu"
+import { UnsubscribeButton } from "./unsubscribe-button"
+import { useMailAction } from "@/core/queries"
+import { useNowSecs } from "@/hooks/use-now"
 
 function ToolbarButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
   return (
@@ -179,6 +183,11 @@ export function ConversationView({
   const openComposer = useUi((s) => s.openComposer)
   // Gmail/Apple Mail convention: open the newest and anything unread.
   const [expanded, setExpanded] = useState<Set<string> | null>(null)
+  const now = useNowSecs()
+  const setFollowUp = useMailAction<{ threadId: string; at: number }>((c, a) => c.setFollowUp(a.threadId, a.at))
+  const cancelFollowUp = useMailAction<string>((c, threadId) => c.cancelFollowUp(threadId))
+  const remind = (threadId: string, at: number, label: string) =>
+    setFollowUp.mutate({ threadId, at }, { onSuccess: () => toast.success(`If nobody replies, this comes back ${label}`), onError: (e) => toast.error(e.message) })
 
   if (!thread || !row) {
     return (
@@ -201,15 +210,24 @@ export function ConversationView({
   const subject = target.subject || latest.subject || "(no subject)"
   // The core clears snoozedUntil when a snooze wakes, so set means still snoozed.
   const snoozed = row.snoozedUntil !== null
+  // Follow-up reminders hang off mail you sent.
+  const sentAny = thread.some((m) => m.mailbox === "Sent")
+  const reminder = thread.map((m) => m.followUpAt).find((t) => t != null) ?? null
+  const due = reminder !== null && reminder <= now
 
   return (
     <article className="mx-auto flex max-w-3xl flex-col gap-3 px-4 pb-8 md:px-8 md:pt-6">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-1">
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-semibold tracking-tight break-words">{subject}</h2>
-          <p className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
+          <p className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
             {thread.length > 1 && <span>{thread.length} messages</span>}
             {showAccount && account && <Badge variant="secondary">{account.displayName}</Badge>}
+            {reminder !== null && !due && (
+              <span className="inline-flex items-center gap-1 text-vertical-mail">
+                <Icon name="notifications" className="size-3.5" /> Reminder {longTime(reminder)} if nobody replies
+              </span>
+            )}
           </p>
         </div>
         <div className="-mr-2 flex shrink-0 items-center">
@@ -223,8 +241,40 @@ export function ConversationView({
           )}
           <ToolbarButton icon="star" label={row.flagged ? "Unstar" : "Star"} shortcut="S" active={row.flagged} onClick={() => triage.toggleFlag(row)} />
           <ToolbarButton icon="mark_email_unread" label="Mark unread" shortcut="U" onClick={() => triage.markSeen(row, false)} />
+          {reminder !== null ? (
+            <ToolbarButton icon="notifications_active" label="Cancel reminder" active onClick={() => cancelFollowUp.mutate(row.threadId, { onSuccess: () => toast("Reminder cancelled") })} />
+          ) : (
+            sentAny && (
+              <FollowUpAtMenu onPick={(at, label) => remind(row.threadId, at, label)} trigger={<Button variant="ghost" size="icon" aria-label="Remind me if no reply" />}>
+                <Icon name="notifications" />
+              </FollowUpAtMenu>
+            )
+          )}
         </div>
       </div>
+
+      {due && (
+        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-vertical-mail/30 bg-vertical-mail/5 px-4 py-3 text-sm">
+          <Icon name="notifications_active" className="size-5 text-vertical-mail" />
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">No reply yet.</span> You asked to be reminded {longTime(reminder!)}.
+          </span>
+          <span className="flex gap-1">
+            <FollowUpAtMenu onPick={(at, label) => remind(row.threadId, at, label)} trigger={<Button variant="ghost" size="sm" />}>
+              Remind me again
+            </FollowUpAtMenu>
+            <Button variant="outline" size="sm" onClick={() => triage.toggleArchive(row)}>
+              Done
+            </Button>
+          </span>
+        </div>
+      )}
+
+      {target.mailbox !== "Sent" && target.unsubscribe && (
+        <div className="flex">
+          <UnsubscribeButton message={target} onArchive={() => !row.archived && triage.toggleArchive(row)} />
+        </div>
+      )}
 
       {thread.map((m) => (
         <MessageCard key={m.id} message={m} expanded={open.has(m.id)} onToggle={() => toggle(m.id)} accountAddress={account?.address} />

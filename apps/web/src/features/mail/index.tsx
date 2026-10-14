@@ -17,23 +17,24 @@ import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
 import { useTriage } from "./actions"
+import { useNowSecs } from "@/hooks/use-now"
+
 import { ConversationView } from "./conversation-view"
+import { LANES, type MailTab } from "./lanes"
 import { displayName, initials } from "./format"
+import { ScheduledList } from "./scheduled-list"
 import { SwipeRow } from "./swipe-row"
 import { useMailShortcuts } from "./use-shortcuts"
 
-const LANES: { id: Lane; label: string; empty: string }[] = [
-  { id: "inbox", label: "Inbox", empty: "You're all caught up." },
-  { id: "unread", label: "Unread", empty: "Nothing unread." },
-  { id: "starred", label: "Starred", empty: "Star messages to keep them close." },
-  { id: "snoozed", label: "Snoozed", empty: "Snoozed mail waits here until it's time." },
-  { id: "archive", label: "Archive", empty: "Archived mail shows up here." },
-]
-
 export function MailView() {
-  const [lane, setLane] = useState<Lane>("inbox")
+  // In the UI store, so the command menu can switch it.
+  const tab = useUi((s) => s.mailTab)
+  const setTab = useUi((s) => s.setMailTab)
+  const lane: Lane = tab === "scheduled" ? "inbox" : tab
+  const now = useNowSecs()
   const [accountId, setAccountId] = useState<string | null>(null)
-  const [search, setSearch] = useState("")
+  const search = useUi((s) => s.mailSearch)
+  const setSearch = useUi((s) => s.setMailSearch)
   // Selection is a conversation. The row is remembered so the reader stays
   // open when the row leaves the current lane (e.g. read mail in "Unread").
   const [selected, setSelected] = useState<MessageSummary | null>(() => pendingJump("thread")?.row ?? null)
@@ -67,7 +68,7 @@ export function MailView() {
   }, [row, thread, markSeen])
 
   const multiAccount = accounts.length > 1
-  const laneInfo = LANES.find((l) => l.id === lane)!
+  const laneInfo = LANES.find((l) => l.id === tab)!
 
   useMailShortcuts({
     list,
@@ -136,7 +137,7 @@ export function MailView() {
             </InputGroup>
             {/* Lanes scroll sideways when they don't fit; the edge fade says there's more. */}
             <div className="-mx-4 no-scrollbar overflow-x-auto px-4 [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
-              <Tabs value={lane} onValueChange={(v) => (setLane(v as Lane), setSelected(null))} className="w-max pr-6">
+              <Tabs value={tab} onValueChange={(v) => (setTab(v as MailTab), setSelected(null))} className="w-max pr-6">
                 <TabsList>
                   {LANES.map((l) => (
                     <TabsTrigger key={l.id} value={l.id}>
@@ -150,7 +151,9 @@ export function MailView() {
         </>
       }
       list={
-        isPending ? (
+        tab === "scheduled" ? (
+          <ScheduledList />
+        ) : isPending ? (
           <ListSkeleton />
         ) : accounts.length === 0 ? (
           <Empty className="py-16">
@@ -191,6 +194,7 @@ export function MailView() {
                 <MessageRow
                   message={m}
                   lane={lane}
+                  now={now}
                   selected={m.threadId === selectedId}
                   onSelect={() => setSelected(m)}
                   account={multiAccount && !accountId ? accounts.find((a) => a.id === m.accountId)?.displayName : undefined}
@@ -219,24 +223,36 @@ export function MailView() {
 function MessageRow({
   message: m,
   lane,
+  now,
   selected,
   onSelect,
   account,
 }: {
   message: MessageSummary
   lane: Lane
+  now: number
   selected: boolean
   onSelect: () => void
   account?: string
 }) {
-  const meta = lane === "snoozed" && m.snoozedUntil ? (
-    <span className="inline-flex items-center gap-1 text-vertical-notes">
-      <Icon name="snooze" className="size-3.5" />
-      {shortTime(m.snoozedUntil)}
-    </span>
-  ) : (
-    shortTime(m.sortAt)
-  )
+  // Your own mail says who it went to.
+  const sentTo = m.mailbox === "Sent" ? m.sentTo : null
+  // A follow-up that came due brings your own message back to the inbox.
+  const nudged = lane === "inbox" && m.followUpAt != null && m.followUpAt <= now
+  const meta =
+    lane === "snoozed" && m.snoozedUntil ? (
+      <span className="inline-flex items-center gap-1 text-vertical-notes">
+        <Icon name="snooze" className="size-3.5" />
+        {shortTime(m.snoozedUntil)}
+      </span>
+    ) : lane === "waiting" && m.followUpAt ? (
+      <span className="inline-flex items-center gap-1 text-vertical-mail">
+        <Icon name="notifications" className="size-3.5" />
+        {shortTime(m.followUpAt)}
+      </span>
+    ) : (
+      shortTime(nudged ? Math.max(m.followUpAt!, m.sortAt) : m.sortAt)
+    )
   return (
     <ListRow
         selected={selected}
@@ -244,12 +260,12 @@ function MessageRow({
         emphasized={!m.seen}
         leading={
           <Avatar className="mt-0.5">
-            <AvatarFallback>{initials(m.from)}</AvatarFallback>
+            <AvatarFallback>{sentTo ? initials({ name: sentTo, email: sentTo }) : initials(m.from)}</AvatarFallback>
           </Avatar>
         }
         title={
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate">{displayName(m.from)}</span>
+            <span className="truncate">{sentTo ? `To ${sentTo}` : displayName(m.from)}</span>
             {m.threadCount > 1 && (
               <span className="shrink-0 text-xs font-normal text-muted-foreground" aria-label={`${m.threadCount} messages`}>
                 {m.threadCount}
@@ -260,6 +276,11 @@ function MessageRow({
         meta={meta}
         supporting={
           <>
+            {nudged && (
+              <span className="mr-1.5 inline-flex items-center gap-1 rounded-md bg-vertical-mail/10 px-1.5 text-xs font-medium text-vertical-mail">
+                <Icon name="notifications_active" className="size-3.5" /> No reply yet
+              </span>
+            )}
             <span className="text-foreground">{m.subject || "(no subject)"}</span>
             {m.preview && <> — {m.preview}</>}
           </>

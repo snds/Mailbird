@@ -1,20 +1,35 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
-import { useUi } from "@/app/ui-store"
+import { useUi, type ComposerDraft } from "@/app/ui-store"
 import { Icon } from "@/components/icon"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { ButtonGroup } from "@/components/ui/button-group"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { getCoreClient } from "@/core/client"
-import { useAccounts, useCore } from "@/core/queries"
-import type { Draft, OutgoingAttachment } from "@/core/types"
+import { useAccounts, useCore, useSignatures, useTemplates } from "@/core/queries"
+import type { Draft, OutgoingAttachment, Template } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
+import { FOLLOW_UP_OPTIONS, longTime } from "@/lib/time"
 
 import { UNDO_SECONDS, formatRecipients, formatSize, parseRecipients } from "./format"
 import { RecipientInput } from "./recipient-input"
 import { FormatBar, RichEditor } from "./rich-editor"
+import { FollowUpAfterMenu, SendLaterMenu } from "./send-later"
+import { signatureBlock, withSignature } from "./signature"
 import { useRichEditor } from "./use-rich-editor"
 import { htmlToText, textToHtml } from "./rich-text"
 
@@ -46,6 +61,9 @@ export function Composer() {
   const close = useUi((s) => s.closeComposer)
   const tabletUp = useIsTabletUp()
   const open = draft !== null
+  // Loaded while closed, so a new message opens with its signature in place.
+  useSignatures()
+  useTemplates()
 
   const body = open ? <ComposerForm key={JSON.stringify(draft)} initial={draft} onDone={close} /> : null
 
@@ -90,10 +108,13 @@ function Row({ label, children, htmlFor }: { label: string; children: ReactNode;
 
 const bare = "h-10 flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 
-function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: () => void }) {
+function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () => void }) {
   const { data: accounts = [] } = useAccounts()
   const { data: core } = useCore()
+  const { data: signatures } = useSignatures()
+  const { data: templates = [] } = useTemplates()
   const openComposer = useUi((s) => s.openComposer)
+  const setWritingOpen = useUi((s) => s.setWritingOpen)
   const [chosenAccount, setAccountId] = useState(initial.accountId ?? "")
   // Default to the first account without an effect (accounts may load after open).
   const accountId = chosenAccount || accounts[0]?.id || ""
@@ -101,12 +122,48 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
   const [cc, setCc] = useState(formatRecipients(initial.cc))
   const [showCc, setShowCc] = useState((initial.cc?.length ?? 0) > 0)
   const [subject, setSubject] = useState(initial.subject ?? "")
+  const [sendAt, setSendAt] = useState<number | null>(initial.sendAt ?? null)
+  const [followUp, setFollowUp] = useState<number | null>(initial.followUpAfter ?? null)
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  // Each account's signature, as the editor renders it.
+  const blocks = useMemo(() => new Map((signatures ?? []).map((s) => [s.accountId, signatureBlock(s.html)])), [signatures])
+  const baseHtml = initial.bodyHtml ?? textToHtml(initial.body ?? "")
+  const firstBlock = blocks.get(initial.accountId || accounts[0]?.id || "") ?? ""
   const editor = useRichEditor({
-    html: initial.bodyHtml ?? textToHtml(initial.body ?? ""),
+    html: signatures ? withSignature(baseHtml, firstBlock) : baseHtml,
     placeholder: "Write your message",
     // Replies (and reopened drafts) start in the body, above any quote; new mail and forwards start in To.
     focusFirst: !!initial.to?.length,
   })
+  // The signature now in the body (null until signatures have loaded).
+  const shownBlock = useRef<string | null>(signatures ? [...blocks.values()].find((b) => b && editor.getHTML().includes(b)) ?? "" : null)
+  // Signatures that load late are added once; changing From swaps the signature.
+  useEffect(() => {
+    if (!signatures) return
+    const next = blocks.get(accountId) ?? ""
+    const html = editor.getHTML()
+    const keepCursor = () => editor.isFocused && editor.commands.setTextSelection(1)
+    if (shownBlock.current === null) {
+      const present = [...blocks.values()].find((b) => b && html.includes(b))
+      shownBlock.current = present ?? ""
+      if (present) return
+      const signed = withSignature(html, next)
+      if (signed !== html) {
+        editor.commands.setContent(signed, { emitUpdate: false })
+        keepCursor()
+        shownBlock.current = next
+      }
+      return
+    }
+    if (next === shownBlock.current || !shownBlock.current || !html.includes(shownBlock.current)) return
+    editor.commands.setContent(html.replace(shownBlock.current, next), { emitUpdate: false })
+    shownBlock.current = next
+  }, [signatures, blocks, accountId, editor])
+
+  const insertTemplate = (t: Template) => {
+    editor.chain().focus().insertContent(t.html).run()
+    if (!subject.trim() && t.subject) setSubject(t.subject)
+  }
   const [files, setFiles] = useState<OutgoingAttachment[]>(initial.attachments ?? [])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
@@ -123,7 +180,8 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
     // in the DOM yet) or outside it is a miss: move it to the first field.
     const missed = (el: Element | null) => {
       const dialog = formRef.current?.closest("[role=dialog]")
-      return !!dialog && (!el || el === dialog || el === document.body || (!dialog.contains(el) && !el.closest("[data-sonner-toaster]")))
+      // Menus and dialogs the composer opens (send later, templates) sit outside it too, on purpose.
+      return !!dialog && (!el || el === dialog || el === document.body || (!dialog.contains(el) && !el.closest("[data-sonner-toaster], [role=menu], [role=dialog]")))
     }
     const onFocusIn = (e: FocusEvent) => {
       if (missed(e.target instanceof Element ? e.target : null)) first()?.focus()
@@ -164,11 +222,28 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
       inReplyTo: initial.inReplyTo ?? null,
       references: initial.references ?? [],
       attachments: files,
+      followUpAfter: followUp,
     }
     try {
       const client = await getCoreClient()
-      const item = await client.queueSend(draft, UNDO_SECONDS)
+      const item = await client.queueSend(draft, UNDO_SECONDS, sendAt)
       onDone()
+      if (sendAt !== null) {
+        toast.success(`Scheduled for ${longTime(item.sendAt)}`, {
+          description: followUp ? `If nobody replies, it comes back ${FOLLOW_UP_OPTIONS.find((o) => o.after === followUp)?.label ?? ""} after it goes out.` : undefined,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                openComposer({ ...(await client.cancelSend(item.id)), sendAt: item.sendAt })
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : String(e))
+              }
+            },
+          },
+        })
+        return
+      }
       toast("Sending…", {
         id: item.id,
         duration: UNDO_SECONDS * 1000,
@@ -213,10 +288,24 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
           Cancel
         </Button>
         <h2 className="flex-1 truncate text-center text-sm font-semibold">{subject.trim() || "New message"}</h2>
-        <Button type="submit" disabled={sending || accounts.length === 0 || totalBytes > MAX_ATTACHMENTS} aria-keyshortcuts="Control+Enter Meta+Enter">
-          <Icon name="send" data-icon="inline-start" /> Send
-        </Button>
+        <ButtonGroup>
+          <Button type="submit" disabled={sending || accounts.length === 0 || totalBytes > MAX_ATTACHMENTS} aria-keyshortcuts="Control+Enter Meta+Enter">
+            <Icon name={sendAt === null ? "send" : "schedule_send"} data-icon="inline-start" /> {sendAt === null ? "Send" : "Schedule"}
+          </Button>
+          <SendLaterMenu onPick={setSendAt} trigger={<Button type="button" size="icon" aria-label="Send later" disabled={sending || accounts.length === 0} />}>
+            <Icon name="keyboard_arrow_down" />
+          </SendLaterMenu>
+        </ButtonGroup>
       </header>
+      {sendAt !== null && (
+        <p className="flex items-center gap-2 border-b bg-accent/50 px-4 py-2 text-sm">
+          <Icon name="schedule_send" className="size-4 text-muted-foreground" />
+          <span className="flex-1">Sends {longTime(sendAt)}</span>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSendAt(null)}>
+            Send now instead
+          </Button>
+        </p>
+      )}
 
       {accounts.length > 1 && (
         <Row label="From" htmlFor="composer-from">
@@ -273,17 +362,111 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
         <Button type="button" variant="ghost" size="icon" aria-label="Attach files" onClick={() => picker.current?.click()}>
           <Icon name="attach_file" />
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="Templates" />}>
+            <Icon name="article" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64 bg-popover">
+            {templates.length > 0 && (
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Insert a template</DropdownMenuLabel>
+                {templates.map((t) => (
+                  <DropdownMenuItem key={t.id} onClick={() => insertTemplate(t)}>
+                    <Icon name="article" />
+                    <span className="truncate">{t.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            )}
+            {templates.length > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuItem onClick={() => setSavingTemplate(true)} disabled={editor.isEmpty}>
+              <Icon name="save" />
+              Save as template…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setWritingOpen(true)}>
+              <Icon name="edit_note" />
+              Signatures and templates…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <FollowUpAfterMenu
+          value={followUp}
+          onChange={setFollowUp}
+          trigger={<Button type="button" variant={followUp ? "secondary" : "ghost"} size={followUp ? "sm" : "icon"} aria-label="Remind me if no reply" />}
+        >
+          <Icon name={followUp ? "notifications_active" : "notifications"} data-icon={followUp ? "inline-start" : undefined} />
+          {followUp ? `Remind in ${FOLLOW_UP_OPTIONS.find((o) => o.after === followUp)?.label ?? "a while"}` : null}
+        </FollowUpAfterMenu>
         {totalBytes > MAX_ATTACHMENTS ? (
           <span className="text-destructive">Attachments total {formatSize(totalBytes)} — over the 25 MB most servers accept.</span>
+        ) : sendAt !== null ? (
+          <span className="hidden sm:inline">Until then, change or cancel it in Scheduled.</span>
         ) : (
-          <>
+          <span className="hidden items-center gap-1 sm:flex">
             <Icon name="undo" className="size-4" />
             You can undo for {UNDO_SECONDS} seconds after sending.
-          </>
+          </span>
         )}
         {core?.kind === "demo" && <span className="ml-auto">Sample mode — nothing really leaves.</span>}
       </footer>
+      <SaveTemplateDialog
+        open={savingTemplate}
+        onOpenChange={setSavingTemplate}
+        subject={subject.trim()}
+        // A template is the message itself, without the signature.
+        html={() => (shownBlock.current ? editor.getHTML().replace(shownBlock.current, "") : editor.getHTML())}
+      />
     </form>
+  )
+}
+
+function SaveTemplateDialog({ open, onOpenChange, subject, html }: { open: boolean; onOpenChange: (open: boolean) => void; subject: string; html: () => string }) {
+  const [name, setName] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <Dialog open={open} onOpenChange={(o) => (onOpenChange(o), setError(null))}>
+      <DialogContent className="sm:max-w-sm">
+        <form
+          className="flex flex-col gap-4"
+          // Inside the composer's form (React events cross portals): keep this from sending the message.
+          onKeyDown={(e) => e.stopPropagation()}
+          onSubmit={async (e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            try {
+              await (await getCoreClient()).saveTemplate({ name, subject, html: html() })
+              onOpenChange(false)
+              setName("")
+              toast.success(`Saved “${name.trim()}”`)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : String(err))
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Save as template</DialogTitle>
+            <DialogDescription>Insert it into any message later, from the templates button.</DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="template-name">Name</FieldLabel>
+            <Input id="template-name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Meeting follow-up" />
+          </Field>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!name.trim()}>
+              Save template
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -2,6 +2,8 @@ import { create } from "zustand"
 
 import type { ContactInput, Draft, EditScope, EventInput, MessageSummary } from "@/core/types"
 
+import type { MailTab } from "@/features/mail/lanes"
+
 import type { VerticalId } from "./verticals"
 
 /** What the event editor is working on: a new event, or one being edited. */
@@ -47,8 +49,8 @@ interface UiState {
   openNote: { id: string; fresh: boolean } | null
   setOpenNote: (n: { id: string; fresh: boolean } | null) => void
   /** A draft being written, or null when the composer is closed. */
-  composer: Partial<Draft> | null
-  openComposer: (draft?: Partial<Draft>) => void
+  composer: ComposerDraft | null
+  openComposer: (draft?: ComposerDraft) => void
   closeComposer: () => void
   eventEditor: EventEditorState | null
   openEventEditor: (state?: EventEditorState) => void
@@ -58,11 +60,28 @@ interface UiState {
   closeContactEditor: () => void
   accountsOpen: boolean
   setAccountsOpen: (open: boolean) => void
+  /** Signatures and templates. */
+  writingOpen: boolean
+  setWritingOpen: (open: boolean) => void
+  /** The ⌘K command menu. */
+  paletteOpen: boolean
+  setPaletteOpen: (open: boolean) => void
+  /** The mail tab: a lane, or "scheduled". Back to the inbox when you leave Mail. */
+  mailTab: MailTab
+  setMailTab: (tab: MailTab) => void
+  /** Open Mail on a tab (from the command menu), optionally searching. */
+  showMailTab: (tab: MailTab, search?: string) => void
+  /** The mail search box. Cleared when you leave Mail. */
+  mailSearch: string
+  setMailSearch: (search: string) => void
 }
+
+/** A draft for the composer; `sendAt` reopens a scheduled message with its time. */
+export type ComposerDraft = Partial<Draft> & { sendAt?: number | null }
 
 export const useUi = create<UiState>((set, get) => ({
   vertical: "mail",
-  setVertical: (vertical) => set({ vertical, jump: null, openNote: null }),
+  setVertical: (vertical) => set({ vertical, jump: null, openNote: null, mailTab: "inbox", mailSearch: "" }),
   jump: null,
   jumpTo: (jump) =>
     jump.kind === "note"
@@ -87,6 +106,15 @@ export const useUi = create<UiState>((set, get) => ({
   closeContactEditor: () => set({ contactEditor: null }),
   accountsOpen: false,
   setAccountsOpen: (accountsOpen) => set({ accountsOpen }),
+  writingOpen: false,
+  setWritingOpen: (writingOpen) => set({ writingOpen }),
+  paletteOpen: false,
+  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  mailTab: "inbox",
+  setMailTab: (mailTab) => set({ mailTab }),
+  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, jump: null, openNote: null }),
+  mailSearch: "",
+  setMailSearch: (mailSearch) => set({ mailSearch }),
 }))
 
 /** The jump a view should open on mount, if it's for that view. Read-only; clear it with `takeJump`. */

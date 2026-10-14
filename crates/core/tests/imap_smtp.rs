@@ -171,6 +171,7 @@ async fn full_round_trip() {
         references: vec![],
         attachments: vec![],
         calendar: None,
+        follow_up_after: None,
     };
     let raw = net::send(&config(), PASS, &draft).await.unwrap();
     assert!(String::from_utf8_lossy(&raw).contains("In-Reply-To: <First-note@example.com>"));

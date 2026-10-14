@@ -204,6 +204,21 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         </div>
       </div>
 
+      {accounts.length > 0 && (
+        <button
+          type="button"
+          onClick={() => (useUi.getState().setAccountsOpen(false), useUi.getState().setWritingOpen(true))}
+          className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
+        >
+          <Icon name="edit_note" className="size-5 text-muted-foreground" />
+          <span className="flex flex-1 flex-col gap-0.5">
+            <span className="font-medium">Signatures and templates</span>
+            <span className="text-xs text-muted-foreground">What goes at the end of your messages, and text you reuse.</span>
+          </span>
+          <Icon name="chevron_right" className="size-5 text-muted-foreground" />
+        </button>
+      )}
+
       {accounts.length > 0 && !core?.remote && <PushSettingsSection />}
       {core?.remote && (
         <div className="flex justify-end">

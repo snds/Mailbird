@@ -37,6 +37,10 @@ import type {
   MessageSummary,
   OutboxItem,
   Provider,
+  Signature,
+  Template,
+  TemplateInput,
+  UnsubscribeMethod,
 } from "./types"
 
 /**
@@ -83,9 +87,22 @@ export interface CoreClient {
   openAttachment(id: string): Promise<string | null>
   /** The decoded bytes, for in-app preview. */
   attachmentData(id: string): Promise<ArrayBuffer>
-  queueSend(draft: Draft, undoSecs: number): Promise<OutboxItem>
+  /** With `sendAt` (seconds), the message is scheduled instead of waiting out the undo window. */
+  queueSend(draft: Draft, undoSecs: number, sendAt?: number | null): Promise<OutboxItem>
   cancelSend(id: string): Promise<Draft>
   listOutbox(): Promise<OutboxItem[]>
+  /** Move a waiting message to another time; null sends it now. */
+  rescheduleSend(id: string, sendAt: number | null): Promise<OutboxItem>
+  // Follow-ups, unsubscribe, templates, signatures (ADR-0017)
+  setFollowUp(threadId: string, dueAt: number): Promise<void>
+  cancelFollowUp(threadId: string): Promise<void>
+  unsubscribe(messageId: string): Promise<UnsubscribeMethod>
+  listTemplates(): Promise<Template[]>
+  saveTemplate(input: TemplateInput): Promise<Template>
+  deleteTemplate(id: string): Promise<void>
+  listSignatures(): Promise<Signature[]>
+  /** An empty signature removes it. */
+  setSignature(accountId: string, html: string): Promise<void>
   // Calendars and contacts
   setTimeZone(tz: string): Promise<void>
   listCollections(kind: CollectionKind): Promise<Collection[]>
@@ -134,7 +151,7 @@ export interface CoreClient {
   on(event: CoreEvent, handler: (payload?: unknown) => void): () => void
 }
 
-export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "reminder"
+export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "compose:changed" | "reminder"
 
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
@@ -168,9 +185,18 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     unsnoozeThread: (threadId) => call("unsnooze_thread", { threadId }),
     openAttachment: (id) => call("open_attachment", { id }),
     attachmentData: (id) => call<ArrayBuffer>("attachment_data", { id }),
-    queueSend: (draft, undoSecs) => call("queue_send", { draft, undoSecs }),
+    queueSend: (draft, undoSecs, sendAt) => call("queue_send", { draft, undoSecs, sendAt: sendAt ?? null }),
     cancelSend: (id) => call("cancel_send", { id }),
     listOutbox: () => call("list_outbox"),
+    rescheduleSend: (id, sendAt) => call("reschedule_send", { id, sendAt }),
+    setFollowUp: (threadId, dueAt) => call("set_follow_up", { threadId, dueAt }),
+    cancelFollowUp: (threadId) => call("cancel_follow_up", { threadId }),
+    unsubscribe: (messageId) => call("unsubscribe", { id: messageId }),
+    listTemplates: () => call("list_templates"),
+    saveTemplate: (input) => call("save_template", { input }),
+    deleteTemplate: (id) => call("delete_template", { id }),
+    listSignatures: () => call("list_signatures"),
+    setSignature: (accountId, html) => call("set_signature", { accountId, html }),
     setTimeZone: (tz) => call("set_time_zone", { tz }),
     listCollections: (kind) => call("list_collections", { kind }),
     setCollectionHidden: (id, hidden) => call("set_collection_hidden", { id, hidden }),
@@ -287,7 +313,7 @@ function createGatewayClient(): CoreClient {
   // One event stream for the whole page; handlers subscribe by name.
   const handlers = new Map<string, Set<(payload?: unknown) => void>>()
   const stream = new EventSource("/api/events", { withCredentials: true })
-  const names: (CoreEvent | "open-url")[] = ["mail:changed", "outbox:changed", "accounts:changed", "pim:changed", "notes:changed", "reminder", "open-url"]
+  const names: (CoreEvent | "open-url")[] = ["mail:changed", "outbox:changed", "accounts:changed", "pim:changed", "notes:changed", "compose:changed", "reminder", "open-url"]
   for (const name of names) {
     stream.addEventListener(name, (e) => {
       const data = (e as MessageEvent<string>).data

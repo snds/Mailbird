@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
+import { useUi } from "./ui-store"
+
 import { VERTICALS, type Vertical, type VerticalId } from "./verticals"
 
 interface ShellProps {
@@ -110,6 +112,14 @@ function NavRail({
         <NavItem key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" />
       ))}
       <div className="mt-auto flex flex-col items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-lg" aria-label="Command menu" onClick={() => useUi.getState().setPaletteOpen(true)} />}>
+            <Icon name="keyboard_command_key" className="size-6" opticalSize={24} />
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            Command menu <kbd className="ml-1 font-mono text-[11px] opacity-70">{/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K"}</kbd>
+          </TooltipContent>
+        </Tooltip>
         <Button variant="ghost" size="icon-lg" aria-label="Accounts and settings" onClick={onSettings}>
           <Icon name="settings" className="size-6" opticalSize={24} />
         </Button>

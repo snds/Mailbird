@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
+
+import { useNow } from "@/hooks/use-now"
 
 import type { Collection, Occurrence } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -6,15 +8,6 @@ import { cn } from "@/lib/utils"
 import { eventStyle } from "./colors"
 import { DAY, addDays, fmt, sameDay, secs } from "./dates"
 import { layoutDay, occurrenceKey } from "./layout"
-
-function useNow() {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 60_000)
-    return () => clearInterval(t)
-  }, [])
-  return now
-}
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const hourLabel = (h: number) => new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: "numeric" })

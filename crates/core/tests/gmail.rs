@@ -394,6 +394,7 @@ async fn gmail_end_to_end() {
         references: vec![format!("<{welcome}@example.com>")],
         attachments: vec![],
         calendar: None,
+        follow_up_after: None,
     };
     let raw = gmail::send(&cfg, &token, &draft).await.unwrap();
     assert!(String::from_utf8_lossy(&raw).contains("Subject: Re: Welcome"));

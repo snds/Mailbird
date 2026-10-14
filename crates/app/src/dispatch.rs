@@ -13,7 +13,7 @@ use serde_json::Value;
 use crate::notes_commands::RelayConfig;
 use crate::push::PushMode;
 use pim_core::net::push_relay::PushTarget;
-use crate::{AppHandle, Shared, commands, notes_commands, oauth_commands, pim_commands, push, workers};
+use crate::{AppHandle, Shared, commands, compose_commands, notes_commands, oauth_commands, pim_commands, push, workers};
 
 /// A command's result: JSON, or raw bytes (attachments, so a 10 MB PDF
 /// isn't a 13 MB string).
@@ -59,6 +59,15 @@ pub const COMMANDS: &[&str] = &[
     "queue_send",
     "cancel_send",
     "list_outbox",
+    "reschedule_send",
+    "set_follow_up",
+    "cancel_follow_up",
+    "unsubscribe",
+    "list_templates",
+    "save_template",
+    "delete_template",
+    "list_signatures",
+    "set_signature",
     "set_account_dav",
     "set_time_zone",
     "list_collections",
@@ -159,14 +168,44 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::Bytes(commands::attachment_data(state, id)?)
         }
         "queue_send" => {
-            args!(args, draft: Draft, undo_secs: i64);
-            Output::json(commands::queue_send(app.clone(), state, draft, undo_secs)?)
+            args!(args, draft: Draft, undo_secs: i64, send_at: Option<i64>);
+            Output::json(commands::queue_send(app.clone(), state, draft, undo_secs, send_at)?)
         }
         "cancel_send" => {
             args!(args, id: String);
             Output::json(commands::cancel_send(app.clone(), state, id)?)
         }
         "list_outbox" => Output::json(commands::list_outbox(state)?),
+        "reschedule_send" => {
+            args!(args, id: String, send_at: Option<i64>);
+            Output::json(compose_commands::reschedule_send(app.clone(), state, id, send_at)?)
+        }
+        "set_follow_up" => {
+            args!(args, thread_id: String, due_at: i64);
+            Output::json(compose_commands::set_follow_up(app.clone(), state, thread_id, due_at)?)
+        }
+        "cancel_follow_up" => {
+            args!(args, thread_id: String);
+            Output::json(compose_commands::cancel_follow_up(app.clone(), state, thread_id)?)
+        }
+        "unsubscribe" => {
+            args!(args, id: String);
+            Output::json(compose_commands::unsubscribe(app.clone(), state, id).await?)
+        }
+        "list_templates" => Output::json(compose_commands::list_templates(state)?),
+        "save_template" => {
+            args!(args, input: pim_core::TemplateInput);
+            Output::json(compose_commands::save_template(app.clone(), state, input)?)
+        }
+        "delete_template" => {
+            args!(args, id: String);
+            Output::json(compose_commands::delete_template(app.clone(), state, id)?)
+        }
+        "list_signatures" => Output::json(compose_commands::list_signatures(state)?),
+        "set_signature" => {
+            args!(args, account_id: String, html: String);
+            Output::json(compose_commands::set_signature(app.clone(), state, account_id, html)?)
+        }
         "set_account_dav" => {
             args!(args, id: String, dav: Option<pim_core::DavConfig>, password: Option<String>);
             Output::json(commands::set_account_dav(app.clone(), state, id, dav, password).await?)
