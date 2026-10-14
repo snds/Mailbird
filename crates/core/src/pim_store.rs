@@ -747,6 +747,9 @@ impl Store {
             DavOutcome::Saved(etag) => {
                 self.db.execute(&format!("UPDATE {t} SET state = 'synced', etag = ?2 WHERE id = ?1"), params![item_id, etag])?;
             }
+            DavOutcome::Created(href, etag) => {
+                self.db.execute(&format!("UPDATE {t} SET state = 'synced', href = ?2, etag = ?3 WHERE id = ?1"), params![item_id, href, etag])?;
+            }
             DavOutcome::Deleted => {
                 self.db.execute(&format!("DELETE FROM {t} WHERE id = ?1"), [item_id])?;
             }
@@ -1000,6 +1003,14 @@ mod tests {
         let del = s.pending_dav(&work).unwrap();
         assert_eq!((del[0].body.is_none(), del[0].etag.as_deref()), (true, Some("\"e1\"")));
         s.dav_result(&work, &del[0].item_id, &DavOutcome::Deleted).unwrap();
+
+        // Servers that choose their own ids (Graph) move the item to the new href.
+        s.create_event(&event(&work, "2026-10-21T10:00", "2026-10-21T11:00")).unwrap();
+        let made = s.pending_dav(&work).unwrap().remove(0);
+        s.dav_result(&work, &made.item_id, &DavOutcome::Created("/events/AAMk1".into(), None)).unwrap();
+        assert!(s.pending_dav(&work).unwrap().is_empty());
+        let row: (String, Option<String>) = s.db.query_row("SELECT href, etag FROM events WHERE id = ?1", [&made.item_id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(row, ("/events/AAMk1".to_string(), None), "no etag yet: the next pull fetches the server's copy");
         assert!(s.dav_cursors("acct").unwrap()[0].1.etags.is_empty());
     }
 

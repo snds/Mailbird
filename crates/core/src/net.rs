@@ -39,6 +39,8 @@ pub const INBOX: &str = "INBOX";
 
 pub mod dav;
 pub mod gmail;
+pub mod graph;
+pub mod graph_pim;
 pub mod jmap;
 pub mod oauth;
 
