@@ -41,6 +41,9 @@ pub struct AppState {
     pub dav_lock: tokio::sync::Mutex<()>,
     /// Ends the browser sign-in that's waiting, if any.
     pub oauth_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// Reminders that came due while the app was closed, kept until the UI
+    /// asks: at launch it isn't listening yet, so an event would be lost.
+    pub missed_reminders: Mutex<Vec<pim_core::DueReminder>>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -59,6 +62,7 @@ impl AppState {
             backfill_pending: AtomicBool::new(false),
             dav_lock: tokio::sync::Mutex::new(()),
             oauth_cancel: Mutex::new(None),
+            missed_reminders: Mutex::new(Vec::new()),
         }))
     }
 }

@@ -369,6 +369,16 @@ export function createDemoClient(): CoreClient {
       throw new Error("Connecting calendars needs the desktop app for now. The web version runs on sample data.")
     },
     ...pimApi,
+    contactActivity: async (id) => {
+      const { contactMeetings, getContact } = pimApi
+      const emails = (await getContact(id)).emails.map((e) => e.value.trim().toLowerCase())
+      const rows = new Map<string, MessageSummary>()
+      for (const m of [...state.messages].sort((a, b) => b.date - a.date)) {
+        if (rows.has(m.threadId) || ![m.from, ...m.to, ...m.cc].some((a) => emails.includes(a.email.toLowerCase()))) continue
+        rows.set(m.threadId, { ...summary(m), category: categoryOf(m), threadCount: thread(m.threadId).length })
+      }
+      return later({ threads: [...rows.values()].slice(0, 5), ...contactMeetings(id) })
+    },
     ...notes,
     respondToInvite: async (messageId, response, calendarId) => {
       const m = state.messages.find((x) => x.id === messageId)

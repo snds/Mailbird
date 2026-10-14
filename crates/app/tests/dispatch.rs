@@ -167,3 +167,37 @@ async fn compose_commands() {
     assert_eq!(screener, json!([]));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn connected_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-connected-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let app = AppHandle::new(TestHost::default());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+    call("set_time_zone", json!({ "tz": "Europe/Lisbon" })).await.unwrap();
+
+    // A contact's birthday shows on the read-only Birthdays calendar, pointing back at them.
+    let books = call("list_collections", json!({ "kind": "contacts" })).await.unwrap();
+    let input = json!({ "bookId": books[0]["id"], "fullName": "Ana Duarte", "emails": [{ "label": null, "value": "ana@example.com" }], "phones": [], "birthday": "1992-03-14" });
+    let ana = call("create_contact", json!({ "input": input })).await.unwrap()["id"].as_str().unwrap().to_owned();
+    let cals = call("list_collections", json!({ "kind": "calendar" })).await.unwrap();
+    assert!(cals.as_array().unwrap().iter().any(|c| c["id"] == "birthdays" && c["writable"] == false), "{cals}");
+    // 2027-03-01 → 2027-04-01.
+    let occ = call("list_occurrences", json!({ "from": 1_803_859_200i64, "to": 1_806_537_600i64 })).await.unwrap();
+    assert_eq!(occ[0]["title"], "Ana Duarte turns 35");
+    assert_eq!(occ[0]["contactId"], json!(ana));
+
+    // No mail or meetings yet: empty lists, not an error.
+    assert_eq!(call("contact_activity", json!({ "id": ana })).await.unwrap(), json!({ "threads": [], "upcoming": [], "past": [] }));
+
+    // Missed reminders are handed over once.
+    let missed = pim_core::DueReminder { event_id: "e1".into(), title: "Standup".into(), location: None, start: 100, fire_at: 40 };
+    *state.missed_reminders.lock().unwrap() = vec![missed];
+    assert_eq!(call("take_missed_reminders", Value::Null).await.unwrap()[0]["title"], "Standup");
+    assert_eq!(call("take_missed_reminders", Value::Null).await.unwrap(), json!([]));
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -15,6 +15,8 @@ import { displayName, initials } from "../mail/format"
 import { LinkedNotes } from "../notes/linked-notes"
 import { calendarColor } from "./colors"
 import { dayLabel, fromSecs, rangeLabel } from "./dates"
+import { JoinButton } from "./join-button"
+import { placeLabel } from "./meeting"
 import { inputFromDetail } from "./quick-add"
 import { reminderLabel } from "./reminders"
 
@@ -102,6 +104,11 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
         <p className="pl-6 text-sm text-muted-foreground">
           {dayLabel(fromSecs(e.start))} · {rangeLabel(e.start, e.end, e.allDay)}
         </p>
+        {e.meetingUrl && (
+          <div className="pt-2 pl-6">
+            <JoinButton url={e.meetingUrl} size="default" long />
+          </div>
+        )}
       </header>
 
       {e.writable ? (
@@ -157,7 +164,7 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
         )}
         {e.location && (
           <Row icon="location_on">
-            <span className="break-words">{e.location}</span>
+            <span className="break-words">{placeLabel(e)}</span>
           </Row>
         )}
         {e.timeZone && e.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone && (

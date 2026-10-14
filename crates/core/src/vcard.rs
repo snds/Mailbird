@@ -89,6 +89,19 @@ fn birthday(card: &VCard) -> Option<String> {
     }
 }
 
+/// `BDAY` read from the raw line, for forms the parser drops: calcard writes
+/// a year-less birthday as `--07-02` but doesn't read that back.
+fn bday_line(vcf: &str) -> Option<String> {
+    let line = vcf.lines().find(|l| l.len() > 4 && l[..4].eq_ignore_ascii_case("BDAY") && l[4..].starts_with([':', ';']))?;
+    let value = line.rsplit(':').next()?.trim();
+    let digits: String = value.chars().filter(char::is_ascii_digit).collect();
+    match (value.starts_with("--"), digits.len()) {
+        (true, 4) => Some(format!("--{}-{}", &digits[..2], &digits[2..])),
+        (false, 8) => Some(format!("{}-{}-{}", &digits[..4], &digits[4..6], &digits[6..])),
+        _ => None,
+    }
+}
+
 pub fn read_contact(vcf: &str) -> Result<ContactMeta> {
     let card = parse(vcf)?;
     let n = card.property(&VCardProperty::N);
@@ -119,7 +132,7 @@ pub fn read_contact(vcf: &str) -> Result<ContactMeta> {
         org,
         title: text(&card, VCardProperty::Title),
         note: text(&card, VCardProperty::Note),
-        birthday: birthday(&card),
+        birthday: birthday(&card).or_else(|| bday_line(vcf)),
         photo: photo(&card),
     })
 }
@@ -274,6 +287,15 @@ mod tests {
             note: Some("Board games\nGood coffee".into()),
             birthday: Some("1990-04-02".into()),
         }
+    }
+
+    #[test]
+    fn year_less_birthdays_survive_a_round_trip() {
+        let vcf = new_contact("m-1", &ContactInput { birthday: Some("--07-02".into()), ..input() }).unwrap();
+        assert_eq!(read_contact(&vcf).unwrap().birthday.as_deref(), Some("--07-02"));
+        let edited = edit_contact(&vcf, &ContactInput { note: Some("x".into()), birthday: Some("--07-02".into()), ..input() }).unwrap();
+        assert_eq!(read_contact(&edited).unwrap().birthday.as_deref(), Some("--07-02"), "and an edit");
+        assert_eq!(read_contact("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X\r\nBDAY;VALUE=date:19900402\r\nEND:VCARD\r\n").unwrap().birthday.as_deref(), Some("1990-04-02"));
     }
 
     #[test]

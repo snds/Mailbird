@@ -84,6 +84,8 @@ pub const COMMANDS: &[&str] = &[
     "delete_event",
     "list_contacts",
     "get_contact",
+    "contact_activity",
+    "take_missed_reminders",
     "create_contact",
     "update_contact",
     "delete_contact",
@@ -269,6 +271,11 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             args!(args, id: String);
             Output::json(pim_commands::get_contact(state, id)?)
         }
+        "contact_activity" => {
+            args!(args, id: String);
+            Output::json(pim_commands::contact_activity(state, id)?)
+        }
+        "take_missed_reminders" => Output::json(pim_commands::take_missed_reminders(state)),
         "create_contact" => {
             args!(args, input: ContactInput);
             Output::json(pim_commands::create_contact(app.clone(), state, input)?)

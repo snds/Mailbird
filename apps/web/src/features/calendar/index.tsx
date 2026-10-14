@@ -18,6 +18,7 @@ import { EventDetailPane } from "./event-detail"
 import { MiniMonth } from "./mini-month"
 import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
+import { SecondZonePicker } from "./second-zone"
 import { occurrenceKey } from "./layout"
 import { TimeGrid } from "./time-grid"
 
@@ -113,6 +114,7 @@ function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
             ))}
         </section>
       ))}
+      <SecondZonePicker />
     </div>
   )
 }
@@ -187,7 +189,8 @@ export function CalendarView() {
     return () => window.removeEventListener("keydown", onKey)
   })
 
-  const select = (o: Occurrence) => setSelected({ eventId: o.eventId, start: o.start })
+  // A birthday is the contact's: open the card, not an event view.
+  const select = (o: Occurrence) => (o.contactId ? useUi.getState().jumpTo({ kind: "contact", id: o.contactId }) : setSelected({ eventId: o.eventId, start: o.start }))
   const createAt = (at: Date) => {
     const end = new Date(at.getTime() + 3_600_000)
     openEditor({ initial: { start: `${dateInput(at)}T${timeInput(at)}`, end: `${dateInput(end)}T${timeInput(end)}` } })

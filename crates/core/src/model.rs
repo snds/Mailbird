@@ -722,6 +722,12 @@ pub struct Occurrence {
     pub original_start: i64,
     pub all_day: bool,
     pub recurring: bool,
+    /// A video-call link found in the location (Zoom, Meet, Teams…).
+    #[serde(default)]
+    pub meeting_url: Option<String>,
+    /// For a birthday: the contact it belongs to (open them, not an event).
+    #[serde(default)]
+    pub contact_id: Option<String>,
 }
 
 /// Which occurrences of a series an edit or delete applies to.
@@ -749,6 +755,18 @@ pub struct EventDetail {
     pub writable: bool,
     /// Minutes before the start, for the series' editable reminders.
     pub reminders: Vec<i64>,
+}
+
+/// What you've done with someone: recent conversations, and meetings they're in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactActivity {
+    /// Newest first, one row per conversation.
+    pub threads: Vec<MessageSummary>,
+    /// Soonest first.
+    pub upcoming: Vec<Occurrence>,
+    /// Most recent first.
+    pub past: Vec<Occurrence>,
 }
 
 /// A reminder that is due: shown as a notification.

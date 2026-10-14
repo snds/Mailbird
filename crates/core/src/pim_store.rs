@@ -177,7 +177,7 @@ impl Store {
     pub fn ensure_local_collections(&self) -> Result<()> {
         for (kind, name) in [(CollectionKind::Calendar, "On this device"), (CollectionKind::Contacts, "On this device")] {
             let exists: bool = self.db.query_row(
-                "SELECT EXISTS (SELECT 1 FROM collections WHERE account_id IS NULL AND kind = ?1)",
+                "SELECT EXISTS (SELECT 1 FROM collections WHERE account_id IS NULL AND kind = ?1 AND id <> 'birthdays')",
                 [kind.as_str()],
                 |r| r.get(0),
             )?;
@@ -193,7 +193,7 @@ impl Store {
 
     pub fn collections(&self, kind: CollectionKind) -> Result<Vec<Collection>> {
         let mut st = self.db.prepare(&format!(
-            "SELECT {COLLECTION_COLS} FROM collections WHERE kind = ?1 ORDER BY account_id IS NULL, account_id, name COLLATE NOCASE"
+            "SELECT {COLLECTION_COLS} FROM collections WHERE kind = ?1 ORDER BY account_id IS NULL, id = 'birthdays', account_id, name COLLATE NOCASE"
         ))?;
         Ok(st.query_map([kind.as_str()], collection_row)?.collect::<rusqlite::Result<_>>()?)
     }
@@ -267,6 +267,8 @@ impl Store {
                 out.push(Occurrence {
                     event_id: id.clone(),
                     calendar_id: calendar_id.clone(),
+                    meeting_url: o.location.as_deref().and_then(|l| crate::meeting::meeting_link([l])),
+                    contact_id: None,
                     title: o.title,
                     location: o.location,
                     start: o.start,
@@ -277,12 +279,16 @@ impl Store {
                 });
             }
         }
+        out.extend(self.birthdays(from, to)?);
         out.sort_by(|a, b| (b.all_day, a.start, &a.title).cmp(&(a.all_day, b.start, &b.title)));
         Ok(out)
     }
 
     /// One event, at the occurrence starting at `start` (or its first one).
     pub fn event(&self, id: &str, start: Option<i64>) -> Result<EventDetail> {
+        if let Some(contact) = id.strip_prefix(crate::connected_store::BIRTHDAY_PREFIX) {
+            return self.birthday_event(contact, start);
+        }
         let (calendar_id, ics): (String, String) = self
             .db
             .query_row("SELECT collection_id, ics FROM events WHERE id = ?1 AND state != 'deleted'", [id], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -296,10 +302,13 @@ impl Store {
             .or(instances.first())
             .cloned()
             .ok_or_else(|| Error::NotFound("that occurrence is gone".into()))?;
+        let meeting_url = crate::meeting::meeting_link([inst.location.as_deref(), meta.url.as_deref(), meta.notes.as_deref()].into_iter().flatten());
         Ok(EventDetail {
             occurrence: Occurrence {
                 event_id: id.to_string(),
                 calendar_id: calendar_id.clone(),
+                meeting_url,
+                contact_id: None,
                 title: inst.title,
                 location: inst.location,
                 start: inst.start,
@@ -576,9 +585,9 @@ impl Store {
         let m = Self::index_contact(vcf);
         let id = uuid::Uuid::new_v4().to_string();
         self.db.execute(
-            "INSERT INTO contacts (id, collection_id, href, etag, uid, vcf, state, full_name, sort_key, org, emails, phones, photo)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![id, book_id, href, etag, m.uid, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo],
+            "INSERT INTO contacts (id, collection_id, href, etag, uid, vcf, state, full_name, sort_key, org, emails, phones, photo, birthday)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![id, book_id, href, etag, m.uid, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo, m.birthday],
         )?;
         Ok(id)
     }
@@ -586,8 +595,8 @@ impl Store {
     fn rewrite_contact(&self, id: &str, vcf: &str, state: &str) -> Result<()> {
         let m = Self::index_contact(vcf);
         self.db.execute(
-            "UPDATE contacts SET vcf = ?2, state = ?3, full_name = ?4, sort_key = ?5, org = ?6, emails = ?7, phones = ?8, photo = ?9 WHERE id = ?1",
-            params![id, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo],
+            "UPDATE contacts SET vcf = ?2, state = ?3, full_name = ?4, sort_key = ?5, org = ?6, emails = ?7, phones = ?8, photo = ?9, birthday = ?10 WHERE id = ?1",
+            params![id, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo, m.birthday],
         )?;
         Ok(())
     }
@@ -856,7 +865,10 @@ mod tests {
     fn local_collections_exist_once() {
         let s = store();
         s.ensure_local_collections().unwrap();
-        assert_eq!(s.collections(CollectionKind::Calendar).unwrap().len(), 1);
+        // One device calendar, plus the read-only Birthdays calendar (ADR-0019).
+        let cals = s.collections(CollectionKind::Calendar).unwrap();
+        assert_eq!(cals.iter().filter(|c| c.writable).count(), 1);
+        assert_eq!(cals.iter().map(|c| c.id.as_str()).collect::<Vec<_>>().last(), Some(&"birthdays"), "listed last");
         assert_eq!(s.collections(CollectionKind::Contacts).unwrap().len(), 1);
     }
 

@@ -8,6 +8,7 @@ import type {
   Address,
   Attendee,
   Collection,
+  ContactActivity,
   ContactDetail,
   ContactField,
   ContactInput,
@@ -103,6 +104,38 @@ function expand(e: DemoEvent, from: number, to: number): Slot[] {
   return out
 }
 
+/** Known video-call hosts, and the path a meeting link starts with (like the core's `meeting::meeting_link`). */
+const MEETING_HOSTS: [string, string[]][] = [
+  ["zoom.us", ["/j/", "/my/", "/w/", "/s/"]],
+  ["zoomgov.com", ["/j/"]],
+  ["meet.google.com", ["/"]],
+  ["teams.microsoft.com", ["/l/meetup-join/", "/meet/"]],
+  ["teams.live.com", ["/meet/"]],
+  ["webex.com", ["/meet/", "/join/", "/wbxmjs/"]],
+  ["meet.jit.si", ["/"]],
+  ["whereby.com", ["/"]],
+  ["facetime.apple.com", ["/join"]],
+]
+
+function meetingLink(...texts: (string | null | undefined)[]): string | null {
+  for (const t of texts) {
+    for (const token of (t ?? "").split(/[\s<>"'()[\]{}|]+/)) {
+      const url = token.replace(/[.,;:!?]+$/, "")
+      const m = /^https:\/\/([^/?#]+)([^]*)$/.exec(url)
+      if (!m) continue
+      const host = m[1]!.toLowerCase()
+      const path = m[2]!
+      if (MEETING_HOSTS.some(([h, paths]) => (host === h || host.endsWith(`.${h}`)) && path.length > 1 && paths.some((x) => path.startsWith(x) || (x === "/" && path.length > 3)))) return url
+    }
+  }
+  return null
+}
+
+const BIRTHDAY = "birthday:"
+const BIRTHDAYS = "birthdays"
+/** A year past which the demo stops looking for contact activity. */
+const ACTIVITY_WINDOW = 365 * 86_400
+
 const normEmail = (e: string) => e.trim().toLowerCase()
 const normPhone = (p: string) => p.replace(/\D/g, "").slice(-10)
 
@@ -122,6 +155,8 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     { id: "cal-work", accountId: "work", kind: "calendar", name: "Work", color: "#2563eb", writable: true, hidden: false, scheduling: true },
     { id: "cal-holidays", accountId: "personal", kind: "calendar", name: "Holidays", color: "#16a34a", writable: false, hidden: false, scheduling: false },
     { id: "cal-local", accountId: null, kind: "calendar", name: "On this device", color: null, writable: true, hidden: false, scheduling: false },
+    // Made from contacts' birthdays; read-only, like the core's.
+    { id: BIRTHDAYS, accountId: null, kind: "calendar", name: "Birthdays", color: "#db2777", writable: false, hidden: false, scheduling: false },
     { id: "book-personal", accountId: "personal", kind: "contacts", name: "Personal", color: null, writable: true, hidden: false, scheduling: false },
     { id: "book-work", accountId: "work", kind: "contacts", name: "Work", color: null, writable: true, hidden: false, scheduling: false },
     { id: "book-local", accountId: null, kind: "contacts", name: "On this device", color: null, writable: true, hidden: false, scheduling: false },
@@ -133,10 +168,14 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     skipped: [], overrides: {}, until: null, attendees: [], organizer: null, reminders: [], uid: `demo-${n}@mailbird`, ...extra,
   })
   const priya = { name: "Priya Raman", email: "priya@studio.example" }
+  const team = (status: string) => [
+    { ...priya, status: "accepted" },
+    { name: "Me", email: "me@studio.example", status },
+  ]
   const events: DemoEvent[] = [
     ev("cal-work", "Standup", at(0, 9, 30), at(0, 9, 45), { repeat: "weekly", location: "Studio, room 2", reminders: [5] }),
     ev("cal-work", "Token audit review", at(0, 12), at(0, 13), {
-      notes: "Walk through the semantic tier sheet. Decide on the three surface tokens that collapse in dark mode.",
+      notes: "Walk through the semantic tier sheet. Decide on the three surface tokens that collapse in dark mode.\n\nJoin Zoom: https://us02web.zoom.us/j/81234567890?pwd=tok3ns",
       organizer: priya,
       attendees: [
         { ...priya, status: "accepted" },
@@ -145,13 +184,12 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       ],
     }),
     ev("cal-personal", "Lunch with Ana", at(0, 12, 30), at(0, 13, 30), { location: "Café Lisboa" }),
-    ev("cal-work", "Design review", at(1, 15), at(1, 16, 30), { location: "Video call" }),
+    ev("cal-work", "Design review", at(1, 15), at(1, 16, 30), { location: "https://meet.google.com/kfp-wqzr-xmd", organizer: priya, attendees: team("accepted") }),
     ev("cal-personal", "Climbing", at(2, 18), at(2, 19, 30), { repeat: "weekly", location: "North Wall gym" }),
     ev("cal-personal", "Ferry to the cabin", at(untilSaturday, 8, 15), at(untilSaturday, 9), { location: "Pier 3", notes: "Booking reference FX-2210. Arrive 30 minutes early." }),
     ev("cal-personal", "Cabin weekend", at(untilSaturday, 0), at(untilSaturday + 2, 0), { allDay: true }),
-    ev("cal-personal", "Marcus’s birthday", at(5, 0), at(6, 0), { allDay: true, repeat: "yearly" }),
     ev("cal-holidays", "Bank holiday", at(9, 0), at(10, 0), { allDay: true }),
-    ev("cal-work", "Quarterly planning", at(-2, 10), at(-2, 12)),
+    ev("cal-work", "Quarterly planning", at(-2, 10), at(-2, 12), { organizer: priya, attendees: team("accepted") }),
   ]
 
   let c = 0
@@ -195,13 +233,41 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   }
   const occurrence = (e: DemoEvent, o: Slot): Occurrence => ({
     eventId: e.id, calendarId: e.calendarId, title: o.title, location: o.location, start: o.start, end: o.end,
-    originalStart: o.original, allDay: e.allDay, recurring: e.repeat !== "none",
+    originalStart: o.original, allDay: e.allDay, recurring: e.repeat !== "none", meetingUrl: meetingLink(o.location), contactId: null,
   })
+
+  // Birthdays: a yearly all-day occurrence per contact with a birthday.
+  const birthdays = (from: number, to: number): Occurrence[] => {
+    if (calendar(BIRTHDAYS).hidden) return []
+    const out: Occurrence[] = []
+    for (const x of contacts.filter((k) => k.birthday && visible(k.bookId))) {
+      const m = /^(\d{4}|-)-?(\d{2})-(\d{2})$/.exec(x.birthday!.replace(/^--/, "-"))
+      if (!m) continue
+      const born = m[1] === "-" ? null : +m[1]!
+      for (let y = new Date(from * 1000).getFullYear(); y <= new Date(to * 1000).getFullYear(); y++) {
+        const start = secs(new Date(y, +m[2]! - 1, +m[3]!))
+        const end = secs(new Date(y, +m[2]! - 1, +m[3]! + 1))
+        if (start >= to || end <= from) continue
+        out.push({
+          eventId: `${BIRTHDAY}${x.id}`, calendarId: BIRTHDAYS, title: born && y > born ? `${x.fullName} turns ${y - born}` : `${x.fullName}’s birthday`,
+          location: null, start, end, originalStart: start, allDay: true, recurring: true, meetingUrl: null, contactId: x.id,
+        })
+      }
+    }
+    return out
+  }
+  const birthdayDetail = (id: string, start?: number | null): EventDetail => {
+    const from = start != null ? start - 1 : Math.floor(Date.now() / 1000)
+    const o = birthdays(from, from + 367 * 86_400).find((b) => b.eventId === id)
+    if (!o) throw new Error("that contact's birthday was removed")
+    return { ...o, notes: null, repeat: "yearly", timeZone: null, organizer: null, attendees: [], url: null, writable: false, reminders: [] }
+  }
+
   const detail = (e: DemoEvent, start?: number | null): EventDetail => {
     const all = expand(e, start != null ? start - 86_400 : -Infinity, Infinity)
     const o = all.find((x) => x.start === start || x.original === start) ?? all[0] ?? { start: e.start, end: e.end, original: e.start, title: e.title, location: e.location }
     return {
-      ...occurrence(e, o), notes: e.notes, repeat: e.repeat, timeZone: e.allDay ? null : Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...occurrence(e, o), meetingUrl: meetingLink(o.location, e.notes), notes: e.notes, repeat: e.repeat, timeZone: e.allDay ? null : Intl.DateTimeFormat().resolvedOptions().timeZone,
       organizer: e.organizer, attendees: e.attendees, url: null, writable: calendar(e.calendarId).writable, reminders: [...e.reminders].sort((a, b) => a - b),
     }
   }
@@ -253,6 +319,11 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     })
     return x
   }
+
+  // `?missed`: pretend the standup's reminder came due while the app was closed.
+  let missed: DueReminder[] = new URLSearchParams(globalThis.location?.search ?? "").has("missed")
+    ? [{ eventId: events[0]!.id, title: events[0]!.title, location: events[0]!.location, start: at(0, 9, 30), fireAt: at(0, 9, 25) }]
+    : []
 
   // Reminders: like the desktop worker, check every few seconds and fire
   // each once (never replaying ones from before the page loaded).
@@ -319,10 +390,11 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       const out = events
         .filter((e) => visible(e.calendarId))
         .flatMap((e) => expand(e, from, to).map((o) => occurrence(e, o)))
+        .concat(birthdays(from, to))
         .sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start - b.start || a.title.localeCompare(b.title))
       return later(out)
     },
-    getEvent: async (id: string, start?: number | null) => later(detail(event(id), start)),
+    getEvent: async (id: string, start?: number | null) => later(id.startsWith(BIRTHDAY) ? birthdayDetail(id, start) : detail(event(id), start)),
     createEvent: async (input: EventInput) => {
       writable(input.calendarId)
       const e = apply(ev(input.calendarId, "", 0, 0), input)
@@ -380,6 +452,23 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       return later(list.map(summary))
     },
     getContact: async (id: string) => later(contact(id)),
+    takeMissedReminders: async () => {
+      const out = missed
+      missed = []
+      return later(out)
+    },
+    /** Meetings with this contact a year either side of now; the demo's mail adds the threads. */
+    contactMeetings: (id: string): Omit<ContactActivity, "threads"> => {
+      const emails = contact(id).emails.map((e) => normEmail(e.value))
+      const t = Math.floor(Date.now() / 1000)
+      const all = events
+        .filter((e) => visible(e.calendarId) && [e.organizer, ...e.attendees].some((a) => a && emails.includes(normEmail(a.email))))
+        .flatMap((e) => expand(e, t - ACTIVITY_WINDOW, t + ACTIVITY_WINDOW).map((o) => occurrence(e, o)))
+      return {
+        upcoming: all.filter((o) => o.end > t).sort((a, b) => a.start - b.start).slice(0, 3),
+        past: all.filter((o) => o.end <= t).sort((a, b) => b.start - a.start).slice(0, 3),
+      }
+    },
     createContact: async (input: ContactInput) => {
       writable(input.bookId)
       const x = fromInput(person(input.bookId, ""), input)

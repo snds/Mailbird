@@ -36,7 +36,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -206,6 +206,9 @@ impl Store {
         if version < 8 {
             tx.execute_batch(crate::sender_store::MIGRATE_V8)?;
         }
+        if version < 9 {
+            tx.execute_batch(crate::connected_store::MIGRATE_V9)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
         let store = Self { db };
@@ -216,6 +219,10 @@ impl Store {
         if (1..8).contains(&version) {
             // Sort mail stored before categories existed.
             store.reclassify_all()?;
+        }
+        if (4..9).contains(&version) {
+            // Contacts stored before birthdays had a column.
+            store.backfill_birthdays()?;
         }
         Ok(store)
     }
@@ -384,6 +391,24 @@ impl Store {
         );
         let mut stmt = self.db.prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params_from_iter(args), summary_row)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+    }
+
+    /// The newest message of each conversation with any of these addresses
+    /// (from them, or to them), newest first.
+    pub(crate) fn threads_with(&self, emails: &[String], limit: u32) -> Result<Vec<MessageSummary>> {
+        let list = serde_json::to_string(emails).unwrap_or_else(|_| "[]".into());
+        let sql = format!(
+            "WITH hit AS (
+               SELECT m.id, ROW_NUMBER() OVER (PARTITION BY m.thread_id ORDER BY m.date DESC) AS rn FROM messages m
+               WHERE lower(m.from_email) IN (SELECT value FROM json_each(?1))
+                  OR EXISTS (SELECT 1 FROM json_each(m.to_json) t WHERE lower(json_extract(t.value, '$.email')) IN (SELECT value FROM json_each(?1)))
+                  OR EXISTS (SELECT 1 FROM json_each(m.cc_json) t WHERE lower(json_extract(t.value, '$.email')) IN (SELECT value FROM json_each(?1)))
+             )
+             SELECT {SUMMARY_COLS_PLAIN} FROM messages m JOIN hit ON hit.id = m.id AND hit.rn = 1 ORDER BY m.date DESC LIMIT ?2"
+        );
+        let mut stmt = self.db.prepare(&sql)?;
+        let rows = stmt.query_map(params![list, limit], summary_row)?;
         rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
     }
 
