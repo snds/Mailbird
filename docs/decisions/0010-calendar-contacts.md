@@ -115,6 +115,8 @@ Calendars and address books **on this device** always exist, so events and conta
 
 ## Not yet
 
+_Phase 2b delivered occurrence edits, invitations, the month view, and reminders. See [ADR-0011](0011-calendar-depth.md)._
+
 - Editing a single occurrence (a `RECURRENCE-ID` override), and "this and following".
 - Invitations: sending and answering iTIP/iMIP, and free/busy.
 - Month view.

@@ -235,6 +235,7 @@ async fn jmap_round_trip() {
         in_reply_to: Some("First-note@example.com".into()),
         references: vec![],
         attachments: vec![],
+        calendar: None,
     };
     match jmap::send(&config(), PASS, &draft).await {
         Ok(raw) => {

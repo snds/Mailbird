@@ -33,7 +33,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -191,9 +191,17 @@ impl Store {
         if version < 4 {
             tx.execute_batch(crate::pim_store::MIGRATE_V4)?;
         }
+        if version < 5 {
+            tx.execute_batch(crate::pim_store::MIGRATE_V5)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
-        Ok(Self { db })
+        let store = Self { db };
+        if (1..5).contains(&version) {
+            // Fill the new reminder index for events stored before it existed.
+            store.reindex_events()?;
+        }
+        Ok(store)
     }
 
     // ── Accounts ──────────────────────────────────────────────────────────
@@ -348,6 +356,8 @@ impl Store {
         if detail.body_html.as_deref().is_some_and(|h| h.contains("cid:")) {
             detail.body_html = Some(self.inline_cid_images(id, detail.body_html.take().unwrap())?);
         }
+        // An unreadable invitation is just mail.
+        detail.invite = self.message_invite(id).unwrap_or(None);
         Ok(detail)
     }
 
@@ -1145,6 +1155,7 @@ fn detail_row(r: &Row) -> rusqlite::Result<MessageDetail> {
         body_html: r.get(20)?,
         attachments: vec![],
         references: vec![],
+        invite: None,
     })
 }
 
@@ -1395,6 +1406,7 @@ mod tests {
             in_reply_to: None,
             references: vec![],
             attachments: vec![],
+            calendar: None,
         }
     }
 

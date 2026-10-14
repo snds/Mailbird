@@ -40,6 +40,8 @@ pub struct EventMeta {
     pub organizer: Option<Address>,
     pub attendees: Vec<Attendee>,
     pub url: Option<String>,
+    /// Minutes before the start, from the master's editable alarms.
+    pub reminders: Vec<i64>,
 }
 
 /// One occurrence of an event, in absolute time.
@@ -47,6 +49,9 @@ pub struct EventMeta {
 pub struct Instance {
     pub start: i64,
     pub end: i64,
+    /// The slot this occurrence fills in the series (its RECURRENCE-ID).
+    /// Differs from `start` when one occurrence was moved.
+    pub original: i64,
     pub title: String,
     pub location: Option<String>,
 }
@@ -105,8 +110,32 @@ fn person(e: &ICalendarEntry) -> Option<Address> {
     Some(Address { name, email })
 }
 
+/// A zone named by TZID, resolved against the object's own VTIMEZONEs first
+/// (Outlook writes names like "Pacific Standard Time"), then IANA.
+fn zone(cal: &ICalendar, tzid: Option<&str>, local_tz: &str) -> Tz {
+    cal.build_tz_resolver().with_default(tz(local_tz)).resolve_or_default(tzid)
+}
+
+/// RECURRENCE-ID of an override, as Unix seconds.
+fn rid_ts(cal: &ICalendar, c: &ICalendarComponent, local_tz: &str) -> Option<i64> {
+    let e = c.property(&ICalendarProperty::RecurrenceId)?;
+    let Some(ICalendarValue::PartialDateTime(dt)) = e.values.first() else { return None };
+    dt.to_date_time_with_tz(zone(cal, e.tz_id(), local_tz)).map(|d| d.timestamp())
+}
+
+/// calcard pairs an override with its series only when both carry the same
+/// SEQUENCE; clients routinely bump it on the override alone, which would
+/// show that occurrence twice. Expansion ignores SEQUENCE.
+fn for_expansion(cal: &ICalendar) -> ICalendar {
+    let mut c = cal.clone();
+    for comp in c.components.iter_mut().filter(|c| c.component_type == ICalendarComponentType::VEvent) {
+        comp.entries.retain(|e| e.name != ICalendarProperty::Sequence);
+    }
+    c
+}
+
 fn expand_all(cal: &ICalendar, local_tz: &str) -> Vec<Instance> {
-    let exp = cal.expand_dates(tz(local_tz), EXPAND_LIMIT);
+    let exp = for_expansion(cal).expand_dates(tz(local_tz), EXPAND_LIMIT);
     exp.events
         .into_iter()
         .filter_map(|e| {
@@ -121,7 +150,8 @@ fn expand_all(cal: &ICalendar, local_tz: &str) -> Vec<Instance> {
             };
             // A missing DTEND means a zero-length event, or one day for all-day ones.
             let end = if end > start { end } else if is_date_only(c) { start + 86_400 } else { start };
-            Some(Instance { start, end, title: text(c, ICalendarProperty::Summary).unwrap_or_default(), location: text(c, ICalendarProperty::Location) })
+            let original = if c.has_property(&ICalendarProperty::RecurrenceId) { rid_ts(cal, c, local_tz).unwrap_or(start) } else { start };
+            Some(Instance { start, end, original, title: text(c, ICalendarProperty::Summary).unwrap_or_default(), location: text(c, ICalendarProperty::Location) })
         })
         .collect()
 }
@@ -162,7 +192,63 @@ pub fn read_event(ics: &str, local_tz: &str) -> Result<EventMeta> {
             })
             .collect(),
         url: text(c, ICalendarProperty::Url),
+        reminders: reminders_of(&cal, i),
     })
+}
+
+// ── Reminders (VALARM) ───────────────────────────────────────────────────────
+
+/// A display or sound alarm relative to the start: the kind the editor
+/// offers. Its lead time in minutes (0 = at the start, negative = after).
+/// Email alarms, absolute times, and end-relative triggers stay as they are.
+fn editable_alarm(c: &ICalendarComponent) -> Option<i64> {
+    use calcard::icalendar::{ICalendarAction, ICalendarParameterValue, ICalendarRelated};
+    if c.component_type != ICalendarComponentType::VAlarm {
+        return None;
+    }
+    let action = c.property(&ICalendarProperty::Action).and_then(|e| e.values.first());
+    if !matches!(action, Some(ICalendarValue::Action(ICalendarAction::Display | ICalendarAction::Audio))) {
+        return None;
+    }
+    let trigger = c.property(&ICalendarProperty::Trigger)?;
+    let end_related = trigger.params.iter().any(|p| matches!(p.value, ICalendarParameterValue::Related(ICalendarRelated::End)));
+    match trigger.values.first() {
+        Some(ICalendarValue::Duration(d)) if !end_related => Some(-d.as_seconds() / 60),
+        _ => None,
+    }
+}
+
+fn reminders_of(cal: &ICalendar, event: usize) -> Vec<i64> {
+    let mut out: Vec<i64> = cal.components[event].component_ids.iter().filter_map(|id| cal.components.get(*id as usize).and_then(editable_alarm)).collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// Replaces the editable alarms of the event `find` locates (the index
+/// shifts as components are removed, so it is looked up again).
+fn set_reminders(cal: &mut ICalendar, find: impl Fn(&ICalendar) -> Option<usize>, minutes: &[i64]) -> Result<()> {
+    let i = find(cal).ok_or_else(|| Error::Parse("no event".into()))?;
+    let old: Vec<u32> = cal.components[i].component_ids.iter().copied().filter(|id| cal.components.get(*id as usize).and_then(editable_alarm).is_some()).collect();
+    cal.remove_component_ids(&old);
+    let i = find(cal).ok_or_else(|| Error::Parse("no event".into()))?;
+    let mut mins = minutes.to_vec();
+    mins.sort_unstable();
+    mins.dedup();
+    let alarms: String = mins
+        .iter()
+        .map(|m| {
+            let trigger = if *m >= 0 { format!("-PT{m}M") } else { format!("PT{}M", -m) };
+            format!("BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:{trigger}\r\nEND:VALARM\r\n")
+        })
+        .collect();
+    let snippet = parse(&format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:x\r\n{alarms}END:VEVENT\r\nEND:VCALENDAR\r\n"))?;
+    for alarm in snippet.components.into_iter().filter(|c| c.component_type == ICalendarComponentType::VAlarm) {
+        cal.components.push(alarm);
+        let id = (cal.components.len() - 1) as u32;
+        cal.components[i].component_ids.push(id);
+    }
+    Ok(())
 }
 
 fn rrule_unbounded(c: &ICalendarComponent) -> bool {
@@ -260,7 +346,11 @@ pub fn new_event(uid: &str, input: &EventInput) -> Result<String> {
     lines.extend(schedule_lines(input)?);
     let body: String = lines.iter().map(|l| format!("{l}\r\n")).collect();
     let ics = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Mailbird//EN\r\nCALSCALE:GREGORIAN\r\nBEGIN:VEVENT\r\n{body}END:VEVENT\r\nEND:VCALENDAR\r\n");
-    Ok(finish(parse(&ics)?))
+    let mut cal = parse(&ics)?;
+    if let Some(r) = &input.reminders {
+        set_reminders(&mut cal, master_index, r)?;
+    }
+    Ok(finish(cal))
 }
 
 /// Applies `input` to the series master, keeping everything else.
@@ -296,27 +386,206 @@ pub fn edit_event(ics: &str, input: &EventInput) -> Result<String> {
         ) && (keep_rule || e.name != ICalendarProperty::Rrule)
     });
     master.entries.extend(fresh);
+    if let Some(r) = &input.reminders {
+        set_reminders(&mut cal, master_index, r)?;
+    }
     Ok(finish(cal))
 }
 
-/// Removes one occurrence of a series (an EXDATE at its original start).
-/// `local_tz` must be the zone the occurrence was expanded in, so all-day
-/// dates land on the right day.
-pub fn skip_occurrence(ics: &str, start: i64, local_tz: &str) -> Result<String> {
-    let mut cal = parse(ics)?;
-    let i = master_index(&cal).ok_or_else(|| Error::Parse("no event".into()))?;
-    let c = &cal.components[i];
-    let dtstart = c.property(&ICalendarProperty::Dtstart).ok_or_else(|| Error::Parse("event has no start".into()))?;
-    let at = DateTime::from_timestamp(start, 0).ok_or_else(|| Error::Invalid("bad occurrence time".into()))?;
-    let line = if is_date_only(c) {
-        format!("EXDATE;VALUE=DATE:{}", at.with_timezone(&tz(local_tz)).format("%Y%m%d"))
+/// A property naming one slot of the series, written in the same form as
+/// the master's DTSTART (date, zoned local time, UTC, or floating), as
+/// RFC 5545 requires for EXDATE and RECURRENCE-ID.
+fn slot_line(cal: &ICalendar, master: &ICalendarComponent, prop: &str, at: i64, local_tz: &str) -> Result<String> {
+    let dtstart = master.property(&ICalendarProperty::Dtstart).ok_or_else(|| Error::Parse("event has no start".into()))?;
+    let at = DateTime::from_timestamp(at, 0).ok_or_else(|| Error::Invalid("bad occurrence time".into()))?;
+    let utc = matches!(dtstart.values.first(), Some(ICalendarValue::PartialDateTime(dt)) if dt.tz_hour.is_some());
+    Ok(if is_date_only(master) {
+        format!("{prop};VALUE=DATE:{}", at.with_timezone(&tz(local_tz)).format("%Y%m%d"))
     } else if let Some(tzid) = dtstart.tz_id() {
-        format!("EXDATE;TZID={tzid}:{}", at.with_timezone(&tz(tzid)).format("%Y%m%dT%H%M%S"))
+        // Quote names a parameter can't carry bare ("Romance Standard Time").
+        let name = if tzid.contains([' ', ':', ';', ',']) { format!("\"{tzid}\"") } else { tzid.to_string() };
+        format!("{prop};TZID={name}:{}", at.with_timezone(&zone(cal, Some(tzid), local_tz)).format("%Y%m%dT%H%M%S"))
+    } else if utc {
+        format!("{prop}:{}", at.format("%Y%m%dT%H%M%SZ"))
     } else {
-        format!("EXDATE:{}", at.format("%Y%m%dT%H%M%SZ"))
-    };
+        format!("{prop}:{}", at.with_timezone(&tz(local_tz)).format("%Y%m%dT%H%M%S"))
+    })
+}
+
+fn override_index(cal: &ICalendar, original: i64, local_tz: &str) -> Option<usize> {
+    cal.components.iter().position(|c| c.component_type == ICalendarComponentType::VEvent && c.has_property(&ICalendarProperty::RecurrenceId) && rid_ts(cal, c, local_tz) == Some(original))
+}
+
+fn sequence(c: &ICalendarComponent) -> i64 {
+    c.property(&ICalendarProperty::Sequence)
+        .and_then(|e| e.values.first())
+        .and_then(|v| if let ICalendarValue::Integer(n) = v { Some(*n) } else { None })
+        .unwrap_or(0)
+}
+
+/// Removes one occurrence of a series: an EXDATE at its slot, and any
+/// override that had moved it. `original` is the slot, `local_tz` the zone
+/// it was expanded in (all-day dates land on that day).
+pub fn skip_occurrence(ics: &str, original: i64, local_tz: &str) -> Result<String> {
+    let mut cal = parse(ics)?;
+    let m = master_index(&cal).ok_or_else(|| Error::Parse("no event".into()))?;
+    let line = slot_line(&cal, &cal.components[m], "EXDATE", original, local_tz)?;
     let fresh = entries(&[line])?;
-    cal.components[i].entries.extend(fresh);
+    cal.components[m].entries.extend(fresh);
+    if let Some(o) = override_index(&cal, original, local_tz) {
+        cal.remove_component_ids(&[o as u32]);
+    }
+    Ok(finish(cal))
+}
+
+/// Properties an override or a split series gets from `input`; the rest it
+/// inherits from the series master.
+const SCHEDULE_PROPS: [ICalendarProperty; 13] = [
+    ICalendarProperty::Summary,
+    ICalendarProperty::Location,
+    ICalendarProperty::Description,
+    ICalendarProperty::Dtstart,
+    ICalendarProperty::Dtend,
+    ICalendarProperty::Duration,
+    ICalendarProperty::Rrule,
+    ICalendarProperty::Rdate,
+    ICalendarProperty::Exdate,
+    ICalendarProperty::RecurrenceId,
+    ICalendarProperty::Sequence,
+    ICalendarProperty::Dtstamp,
+    ICalendarProperty::LastModified,
+];
+
+/// Edits one occurrence only (RFC 5545 §3.8.4.4): updates its override, or
+/// adds one that inherits the master's attendees, alarms, and other
+/// properties. A non-recurring event is simply edited.
+pub fn edit_occurrence(ics: &str, original: i64, input: &EventInput, local_tz: &str) -> Result<String> {
+    let mut cal = parse(ics)?;
+    let m = master_index(&cal).ok_or_else(|| Error::Parse("no event to edit".into()))?;
+    if !cal.components[m].is_recurrent() {
+        return edit_event(ics, input);
+    }
+    let single = EventInput { repeat: Repeat::None, ..input.clone() };
+    let mut lines = describe_lines(&single);
+    lines.extend(schedule_lines(&single)?);
+    lines.push(format!("DTSTAMP:{}", stamp_now()));
+    lines.push(format!("LAST-MODIFIED:{}", stamp_now()));
+    // Keep SEQUENCE in step with the master, as most servers expect.
+    lines.push(format!("SEQUENCE:{}", sequence(&cal.components[m])));
+
+    if let Some(o) = override_index(&cal, original, local_tz) {
+        let fresh = entries(&lines)?;
+        let c = &mut cal.components[o];
+        c.entries.retain(|e| !SCHEDULE_PROPS.contains(&e.name) || e.name == ICalendarProperty::RecurrenceId);
+        c.entries.extend(fresh);
+        if let Some(r) = &input.reminders {
+            set_reminders(&mut cal, |c| override_index(c, original, local_tz), r)?;
+        }
+        return Ok(finish(cal));
+    }
+    lines.push(slot_line(&cal, &cal.components[m], "RECURRENCE-ID", original, local_tz)?);
+    let fresh = entries(&lines)?;
+    let master = cal.components[m].clone();
+    let mut inherited: Vec<ICalendarEntry> = master.entries.iter().filter(|e| !SCHEDULE_PROPS.contains(&e.name)).cloned().collect();
+    inherited.extend(fresh);
+    // Alarms are sub-components; give the override its own copies.
+    let mut ids = Vec::new();
+    for id in &master.component_ids {
+        if let Some(alarm) = cal.components.get(*id as usize).filter(|c| c.component_type == ICalendarComponentType::VAlarm).cloned() {
+            cal.components.push(alarm);
+            ids.push((cal.components.len() - 1) as u32);
+        }
+    }
+    cal.components.push(ICalendarComponent { component_type: ICalendarComponentType::VEvent, entries: inherited, component_ids: ids });
+    let new_id = (cal.components.len() - 1) as u32;
+    cal.components[0].component_ids.push(new_id);
+    if let Some(r) = &input.reminders {
+        set_reminders(&mut cal, |c| override_index(c, original, local_tz), r)?;
+    }
+    Ok(finish(cal))
+}
+
+/// The RRULE part after the split point: UNTIL just before `original`, in
+/// UTC (or a date for all-day series), as RFC 5545 requires.
+fn until_value(master: &ICalendarComponent, original: i64, local_tz: &str) -> Result<calcard::common::PartialDateTime> {
+    let line = if is_date_only(master) {
+        let day_before = DateTime::from_timestamp(original - 86_400, 0).ok_or_else(|| Error::Invalid("bad occurrence time".into()))?;
+        format!("RRULE:FREQ=DAILY;UNTIL={}", day_before.with_timezone(&tz(local_tz)).format("%Y%m%d"))
+    } else {
+        let before = DateTime::from_timestamp(original - 1, 0).ok_or_else(|| Error::Invalid("bad occurrence time".into()))?;
+        format!("RRULE:FREQ=DAILY;UNTIL={}", before.format("%Y%m%dT%H%M%SZ"))
+    };
+    let parsed = entries(&[line])?;
+    match parsed.into_iter().next().and_then(|e| e.values.into_iter().next()) {
+        Some(ICalendarValue::RecurrenceRule(r)) => r.until.ok_or_else(|| Error::Parse("bad UNTIL".into())),
+        _ => Err(Error::Parse("bad UNTIL".into())),
+    }
+}
+
+/// Ends a series just before the occurrence at `original` (for "delete
+/// this and following" and the first half of a split). Overrides from
+/// that slot on are dropped with it.
+pub fn end_series_before(ics: &str, original: i64, local_tz: &str) -> Result<String> {
+    let mut cal = parse(ics)?;
+    let m = master_index(&cal).ok_or_else(|| Error::Parse("no event".into()))?;
+    let until = until_value(&cal.components[m], original, local_tz)?;
+    for e in cal.components[m].entries.iter_mut().filter(|e| e.name == ICalendarProperty::Rrule) {
+        for v in e.values.iter_mut() {
+            if let ICalendarValue::RecurrenceRule(r) = v {
+                r.count = None;
+                r.until = Some(until.clone());
+            }
+        }
+    }
+    let later: Vec<u32> = cal
+        .components
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.component_type == ICalendarComponentType::VEvent && c.has_property(&ICalendarProperty::RecurrenceId))
+        .filter(|(_, c)| rid_ts(&cal, c, local_tz).is_some_and(|t| t >= original))
+        .map(|(i, _)| i as u32)
+        .collect();
+    cal.remove_component_ids(&later);
+    Ok(finish(cal))
+}
+
+/// "This and following": a new series with its own UID from `original`
+/// on, carrying the old one's attendees, alarms, and other properties.
+/// With `Repeat::Custom` the old rule continues (a COUNT shrinks by the
+/// occurrences already past). Pair with `end_series_before` on the old one.
+pub fn split_series(ics: &str, original: i64, new_uid: &str, input: &EventInput, local_tz: &str) -> Result<String> {
+    let mut cal = parse(ics)?;
+    let m = master_index(&cal).ok_or_else(|| Error::Parse("no event".into()))?;
+    let before = expand_all(&cal, local_tz).iter().filter(|o| o.original < original).count() as u32;
+    let mut rule = cal.components[m].property(&ICalendarProperty::Rrule).cloned();
+    if let Some(ICalendarValue::RecurrenceRule(r)) = rule.as_mut().and_then(|e| e.values.first_mut()) {
+        r.count = r.count.map(|c| c.saturating_sub(before).max(1));
+    }
+    // The new series starts clean: no overrides from the old one.
+    let overrides: Vec<u32> = cal
+        .components
+        .iter()
+        .enumerate()
+        .filter(|(i, c)| *i != m && c.component_type == ICalendarComponentType::VEvent)
+        .map(|(i, _)| i as u32)
+        .collect();
+    cal.remove_component_ids(&overrides);
+    let m = master_index(&cal).ok_or_else(|| Error::Parse("no event".into()))?;
+    let mut lines = describe_lines(input);
+    lines.extend(schedule_lines(input)?);
+    lines.push(format!("UID:{new_uid}"));
+    lines.push("SEQUENCE:0".into());
+    lines.push(format!("DTSTAMP:{}", stamp_now()));
+    let fresh = entries(&lines)?;
+    let master = &mut cal.components[m];
+    master.entries.retain(|e| !SCHEDULE_PROPS.contains(&e.name) && e.name != ICalendarProperty::Uid);
+    master.entries.extend(fresh);
+    if input.repeat == Repeat::Custom {
+        master.entries.extend(rule);
+    }
+    if let Some(r) = &input.reminders {
+        set_reminders(&mut cal, master_index, r)?;
+    }
     Ok(finish(cal))
 }
 
@@ -337,6 +606,8 @@ mod tests {
             all_day: false,
             time_zone: "Europe/Lisbon".into(),
             repeat: Repeat::None,
+            reminders: None,
+            attendees: None,
         }
     }
 
@@ -419,6 +690,115 @@ mod tests {
         let event_part = &single[single.find("BEGIN:VEVENT").unwrap()..];
         assert!(!event_part.contains("RRULE"), "repeat none drops the rule (VTIMEZONE rules aside)");
         assert!(!read_event(&single, "UTC").unwrap().recurring);
+    }
+
+    /// Weekly Tuesdays 09:30 Lisbon, 4 times from 2026-10-20 (no exceptions).
+    const PLAIN: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:p\r\nSUMMARY:Review\r\nSEQUENCE:3\r\nDTSTART;TZID=Europe/Lisbon:20261020T093000\r\nDTEND;TZID=Europe/Lisbon:20261020T100000\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\nATTENDEE;CN=Ana:mailto:ana@example.com\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    /// The series' slots, from expansion (DST ends Oct 25, so they aren't 7×24h apart).
+    fn slots(ics: &str) -> Vec<i64> {
+        occurrences(ics, "UTC", 0, i64::MAX).unwrap().iter().map(|o| o.original).collect()
+    }
+
+    #[test]
+    fn overrides_match_their_slot_whatever_their_sequence() {
+        let ics = SERIES.replace("RECURRENCE-ID;", "SEQUENCE:7\r\nRECURRENCE-ID;");
+        assert_eq!(occurrences(&ics, "UTC", 0, i64::MAX).unwrap().len(), 3, "no duplicate for a bumped SEQUENCE");
+        let moved = occurrences(&ics, "UTC", 0, i64::MAX).unwrap().into_iter().find(|o| o.title == "Standup (moved)").unwrap();
+        assert_eq!(moved.original, 1_793_698_200, "remembers its slot (09:30 WET)");
+        assert_ne!(moved.start, moved.original);
+    }
+
+    #[test]
+    fn editing_one_occurrence_adds_an_override_that_inherits() {
+        let s = slots(PLAIN);
+        let mut i = input("2026-10-27T14:00", "2026-10-27T15:00");
+        i.title = "Review (moved)".into();
+        let once = edit_occurrence(PLAIN, s[1], &i, "UTC").unwrap();
+        let all = occurrences(&once, "UTC", 0, i64::MAX).unwrap();
+        assert_eq!(all.len(), 4, "still four");
+        let moved = all.iter().find(|o| o.original == s[1]).unwrap();
+        assert_eq!(moved.title, "Review (moved)");
+        assert_eq!(moved.start, 1_793_109_600, "14:00 Lisbon (WET) on the 27th");
+        assert!(all.iter().filter(|o| o.original != s[1]).all(|o| o.title == "Review"));
+        let override_part = &once[once.rfind("BEGIN:VEVENT").unwrap()..];
+        assert!(override_part.contains("ana@example.com"), "attendees inherited");
+        assert!(override_part.contains("BEGIN:VALARM"), "alarm inherited");
+        assert!(override_part.contains("SEQUENCE:3"), "sequence in step with the master");
+
+        // Editing it again updates the same override.
+        i.title = "Review (moved again)".into();
+        let twice = edit_occurrence(&once, s[1], &i, "UTC").unwrap();
+        assert_eq!(twice.matches("RECURRENCE-ID").count(), 1);
+        assert_eq!(occurrences(&twice, "UTC", 0, i64::MAX).unwrap().len(), 4);
+
+        // Deleting the moved occurrence removes the override too.
+        let gone = skip_occurrence(&twice, s[1], "UTC").unwrap();
+        assert!(!gone.contains("RECURRENCE-ID"));
+        assert_eq!(occurrences(&gone, "UTC", 0, i64::MAX).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn ending_a_series_keeps_only_what_came_before() {
+        let s = slots(PLAIN);
+        let edited = edit_occurrence(PLAIN, s[3], &input("2026-11-10T12:00", "2026-11-10T13:00"), "UTC").unwrap();
+        let ended = end_series_before(&edited, s[2], "UTC").unwrap();
+        assert_eq!(slots(&ended), s[..2]);
+        assert!(!ended.contains("COUNT="), "COUNT becomes UNTIL");
+        assert!(!ended.contains("RECURRENCE-ID"), "later overrides go with it");
+        assert!(read_event(&ended, "UTC").unwrap().last_end.is_some());
+    }
+
+    #[test]
+    fn splitting_continues_the_rule_under_a_new_uid() {
+        let mut i = input("2026-11-03T10:00", "2026-11-03T10:30");
+        i.repeat = Repeat::Custom;
+        i.title = "Review v2".into();
+        let s = slots(PLAIN);
+        let tail = split_series(PLAIN, s[2], "p2", &i, "UTC").unwrap();
+        let meta = read_event(&tail, "UTC").unwrap();
+        assert_eq!(meta.uid, "p2");
+        assert_eq!(meta.attendees.len(), 1, "attendees carried over");
+        let all = occurrences(&tail, "UTC", 0, i64::MAX).unwrap();
+        assert_eq!(all.len(), 2, "COUNT=4 minus the two already past");
+        assert!(all.iter().all(|o| o.title == "Review v2"));
+        assert_eq!(all[0].start, 1_793_700_000, "10:00 Lisbon on Nov 3");
+        let head = end_series_before(PLAIN, s[2], "UTC").unwrap();
+        assert_eq!(occurrences(&head, "UTC", 0, i64::MAX).unwrap().len() + all.len(), 4, "nothing lost or doubled");
+    }
+
+    #[test]
+    fn windows_style_zone_names_resolve_through_their_vtimezone() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:Romance Standard Time\r\nBEGIN:STANDARD\r\nDTSTART:16010101T030000\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nRRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:16010101T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nRRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:w\r\nSUMMARY:Sync\r\nDTSTART;TZID=Romance Standard Time:20261020T090000\r\nDTEND;TZID=Romance Standard Time:20261020T093000\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let all = occurrences(ics, "UTC", 0, i64::MAX).unwrap();
+        assert_eq!(all[0].start, 1_792_479_600, "09:00 at +02:00");
+        let skipped = skip_occurrence(ics, all[1].original, "UTC").unwrap();
+        assert!(skipped.contains("EXDATE;TZID=\"Romance Standard Time\":20261021T090000"), "{skipped}");
+        assert_eq!(occurrences(&skipped, "UTC", 0, i64::MAX).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn reminders_read_write_and_keep_other_alarms() {
+        assert_eq!(read_event(SERIES, "UTC").unwrap().reminders, [10], "existing 10-minute alarm");
+        // An email alarm and an absolute one aren't the editor's to touch.
+        let mixed = SERIES.replace("END:VALARM\r\nEND:VEVENT\r\nBEGIN:VEVENT", "END:VALARM\r\nBEGIN:VALARM\r\nACTION:EMAIL\r\nSUMMARY:x\r\nDESCRIPTION:x\r\nATTENDEE:mailto:a@b.example\r\nTRIGGER:-P1D\r\nEND:VALARM\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER;VALUE=DATE-TIME:20261019T080000Z\r\nEND:VALARM\r\nEND:VEVENT\r\nBEGIN:VEVENT");
+        let mut i = input("2026-10-20T09:30", "2026-10-20T09:45");
+        i.repeat = Repeat::Custom;
+        i.reminders = Some(vec![60, 0, 60]);
+        let edited = edit_event(&mixed, &i).unwrap();
+        assert_eq!(read_event(&edited, "UTC").unwrap().reminders, [0, 60], "replaced, deduped, sorted");
+        assert!(edited.contains("ACTION:EMAIL"), "email alarm kept");
+        assert!(edited.contains("20261019T080000Z"), "absolute alarm kept");
+        assert!(!edited.contains("-PT10M"), "old display alarm replaced");
+        i.reminders = None;
+        assert_eq!(read_event(&edit_event(&edited, &i).unwrap(), "UTC").unwrap().reminders, [0, 60], "None leaves them be");
+        i.reminders = Some(vec![]);
+        assert!(read_event(&edit_event(&edited, &i).unwrap(), "UTC").unwrap().reminders.is_empty());
+
+        let mut n = input("2026-10-14T12:30", "2026-10-14T13:30");
+        n.reminders = Some(vec![15]);
+        let created = new_event("r1", &n).unwrap();
+        assert!(created.contains("TRIGGER:-PT15M"));
+        assert_eq!(read_event(&created, "UTC").unwrap().reminders, [15]);
     }
 
     #[test]

@@ -13,6 +13,7 @@ import { AccountsDialog } from "@/features/accounts"
 import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
 import { EventEditor } from "@/features/calendar/event-editor"
+import { ReminderWatcher } from "@/features/calendar/reminder-watcher"
 import { ContactEditor } from "@/features/contacts/contact-editor"
 import { MailView } from "@/features/mail"
 import { Composer, OutboxWatcher } from "@/features/mail/composer"
@@ -55,6 +56,7 @@ function Root() {
       <ContactEditor />
       <AccountsDialog />
       <OutboxWatcher />
+      <ReminderWatcher />
     </>
   )
 }

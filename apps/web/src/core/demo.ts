@@ -1,6 +1,6 @@
 import type { CoreClient, CoreEvent } from "./client"
 import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OutboxItem, Provider } from "./types"
-import { createDemoPim } from "./demo-pim"
+import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
 
 // An in-memory stand-in for the Rust core, so the web build is usable before
 // the gateway exists. It follows the same rules as crates/core/src/store.rs:
@@ -38,6 +38,8 @@ const PDF = "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4
 interface DemoMessage extends MessageDetail {
   /** Attachment payloads (base64) for openAttachment. */
   files: Record<string, string>
+  /** The meeting invitation this message carries, if any. */
+  inviteSeed?: DemoInviteSeed
 }
 
 function seed(): { accounts: Account[]; messages: DemoMessage[] } {
@@ -80,6 +82,24 @@ function seed(): { accounts: Account[]; messages: DemoMessage[] } {
   return {
     accounts,
     messages: [
+      // A meeting invitation (iMIP): answering it adds the event to Work.
+      msg("work", priya, "Invitation: Design crit", "Priya Raman invited you to “Design crit”. Bring the token audit sheet.", 0.8 * HOUR, {
+        inviteSeed: (() => {
+          const d = new Date()
+          d.setDate(d.getDate() + 2)
+          d.setHours(14, 0, 0, 0)
+          const start = Math.floor(d.getTime() / 1000)
+          return {
+            uid: "crit-1@studio.example", title: "Design crit", location: "Studio, room 2", start, end: start + HOUR,
+            organizer: priya,
+            attendees: [
+              { ...priya, status: "accepted" },
+              { name: "Me", email: "me@studio.example", status: "needs-action" },
+              { name: "Sam Okafor", email: "sam@studio.example", status: "tentative" },
+            ],
+          }
+        })(),
+      }),
       // A three-message conversation, including my own reply.
       msg("work", priya, "Token audit", "Kicking off the audit. First pass: the semantic tier has a few aliases pointing at the wrong primitives.", 2 * 24 * HOUR, { threadId: "t-audit", seen: true }),
       msg("work", me("work"), "Re: Token audit", "Great — can you pull them into one sheet so we can see the drift?", 26 * HOUR, { threadId: "t-audit", seen: true, mailbox: SENT, to: [priya] }),
@@ -140,7 +160,7 @@ export function createDemoClient(): CoreClient {
       case "archive": return r && m.archived
     }
   }
-  const summary = ({ to: _t, cc: _c, messageId: _m, bodyText: _b, bodyHtml: _h, attachments: _a, references: _r, files: _f, ...s }: DemoMessage): MessageSummary => s
+  const summary = ({ to: _t, cc: _c, messageId: _m, bodyText: _b, bodyHtml: _h, attachments: _a, references: _r, files: _f, inviteSeed: _i, invite: _v, ...s }: DemoMessage): MessageSummary => s
 
   // The same 1-second tick the native workers run.
   setInterval(() => {
@@ -178,6 +198,12 @@ export function createDemoClient(): CoreClient {
 
   const later = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 60))
   const done = () => emit("mail:changed")
+  const pim = createDemoPim(emit, later)
+  const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
+  const withInvite = ({ files: _f, inviteSeed, ...m }: DemoMessage): MessageDetail => ({
+    ...m,
+    invite: inviteSeed ? pim.inviteFor(inviteSeed, address(m.accountId)) : null,
+  })
 
   return {
     kind: "demo",
@@ -192,7 +218,17 @@ export function createDemoClient(): CoreClient {
     setAccountDav: async () => {
       throw new Error("Connecting calendars needs the desktop app for now. The web version runs on sample data.")
     },
-    ...createDemoPim(emit, later),
+    ...pim,
+    respondToInvite: async (messageId, response, calendarId) => {
+      const m = state.messages.find((x) => x.id === messageId)
+      if (!m?.inviteSeed) throw new Error("this message has no invitation")
+      const inv = pim.respondTo(m.inviteSeed, address(m.accountId), response, calendarId)
+      done()
+      return later(inv)
+    },
+    applyInviteUpdate: async () => {
+      throw new Error("nothing to apply for this message")
+    },
     syncNow: () => later(undefined),
 
     listMessages: (q: MessageQuery) => {
@@ -226,7 +262,7 @@ export function createDemoClient(): CoreClient {
     getThread: async (threadId) => {
       const list = thread(threadId).sort((a, b) => a.date - b.date)
       if (!list.length) throw new Error("that conversation is no longer here")
-      return later(list.map(({ files: _f, ...m }) => ({ ...m, threadCount: list.length })))
+      return later(list.map((m) => ({ ...withInvite(m), threadCount: list.length })))
     },
 
     setThreadSeen: async (threadId, seen) => { received(threadId).forEach((m) => (m.seen = seen)); done() },

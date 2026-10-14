@@ -9,12 +9,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Skeleton } from "@/components/ui/skeleton"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useEvent, usePimAction } from "@/core/queries"
-import type { Collection, EventDetail as Detail, Repeat } from "@/core/types"
+import type { Collection, EditScope, EventDetail as Detail, Repeat } from "@/core/types"
 
 import { displayName, initials } from "../mail/format"
 import { calendarColor } from "./colors"
 import { dayLabel, fromSecs, rangeLabel } from "./dates"
 import { inputFromDetail } from "./quick-add"
+import { reminderLabel } from "./reminders"
 
 const REPEAT_TEXT: Record<Repeat, string | null> = {
   none: null,
@@ -48,7 +49,7 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
   const { data: e, error, isPending } = useEvent(eventId, start)
   const { data: accounts = [] } = useAccounts()
   const openEditor = useUi((s) => s.openEventEditor)
-  const remove = usePimAction((c, occurrence: number | null) => c.deleteEvent(eventId, occurrence))
+  const remove = usePimAction((c, { occurrence, scope }: { occurrence: number | null; scope: EditScope }) => c.deleteEvent(eventId, occurrence, scope))
 
   if (isPending) {
     return (
@@ -65,15 +66,25 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
   const account = accounts.find((a) => a.id === cal?.accountId)
   const repeat = REPEAT_TEXT[e.repeat]
 
-  const edit = async () => {
-    // A series is edited from its first occurrence, so the dates apply to all.
-    const base: Detail = e.recurring ? await (await getCoreClient()).getEvent(e.eventId) : e
-    openEditor({ eventId: e.eventId, initial: inputFromDetail(base) })
+  // Invited: the organizer owns the guest list (and the real copy of the event).
+  const organizerIsMe = !e.organizer || accounts.some((a) => a.address.toLowerCase() === e.organizer!.email.toLowerCase())
+  const guests = e.attendees.filter((a) => !e.organizer || a.email.toLowerCase() !== e.organizer.email.toLowerCase()).map(({ name, email }) => ({ name, email }))
+  const edit = async (scope: EditScope) => {
+    // The whole series is edited from its first occurrence, so the dates apply
+    // to all; one occurrence (or the rest of the series) from the one picked.
+    const base: Detail = e.recurring && scope === "all" ? await (await getCoreClient()).getEvent(e.eventId) : e
+    openEditor({
+      eventId: e.eventId,
+      initial: { ...inputFromDetail(base), reminders: base.reminders, attendees: organizerIsMe ? guests : undefined },
+      scope: e.recurring ? scope : "all",
+      occurrence: e.originalStart,
+      guestOf: organizerIsMe ? undefined : displayName(e.organizer!),
+    })
   }
-  const del = async (occurrence: number | null) => {
+  const del = async (scope: EditScope) => {
     try {
-      await remove.mutateAsync(occurrence)
-      toast.success(occurrence ? "This event was removed from the series" : "Event deleted", { duration: 2500 })
+      await remove.mutateAsync({ occurrence: e.recurring ? e.originalStart : null, scope })
+      toast.success(scope === "this" ? "This event was removed from the series" : scope === "following" ? "This and following events were deleted" : "Event deleted", { duration: 2500 })
       onDeleted()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err))
@@ -94,23 +105,38 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
 
       {e.writable ? (
         <div className="flex flex-wrap gap-2 pl-6">
-          <Button variant="outline" onClick={() => void edit()}>
-            <Icon name="edit" data-icon="inline-start" /> Edit
-          </Button>
+          {e.recurring ? (
+            // Apple Calendar's grammar: pick the scope first, then act.
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" />}>
+                <Icon name="edit" data-icon="inline-start" /> Edit
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => void edit("this")}>This event only</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void edit("following")}>This and following events</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void edit("all")}>All events in the series</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant="outline" onClick={() => void edit("all")}>
+              <Icon name="edit" data-icon="inline-start" /> Edit
+            </Button>
+          )}
           {e.recurring ? (
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="outline" disabled={remove.isPending} />}>
                 <Icon name="delete" data-icon="inline-start" /> Delete
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={() => void del(e.start)}>Delete this event only</DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onClick={() => void del(null)}>
+                <DropdownMenuItem onClick={() => void del("this")}>Delete this event only</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void del("following")}>Delete this and following events</DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => void del("all")}>
                   Delete every event in the series
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button variant="outline" onClick={() => void del(null)} disabled={remove.isPending}>
+            <Button variant="outline" onClick={() => void del("all")} disabled={remove.isPending}>
               <Icon name="delete" data-icon="inline-start" /> Delete
             </Button>
           )}
@@ -123,6 +149,11 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
 
       <div className="flex flex-col gap-4">
         {repeat && <Row icon="repeat">{repeat}</Row>}
+        {e.reminders.length > 0 && (
+          <Row icon="notifications">
+            <span aria-label="Reminders">{e.reminders.map((m) => reminderLabel(m, e.allDay)).join(", ")}</span>
+          </Row>
+        )}
         {e.location && (
           <Row icon="location_on">
             <span className="break-words">{e.location}</span>

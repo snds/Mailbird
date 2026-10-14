@@ -3,15 +3,21 @@
 // read-only collections, duplicate grouping, merges) on the device clock;
 // the Rust core does the real iCalendar and time-zone work.
 
+import type { CoreEvent } from "./client"
 import type {
   Address,
+  Attendee,
   Collection,
   ContactDetail,
   ContactField,
   ContactInput,
   ContactSummary,
+  DueReminder,
+  EditScope,
   EventDetail,
   EventInput,
+  Invite,
+  InviteResponse,
   Occurrence,
   Repeat,
 } from "./types"
@@ -28,8 +34,25 @@ interface DemoEvent {
   repeat: Repeat
   /** Original starts of skipped occurrences. */
   skipped: number[]
+  /** One-occurrence edits, by original start (RECURRENCE-ID). */
+  overrides: Record<number, { title: string; location: string | null; start: number; end: number }>
+  /** The series stops before this slot ("this and following" split it). */
+  until: number | null
   attendees: EventDetail["attendees"]
   organizer: Address | null
+  reminders: number[]
+  uid: string
+}
+
+/** A demo message's invitation, as the organizer sent it. */
+export interface DemoInviteSeed {
+  uid: string
+  title: string
+  location: string | null
+  start: number
+  end: number
+  organizer: Address
+  attendees: Attendee[]
 }
 
 type DemoContact = ContactDetail
@@ -53,14 +76,29 @@ function step(t: number, repeat: Repeat, n: number): number {
   return secs(d)
 }
 
-function expand(e: DemoEvent, from: number, to: number): { start: number; end: number }[] {
+interface Slot {
+  start: number
+  end: number
+  original: number
+  title: string
+  location: string | null
+}
+
+function expand(e: DemoEvent, from: number, to: number): Slot[] {
   const len = e.end - e.start
-  if (e.repeat === "none" || e.repeat === "custom") return e.start < to && e.end > from ? [{ start: e.start, end: e.end }] : []
-  const out = []
+  if (e.repeat === "none" || e.repeat === "custom") {
+    return e.start < to && e.end > from ? [{ start: e.start, end: e.end, original: e.start, title: e.title, location: e.location }] : []
+  }
+  const out: Slot[] = []
   for (let i = 0; i < 5000; i++) {
-    const start = step(e.start, e.repeat, i)
-    if (start >= to) break
-    if (start + len > from && !e.skipped.includes(start)) out.push({ start, end: start + len })
+    const original = step(e.start, e.repeat, i)
+    if (e.until != null && original >= e.until) break
+    // Overrides can move an occurrence past the window edge; look a day further.
+    if (original >= to + 86_400) break
+    if (e.skipped.includes(original)) continue
+    const o = e.overrides[original]
+    const slot = o ? { ...o, original } : { start: original, end: original + len, original, title: e.title, location: e.location }
+    if (slot.start < to && slot.end > from) out.push(slot)
   }
   return out
 }
@@ -68,7 +106,7 @@ function expand(e: DemoEvent, from: number, to: number): { start: number; end: n
 const normEmail = (e: string) => e.trim().toLowerCase()
 const normPhone = (p: string) => p.replace(/\D/g, "").slice(-10)
 
-export function createDemoPim(emit: (event: "pim:changed") => void, later: <T>(v: T) => Promise<T>) {
+export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => void, later: <T>(v: T) => Promise<T>) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const at = (dayOffset: number, h: number, m = 0) => {
@@ -80,23 +118,23 @@ export function createDemoPim(emit: (event: "pim:changed") => void, later: <T>(v
   const untilSaturday = (6 - today.getDay() + 7) % 7 || 7
 
   const collections: Collection[] = [
-    { id: "cal-personal", accountId: "personal", kind: "calendar", name: "Personal", color: "#e05a47", writable: true, hidden: false },
-    { id: "cal-work", accountId: "work", kind: "calendar", name: "Work", color: "#2563eb", writable: true, hidden: false },
-    { id: "cal-holidays", accountId: "personal", kind: "calendar", name: "Holidays", color: "#16a34a", writable: false, hidden: false },
-    { id: "cal-local", accountId: null, kind: "calendar", name: "On this device", color: null, writable: true, hidden: false },
-    { id: "book-personal", accountId: "personal", kind: "contacts", name: "Personal", color: null, writable: true, hidden: false },
-    { id: "book-work", accountId: "work", kind: "contacts", name: "Work", color: null, writable: true, hidden: false },
-    { id: "book-local", accountId: null, kind: "contacts", name: "On this device", color: null, writable: true, hidden: false },
+    { id: "cal-personal", accountId: "personal", kind: "calendar", name: "Personal", color: "#e05a47", writable: true, hidden: false, scheduling: false },
+    { id: "cal-work", accountId: "work", kind: "calendar", name: "Work", color: "#2563eb", writable: true, hidden: false, scheduling: true },
+    { id: "cal-holidays", accountId: "personal", kind: "calendar", name: "Holidays", color: "#16a34a", writable: false, hidden: false, scheduling: false },
+    { id: "cal-local", accountId: null, kind: "calendar", name: "On this device", color: null, writable: true, hidden: false, scheduling: false },
+    { id: "book-personal", accountId: "personal", kind: "contacts", name: "Personal", color: null, writable: true, hidden: false, scheduling: false },
+    { id: "book-work", accountId: "work", kind: "contacts", name: "Work", color: null, writable: true, hidden: false, scheduling: false },
+    { id: "book-local", accountId: null, kind: "contacts", name: "On this device", color: null, writable: true, hidden: false, scheduling: false },
   ]
 
   let n = 0
   const ev = (calendarId: string, title: string, start: number, end: number, extra: Partial<DemoEvent> = {}): DemoEvent => ({
     id: `ev-${++n}`, calendarId, title, location: null, notes: null, start, end, allDay: false, repeat: "none",
-    skipped: [], attendees: [], organizer: null, ...extra,
+    skipped: [], overrides: {}, until: null, attendees: [], organizer: null, reminders: [], uid: `demo-${n}@mailbird`, ...extra,
   })
   const priya = { name: "Priya Raman", email: "priya@studio.example" }
   const events: DemoEvent[] = [
-    ev("cal-work", "Standup", at(0, 9, 30), at(0, 9, 45), { repeat: "weekly", location: "Studio, room 2" }),
+    ev("cal-work", "Standup", at(0, 9, 30), at(0, 9, 45), { repeat: "weekly", location: "Studio, room 2", reminders: [5] }),
     ev("cal-work", "Token audit review", at(0, 12), at(0, 13), {
       notes: "Walk through the semantic tier sheet. Decide on the three surface tokens that collapse in dark mode.",
       organizer: priya,
@@ -155,28 +193,46 @@ export function createDemoPim(emit: (event: "pim:changed") => void, later: <T>(v
     if (!x) throw new Error("that contact was deleted")
     return x
   }
-  const occurrence = (e: DemoEvent, o: { start: number; end: number }): Occurrence => ({
-    eventId: e.id, calendarId: e.calendarId, title: e.title, location: e.location, start: o.start, end: o.end,
-    allDay: e.allDay, recurring: e.repeat !== "none",
+  const occurrence = (e: DemoEvent, o: Slot): Occurrence => ({
+    eventId: e.id, calendarId: e.calendarId, title: o.title, location: o.location, start: o.start, end: o.end,
+    originalStart: o.original, allDay: e.allDay, recurring: e.repeat !== "none",
   })
   const detail = (e: DemoEvent, start?: number | null): EventDetail => {
-    const all = expand(e, start != null ? start - 1 : -Infinity, Infinity)
-    const o = all.find((x) => x.start === start) ?? all[0] ?? { start: e.start, end: e.end }
+    const all = expand(e, start != null ? start - 86_400 : -Infinity, Infinity)
+    const o = all.find((x) => x.start === start || x.original === start) ?? all[0] ?? { start: e.start, end: e.end, original: e.start, title: e.title, location: e.location }
     return {
       ...occurrence(e, o), notes: e.notes, repeat: e.repeat, timeZone: e.allDay ? null : Intl.DateTimeFormat().resolvedOptions().timeZone,
-      organizer: e.organizer, attendees: e.attendees, url: null, writable: calendar(e.calendarId).writable,
+      organizer: e.organizer, attendees: e.attendees, url: null, writable: calendar(e.calendarId).writable, reminders: [...e.reminders].sort((a, b) => a - b),
     }
   }
-  const apply = (e: DemoEvent, input: EventInput) => {
+  const me = (calendarId: string) => {
+    const acct = calendar(calendarId).accountId
+    return { name: "Me", email: acct === "work" ? "me@studio.example" : "me@personal.example" }
+  }
+  const parseTimes = (input: EventInput) => {
     if (!input.title.trim()) throw new Error("give the event a title")
     const start = parseLocal(input.start)
     const end = parseLocal(input.end)
     if (end < start || (input.allDay && end === start)) throw new Error("the event ends before it starts")
+    return { start, end }
+  }
+  const apply = (e: DemoEvent, input: EventInput) => {
+    const { start, end } = parseTimes(input)
+    if (input.attendees?.length && !calendar(input.calendarId).accountId) throw new Error("invitations need a calendar on a mail account")
     Object.assign(e, {
       calendarId: input.calendarId, title: input.title.trim(), location: input.location?.trim() || null,
       notes: input.notes?.trim() || null, start, end, allDay: input.allDay,
       repeat: input.repeat === "custom" ? e.repeat : input.repeat,
     })
+    if (input.reminders) e.reminders = [...new Set(input.reminders)]
+    if (input.attendees) {
+      const organizer = me(input.calendarId)
+      const prior = e.attendees
+      e.organizer = input.attendees.length ? organizer : null
+      e.attendees = input.attendees.length
+        ? [{ ...organizer, status: "accepted" }, ...input.attendees.filter((a) => normEmail(a.email) !== organizer.email).map((a) => ({ name: a.name, email: a.email, status: prior.find((p) => normEmail(p.email) === normEmail(a.email))?.status ?? "needs-action" }))]
+        : []
+    }
     return e
   }
   const summary = ({ title: _t, note: _n, birthday: _b, writable: _w, ...s }: DemoContact): ContactSummary => s
@@ -198,7 +254,51 @@ export function createDemoPim(emit: (event: "pim:changed") => void, later: <T>(v
     return x
   }
 
+  // Reminders: like the desktop worker, check every few seconds and fire
+  // each once (never replaying ones from before the page loaded).
+  let checked = Math.floor(Date.now() / 1000) - 60
+  setInterval(() => {
+    const until = Math.floor(Date.now() / 1000)
+    const due: DueReminder[] = []
+    for (const e of events.filter((x) => x.reminders.length && visible(x.calendarId))) {
+      const lead = Math.max(...e.reminders) * 60
+      for (const o of expand(e, checked, until + lead + 1)) {
+        for (const m of e.reminders) {
+          const fireAt = o.start - m * 60
+          if (fireAt > checked && fireAt <= until) due.push({ eventId: e.id, title: o.title, location: o.location, start: o.start, fireAt })
+        }
+      }
+    }
+    checked = until
+    due.sort((a, b) => a.fireAt - b.fireAt).forEach((r) => emit("reminder", r))
+  }, 5000)
+
+  /** Invitations: the demo's mail calls these for messages carrying one. */
+  const inviteFor = (seed: DemoInviteSeed, myEmail: string): Invite => {
+    const copy = events.find((e) => e.uid === seed.uid)
+    const people = copy?.attendees ?? seed.attendees
+    return {
+      method: "request", uid: seed.uid, title: seed.title, location: seed.location, start: seed.start, end: seed.end,
+      allDay: false, recurring: false, organizer: seed.organizer, attendees: people,
+      myStatus: people.find((a) => normEmail(a.email) === normEmail(myEmail))?.status ?? null,
+      eventId: copy?.id ?? null, outdated: false, from: null,
+    }
+  }
+  const respondTo = (seed: DemoInviteSeed, myEmail: string, response: InviteResponse, calendarId?: string | null): Invite => {
+    let copy = events.find((e) => e.uid === seed.uid)
+    if (!copy && response !== "declined") {
+      const target = calendarId ? writable(calendarId) : collections.find((c) => c.kind === "calendar" && c.writable && c.accountId === "work")!
+      copy = ev(target.id, seed.title, seed.start, seed.end, { location: seed.location, uid: seed.uid, organizer: seed.organizer, attendees: seed.attendees.map((a) => ({ ...a })) })
+      events.push(copy)
+    }
+    if (copy) copy.attendees = copy.attendees.map((a) => (normEmail(a.email) === normEmail(myEmail) ? { ...a, status: response } : a))
+    changed()
+    return inviteFor(seed, myEmail)
+  }
+
   return {
+    inviteFor,
+    respondTo,
     setTimeZone: async () => {},
     listCollections: (kind: Collection["kind"]) => later(collections.filter((x) => x.kind === kind)),
     setCollectionHidden: async (id: string, hidden: boolean) => {
@@ -220,20 +320,45 @@ export function createDemoPim(emit: (event: "pim:changed") => void, later: <T>(v
       changed()
       return later(detail(e))
     },
-    updateEvent: async (id: string, input: EventInput) => {
+    updateEvent: async (id: string, input: EventInput, scope: EditScope = "all", original?: number | null) => {
       const e = event(id)
       writable(e.calendarId)
       writable(input.calendarId)
+      const series = e.repeat !== "none" && original != null
+      if (series && scope === "this") {
+        if (input.calendarId !== e.calendarId) throw new Error("one occurrence can't move to another calendar; move the whole series instead")
+        const { start, end } = parseTimes(input)
+        e.overrides[original] = { title: input.title.trim(), location: input.location?.trim() || null, start, end }
+        changed()
+        return later(detail(e, original))
+      }
+      if (series && scope === "following" && original > e.start) {
+        // End this series before the slot; a new one takes over from there.
+        const tail = apply(ev(input.calendarId, "", 0, 0), { ...input, repeat: input.repeat === "custom" ? e.repeat : input.repeat })
+        tail.attendees = input.attendees ? tail.attendees : e.attendees
+        tail.organizer = input.attendees ? tail.organizer : e.organizer
+        tail.reminders = input.reminders ?? e.reminders
+        e.until = original
+        events.push(tail)
+        changed()
+        return later(detail(tail))
+      }
       apply(e, input)
       changed()
       return later(detail(e))
     },
-    deleteEvent: async (id: string, occurrenceStart?: number | null) => {
+    deleteEvent: async (id: string, original?: number | null, scope?: EditScope) => {
       const e = event(id)
       writable(e.calendarId)
-      if (occurrenceStart != null && e.repeat !== "none") e.skipped.push(occurrenceStart)
+      const s = scope ?? (original != null ? "this" : "all")
+      if (original != null && e.repeat !== "none" && s === "this") e.skipped.push(original)
+      else if (original != null && e.repeat !== "none" && s === "following" && original > e.start) e.until = original
       else events.splice(events.indexOf(e), 1)
       changed()
+    },
+    eventGuests: async (id: string) => {
+      const e = event(id)
+      return later(e.attendees.filter((a) => !e.organizer || normEmail(a.email) !== normEmail(e.organizer.email)).map(({ name, email }) => ({ name, email })))
     },
 
     listContacts: (search?: string | null) => {

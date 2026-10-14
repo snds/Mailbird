@@ -1,12 +1,17 @@
 import { create } from "zustand"
 
-import type { ContactInput, Draft, EventInput } from "@/core/types"
+import type { ContactInput, Draft, EditScope, EventInput } from "@/core/types"
 
-/** What the event editor is working on: a new event, or a series being edited. */
+/** What the event editor is working on: a new event, or one being edited. */
 export interface EventEditorState {
   /** Set when editing; absent for a new event. */
   eventId?: string
   initial: Partial<EventInput>
+  /** For a series: which occurrences change, and the one picked (its originalStart). */
+  scope?: EditScope
+  occurrence?: number
+  /** You were invited: the guest list belongs to the organizer. */
+  guestOf?: string
 }
 
 export interface ContactEditorState {

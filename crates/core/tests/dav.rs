@@ -10,7 +10,7 @@
 
 use pim_core::net::dav::{self, Dav, DavPlan};
 use pim_core::{
-    AccountConfig, CollectionKind, ContactField, ContactInput, DavChange, DavOutcome, EventInput, Provider, Repeat,
+    AccountConfig, CollectionKind, ContactField, ContactInput, DavChange, DavOutcome, EditScope, EventInput, Provider, Repeat,
     Security, ServerConfig, Store, ical,
 };
 
@@ -71,6 +71,8 @@ fn event(calendar: &str, title: &str) -> EventInput {
         all_day: false,
         time_zone: "Europe/Lisbon".into(),
         repeat: Repeat::None,
+        reminders: None,
+        attendees: None,
     }
 }
 
@@ -95,7 +97,7 @@ async fn dav_round_trip() {
 
     // Start clean: delete anything a previous run left behind.
     for o in a.occurrences(0, i64::MAX / 2).unwrap() {
-        a.delete_event(&o.event_id, None).unwrap();
+        a.delete_event(&o.event_id, None, EditScope::All).unwrap();
     }
     for c in a.contacts(None).unwrap() {
         a.delete_contact(&c.id).unwrap();
@@ -115,7 +117,7 @@ async fn dav_round_trip() {
     assert_eq!(on_b[0].start, 1_792_826_100, "08:15 in Lisbon (WEST) is 07:15Z");
 
     // Edit on b, see it on a; a's untouched copy refreshes.
-    b.update_event(&on_b[0].event_id, &EventInput { title: "Ferry (later)".into(), start: "2026-10-24T10:00".into(), end: "2026-10-24T10:45".into(), ..event(&cal_b, "") }).unwrap();
+    b.update_event(&on_b[0].event_id, &EventInput { title: "Ferry (later)".into(), start: "2026-10-24T10:00".into(), end: "2026-10-24T10:45".into(), ..event(&cal_b, "") }, EditScope::All, None).unwrap();
     sync(&b, &dav, &acct_b).await;
     sync(&a, &dav, &acct_a).await;
     let on_a = a.occurrences(SAT.0, SAT.1).unwrap();
@@ -123,9 +125,9 @@ async fn dav_round_trip() {
     assert_eq!(on_a[0].event_id, created.occurrence.event_id, "same row, updated in place");
 
     // Conflict: both edit; b pushes first, so a's push is refused and the server's copy wins.
-    a.update_event(&on_a[0].event_id, &EventInput { title: "From a".into(), ..event(&cal_a, "") }).unwrap();
+    a.update_event(&on_a[0].event_id, &EventInput { title: "From a".into(), ..event(&cal_a, "") }, EditScope::All, None).unwrap();
     let on_b = b.occurrences(SAT.0, SAT.1).unwrap();
-    b.update_event(&on_b[0].event_id, &EventInput { title: "From b".into(), ..event(&cal_b, "") }).unwrap();
+    b.update_event(&on_b[0].event_id, &EventInput { title: "From b".into(), ..event(&cal_b, "") }, EditScope::All, None).unwrap();
     sync(&b, &dav, &acct_b).await;
     sync(&a, &dav, &acct_a).await;
     assert_eq!(a.occurrences(SAT.0, SAT.1).unwrap()[0].title, "From b", "server wins");
@@ -142,16 +144,36 @@ async fn dav_round_trip() {
     weekly.repeat = Repeat::Weekly;
     let w = a.create_event(&weekly).unwrap();
     let four_weeks = (SAT.0, SAT.0 + 28 * 86_400);
-    let second = a.occurrences(four_weeks.0, four_weeks.1).unwrap().into_iter().filter(|o| o.title == "Climbing").nth(1).unwrap().start;
-    a.delete_event(&w.occurrence.event_id, Some(second)).unwrap();
+    let second = a.occurrences(four_weeks.0, four_weeks.1).unwrap().into_iter().filter(|o| o.title == "Climbing").nth(1).unwrap().original_start;
+    a.delete_event(&w.occurrence.event_id, Some(second), EditScope::This).unwrap();
     sync(&a, &dav, &acct_a).await;
     sync(&b, &dav, &acct_b).await;
     let climbs = b.occurrences(four_weeks.0, four_weeks.1).unwrap().into_iter().filter(|o| o.title == "Climbing").count();
     assert_eq!(climbs, 3, "4 weeks minus the skipped one");
 
+    // Move one occurrence (an override), then split the series: both survive the server.
+    let climbs_a: Vec<_> = a.occurrences(four_weeks.0, four_weeks.1).unwrap().into_iter().filter(|o| o.title == "Climbing").collect();
+    let third = climbs_a[2].original_start;
+    let moved = EventInput { title: "Climbing (indoor)".into(), start: "2026-11-14T10:00".into(), end: "2026-11-14T11:30".into(), ..weekly.clone() };
+    a.update_event(&w.occurrence.event_id, &moved, EditScope::This, Some(third)).unwrap();
+    sync(&a, &dav, &acct_a).await;
+    sync(&b, &dav, &acct_b).await;
+    let on_b: Vec<_> = b.occurrences(four_weeks.0, four_weeks.1).unwrap().into_iter().filter(|o| o.title.starts_with("Climbing")).collect();
+    assert_eq!(on_b.len(), 3, "an override replaces its slot, no duplicate");
+    assert!(on_b.iter().any(|o| o.title == "Climbing (indoor)" && o.original_start == third), "the moved occurrence keeps its slot");
+
+    let second_b = on_b[1].original_start;
+    let renamed = EventInput { calendar_id: cal_b.clone(), title: "Bouldering".into(), start: "2026-11-07T18:00".into(), end: "2026-11-07T19:00".into(), repeat: Repeat::Weekly, ..weekly.clone() };
+    b.update_event(&on_b[0].event_id, &renamed, EditScope::Following, Some(second_b)).unwrap();
+    sync(&b, &dav, &acct_b).await;
+    sync(&a, &dav, &acct_a).await;
+    let titles: Vec<_> = a.occurrences(four_weeks.0, four_weeks.1).unwrap().into_iter().map(|o| o.title).filter(|t| t != "Ferry (later)" && t != "From b").collect();
+    assert_eq!(titles.first().map(String::as_str), Some("Climbing"), "the first week stays as it was");
+    assert!(titles[1..].iter().all(|t| t == "Bouldering"), "following weeks are the new series: {titles:?}");
+
     // Delete on b, gone on a.
     for o in b.occurrences(0, i64::MAX / 2).unwrap() {
-        b.delete_event(&o.event_id, None).unwrap();
+        b.delete_event(&o.event_id, None, EditScope::All).unwrap();
     }
     sync(&b, &dav, &acct_b).await;
     sync(&a, &dav, &acct_a).await;

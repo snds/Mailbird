@@ -39,12 +39,15 @@ pub mod events {
     pub const ACCOUNTS_CHANGED: &str = "accounts:changed";
     /// Calendars, events, or contacts changed (sync or local edit).
     pub const PIM_CHANGED: &str = "pim:changed";
+    /// A reminder is due (payload: `DueReminder`); the UI shows it in-app too.
+    pub const REMINDER: &str = "reminder";
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -105,6 +108,9 @@ pub fn run() {
             pim_commands::merge_contacts,
             pim_commands::suggest_recipients,
             pim_commands::sync_pim_now,
+            pim_commands::respond_to_invite,
+            pim_commands::apply_invite_update,
+            pim_commands::event_guests,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

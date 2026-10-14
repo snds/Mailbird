@@ -27,3 +27,4 @@ tokio = { version = "1", features = ["sync", "time"] }
 # OS keychain: macOS/iOS Keychain, Windows Credential Manager, Secret Service on Linux.
 # keyring 4 adds an Android store; move to it with the mobile spike (ADR-0002).
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+tauri-plugin-notification = "=2.4.0"

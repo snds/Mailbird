@@ -13,14 +13,15 @@ import { useIsTabletUp } from "@/hooks/use-media-query"
 
 import { Agenda } from "./agenda"
 import { calendarColor } from "./colors"
-import { DAY, addDays, dateInput, fmt, fromSecs, secs, startOfDay, startOfWeek, timeInput } from "./dates"
+import { DAY, addDays, addMonths, dateInput, fmt, fromSecs, secs, startOfDay, startOfWeek, timeInput } from "./dates"
 import { EventDetailPane } from "./event-detail"
 import { MiniMonth } from "./mini-month"
+import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
 import { occurrenceKey } from "./layout"
 import { TimeGrid } from "./time-grid"
 
-type View = "agenda" | "day" | "week"
+type View = "agenda" | "day" | "week" | "month"
 
 interface Selected {
   eventId: string
@@ -128,8 +129,9 @@ export function CalendarView() {
   const calendars = useCalendars()
 
   const days = view === "week" ? Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(focus), i)) : view === "day" ? [focus] : []
-  const from = view === "agenda" ? focus : days[0]!
-  const to = view === "agenda" ? addDays(focus, agendaDays) : addDays(days.at(-1)!, 1)
+  const monthStart = startOfWeek(new Date(focus.getFullYear(), focus.getMonth(), 1))
+  const [from, to] =
+    view === "agenda" ? [focus, addDays(focus, agendaDays)] : view === "month" ? [monthStart, addDays(monthStart, 42)] : [days[0]!, addDays(days.at(-1)!, 1)]
   const { data: occurrences = [] } = useOccurrences(secs(from), secs(to))
 
   // Busy dots for the mini month (six visible weeks).
@@ -138,7 +140,7 @@ export function CalendarView() {
   const busy = (d: Date) => monthOcc.some((o) => o.start < secs(d) + DAY && o.end > secs(d))
 
   const step = (n: number) => {
-    const next = view === "week" ? addDays(focus, 7 * n) : view === "day" ? addDays(focus, n) : addDays(focus, agendaDays * n)
+    const next = view === "week" ? addDays(focus, 7 * n) : view === "day" ? addDays(focus, n) : view === "month" ? addMonths(focus, n) : addDays(focus, agendaDays * n)
     setFocus(next)
     setMonth(next)
   }
@@ -153,7 +155,9 @@ export function CalendarView() {
   }
 
   const title =
-    view === "day"
+    view === "month"
+      ? fmt.monthYear(focus)
+      : view === "day"
       ? fmt.dayLong(focus)
       : view === "week"
         ? days[0]!.getMonth() === days[6]!.getMonth()
@@ -170,6 +174,7 @@ export function CalendarView() {
       else if (e.key === "d") setView("day")
       else if (e.key === "w") setView("week")
       else if (e.key === "a") setView("agenda")
+      else if (e.key === "m") setView("month")
       else if (e.key === "ArrowLeft") step(-1)
       else if (e.key === "ArrowRight") step(1)
       else return
@@ -211,7 +216,7 @@ export function CalendarView() {
               <Icon name="stacks" />
             </Button>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <Button variant="outline" size="sm" onClick={goToday} aria-keyshortcuts="t">
               Today
             </Button>
@@ -224,10 +229,19 @@ export function CalendarView() {
             <h2 className="ml-2 hidden min-w-0 flex-1 truncate text-base font-semibold md:block" aria-live="polite">
               {title}
             </h2>
-            <ToggleGroup value={[view]} onValueChange={(v) => v[0] && setView(v[0] as View)} variant="outline" size="sm" className="ml-auto" aria-label="View">
+            <ToggleGroup
+              value={[view]}
+              onValueChange={(v) => v[0] && setView(v[0] as View)}
+              variant="outline"
+              size="sm"
+              // Phones: its own full-width row, so four views fit without scrolling.
+              className="order-last mt-1 w-full *:flex-1 md:order-none md:mt-0 md:ml-auto md:w-auto md:*:flex-none"
+              aria-label="View"
+            >
               <ToggleGroupItem value="agenda" aria-keyshortcuts="a">Agenda</ToggleGroupItem>
               <ToggleGroupItem value="day" aria-keyshortcuts="d">Day</ToggleGroupItem>
               <ToggleGroupItem value="week" aria-keyshortcuts="w">Week</ToggleGroupItem>
+              <ToggleGroupItem value="month" aria-keyshortcuts="m">Month</ToggleGroupItem>
             </ToggleGroup>
           </div>
         </header>
@@ -235,7 +249,19 @@ export function CalendarView() {
           <QuickAdd calendars={calendars} />
         </div>
 
-        {view === "agenda" ? (
+        {view === "month" ? (
+          <MonthGrid
+            month={focus}
+            occurrences={occurrences}
+            calendars={calendars}
+            selected={selectedKey}
+            onSelect={select}
+            onDay={(d) => {
+              setFocus(startOfDay(d))
+              setView("day")
+            }}
+          />
+        ) : view === "agenda" ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <Agenda from={focus} days={agendaDays} occurrences={occurrences} calendars={calendars} selected={selectedKey} onSelect={select} onMore={() => setAgendaDays((d) => d + 30)} />
           </div>

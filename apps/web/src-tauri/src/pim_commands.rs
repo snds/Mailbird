@@ -2,7 +2,9 @@
 //! at once (so the UI updates instantly) and reach the server on the next
 //! DAV pass, which each edit schedules.
 
-use pim_core::{Address, Collection, CollectionKind, ContactDetail, ContactInput, ContactSummary, EventDetail, EventInput, Occurrence};
+use pim_core::{
+    Address, Collection, CollectionKind, ContactDetail, ContactInput, ContactSummary, EditScope, EventDetail, EventInput, Invite, InviteResponse, Occurrence,
+};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::{Res, with_store};
@@ -49,16 +51,19 @@ pub fn create_event(app: AppHandle, state: State<'_, Shared>, input: EventInput)
     Ok(e)
 }
 
+/// `scope` and `occurrence` (its `originalStart`) pick which occurrences of a series change.
 #[tauri::command]
-pub fn update_event(app: AppHandle, state: State<'_, Shared>, id: String, input: EventInput) -> Res<EventDetail> {
-    let e = with_store(&state, |s| s.update_event(&id, &input))?;
+pub fn update_event(app: AppHandle, state: State<'_, Shared>, id: String, input: EventInput, scope: Option<EditScope>, occurrence: Option<i64>) -> Res<EventDetail> {
+    let e = with_store(&state, |s| s.update_event(&id, &input, scope.unwrap_or_default(), occurrence))?;
     edited(&app, &state);
     Ok(e)
 }
 
 #[tauri::command]
-pub fn delete_event(app: AppHandle, state: State<'_, Shared>, id: String, occurrence: Option<i64>) -> Res<()> {
-    with_store(&state, |s| s.delete_event(&id, occurrence))?;
+pub fn delete_event(app: AppHandle, state: State<'_, Shared>, id: String, occurrence: Option<i64>, scope: Option<EditScope>) -> Res<()> {
+    // Older callers passed an occurrence alone to mean "just this one".
+    let scope = scope.unwrap_or(if occurrence.is_some() { EditScope::This } else { EditScope::All });
+    with_store(&state, |s| s.delete_event(&id, occurrence, scope))?;
     edited(&app, &state);
     Ok(())
 }
@@ -116,4 +121,32 @@ pub fn suggest_recipients(state: State<'_, Shared>, prefix: String) -> Res<Vec<A
 pub async fn sync_pim_now(app: AppHandle, state: State<'_, Shared>) -> Res<()> {
     workers::sync_dav_all(&app, state.inner()).await;
     Ok(())
+}
+
+/// After answering or applying an invitation: calendars, the message's card,
+/// and the outbox (a reply may be queued) all changed.
+fn invite_changed(app: &AppHandle, state: &Shared) {
+    let _ = app.emit(events::MAIL_CHANGED, ());
+    let _ = app.emit(events::OUTBOX_CHANGED, ());
+    edited(app, state);
+}
+
+#[tauri::command]
+pub fn respond_to_invite(app: AppHandle, state: State<'_, Shared>, message_id: String, response: InviteResponse, calendar_id: Option<String>) -> Res<Invite> {
+    let inv = with_store(&state, |s| s.respond_to_invite(&message_id, response, calendar_id.as_deref()))?;
+    invite_changed(&app, &state);
+    Ok(inv)
+}
+
+/// Applies a cancellation or a guest's reply from a message.
+#[tauri::command]
+pub fn apply_invite_update(app: AppHandle, state: State<'_, Shared>, message_id: String) -> Res<Invite> {
+    let inv = with_store(&state, |s| s.apply_invite_update(&message_id))?;
+    invite_changed(&app, &state);
+    Ok(inv)
+}
+
+#[tauri::command]
+pub fn event_guests(state: State<'_, Shared>, id: String) -> Res<Vec<Address>> {
+    with_store(&state, |s| s.event_guests(&id))
 }

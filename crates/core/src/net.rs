@@ -455,19 +455,33 @@ pub fn build_message(config: &AccountConfig, draft: &Draft) -> Result<Message> {
         b = b.in_reply_to(bracket(parent)).references(chain.join(" "));
     }
     let html = draft.body_html.as_deref().filter(|h| !h.trim().is_empty()).map(html_document);
-    match (&html, draft.attachments.is_empty()) {
-        (None, true) => {
-            return b.header(ContentType::TEXT_PLAIN).body(draft.body.clone()).map_err(|e| Error::Invalid(e.to_string()));
+    // iMIP: the calendar object rides as the last alternative, which calendar
+    // clients (Outlook, Apple Mail, Gmail) read as the invitation.
+    let calendar = draft.calendar.as_ref().map(|c| {
+        let ct = ContentType::parse(&format!("text/calendar; method={}; charset=utf-8", c.method.to_ascii_uppercase()))
+            .unwrap_or_else(|_| ContentType::parse("text/calendar; charset=utf-8").unwrap());
+        SinglePart::builder().header(ct).body(c.ics.clone())
+    });
+    let body = match (&html, calendar) {
+        (None, None) => None,
+        (Some(html), None) => Some(MultiPart::alternative_plain_html(draft.body.clone(), html.clone())),
+        (html, Some(cal)) => {
+            let mut alt = MultiPart::alternative().singlepart(SinglePart::plain(draft.body.clone()));
+            if let Some(h) = html {
+                alt = alt.singlepart(SinglePart::html(h.clone()));
+            }
+            Some(alt.singlepart(cal))
         }
-        (Some(html), true) => {
-            return b
-                .multipart(MultiPart::alternative_plain_html(draft.body.clone(), html.clone()))
-                .map_err(|e| Error::Invalid(e.to_string()));
+    };
+    if draft.attachments.is_empty() {
+        return match body {
+            Some(alt) => b.multipart(alt),
+            None => b.header(ContentType::TEXT_PLAIN).body(draft.body.clone()),
         }
-        _ => {}
+        .map_err(|e| Error::Invalid(e.to_string()));
     }
-    let mut parts = match html {
-        Some(html) => MultiPart::mixed().multipart(MultiPart::alternative_plain_html(draft.body.clone(), html)),
+    let mut parts = match body {
+        Some(alt) => MultiPart::mixed().multipart(alt),
         None => MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone())),
     };
     for a in &draft.attachments {
@@ -553,6 +567,7 @@ mod tests {
             in_reply_to: Some("abc@example.com".into()),
             references: vec!["root@example.com".into()],
             attachments: vec![],
+            calendar: None,
         };
         let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
         assert!(raw.contains("From: Sean <sean@example.com>"));
@@ -579,6 +594,7 @@ mod tests {
             in_reply_to: None,
             references: vec![],
             attachments: vec![],
+            calendar: None,
         };
         assert!(matches!(build_message(&config(), &draft), Err(Error::Invalid(_))));
     }
@@ -599,6 +615,7 @@ mod tests {
                 mime_type: "application/pdf".into(),
                 data_base64: base64::engine::general_purpose::STANDARD.encode(b"%PDF-1.7 hello"),
             }],
+            calendar: None,
         };
         let raw = build_message(&config(), &draft).unwrap().formatted();
         let parsed = crate::mime::parse(&raw).unwrap();
@@ -620,6 +637,7 @@ mod tests {
             in_reply_to: None,
             references: vec![],
             attachments: vec![],
+            calendar: None,
         };
         let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
         assert!(raw.contains("multipart/alternative"));
@@ -639,6 +657,28 @@ mod tests {
         let parsed = crate::mime::parse(&raw).unwrap();
         assert!(parsed.body_html.unwrap().contains("<strong>snacks</strong>"));
         assert_eq!(parsed.attachments.len(), 1);
+    }
+
+    #[test]
+    fn invitations_ride_as_a_text_calendar_alternative() {
+        let draft = Draft {
+            account_id: "a".into(),
+            to: vec![Address { name: None, email: "ana@example.com".into() }],
+            cc: vec![],
+            subject: "Invitation: Lunch".into(),
+            body: "You're invited.".into(),
+            body_html: None,
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![],
+            calendar: Some(crate::CalendarPart { method: "request".into(), ics: "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n".into() }),
+        };
+        let raw = build_message(&config(), &draft).unwrap().formatted();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("multipart/alternative"));
+        assert!(text.contains("text/calendar; method=REQUEST"), "{text}");
+        assert!(crate::mime::calendar_part(&raw).is_some_and(|c| c.contains("METHOD:REQUEST")), "our own parser finds it");
+        assert_eq!(crate::mime::parse(&raw).unwrap().body_text.trim(), "You're invited.");
     }
 
     #[tokio::test]

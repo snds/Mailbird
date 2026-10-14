@@ -130,6 +130,23 @@ fn default_name(i: usize, mime: &str) -> String {
     }
 }
 
+/// The iCalendar object of an invitation (iMIP, RFC 6047): the first
+/// `text/calendar` part, or an `.ics` attachment.
+pub fn calendar_part(raw: &[u8]) -> Option<String> {
+    let msg = MessageParser::default().parse(raw)?;
+    msg.parts.iter().find_map(|p| {
+        let ct = p.content_type()?;
+        let mime = format!("{}/{}", ct.ctype(), ct.subtype().unwrap_or_default()).to_ascii_lowercase();
+        let ics_file = p.attachment_name().is_some_and(|n| n.to_ascii_lowercase().ends_with(".ics"));
+        if mime == "text/calendar" || mime == "application/ics" || ics_file {
+            let text = String::from_utf8_lossy(p.contents()).into_owned();
+            text.contains("BEGIN:VCALENDAR").then_some(text)
+        } else {
+            None
+        }
+    })
+}
+
 /// The decoded bytes of one attachment, found by its index.
 pub fn attachment_bytes(raw: &[u8], index: u32) -> Option<Vec<u8>> {
     let msg = MessageParser::default().parse(raw)?;
