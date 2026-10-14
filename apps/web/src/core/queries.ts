@@ -2,7 +2,7 @@ import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/re
 import { useEffect } from "react"
 
 import { getCoreClient, type CoreClient } from "./client"
-import type { CollectionKind, MessageQuery } from "./types"
+import type { CollectionKind, MessageQuery, NoteQuery, NoteTarget } from "./types"
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +24,13 @@ const keys = {
   contacts: (search: string) => ["pim", "contacts", search] as const,
   contact: (id: string) => ["pim", "contact", id] as const,
   duplicates: ["pim", "duplicates"] as const,
+  // Notes refresh on their own event; links read calendar/contact data, so
+  // they refresh with "pim" too (see useCoreEvents).
+  notes: (q: NoteQuery) => ["notes", "list", q] as const,
+  note: (id: string) => ["notes", "note", id] as const,
+  noteTags: ["notes", "tags"] as const,
+  noteLink: (t: NoteTarget) => ["notes", "link", t.kind, t.id] as const,
+  relay: ["notes", "relay"] as const,
 }
 
 export function useCore() {
@@ -47,7 +54,12 @@ export function useCoreEvents() {
       }),
       core.on("outbox:changed", () => void qc.invalidateQueries({ queryKey: keys.outbox })),
       core.on("accounts:changed", () => void qc.invalidateQueries({ queryKey: keys.accounts })),
-      core.on("pim:changed", () => void qc.invalidateQueries({ queryKey: ["pim"] })),
+      core.on("pim:changed", () => {
+        void qc.invalidateQueries({ queryKey: ["pim"] })
+        void qc.invalidateQueries({ queryKey: ["notes", "list"] })
+      }),
+      // The open note's own query stays put: its editor is the live copy.
+      core.on("notes:changed", () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" })),
     ]
     // All-day events sit on the device clock; tell the core which one that is.
     void core.setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone).then(() => qc.invalidateQueries({ queryKey: ["pim"] }))
@@ -133,5 +145,40 @@ export function usePimAction<A, R = unknown>(fn: (c: CoreClient, args: A) => Pro
   return useMutation({
     mutationFn: (args: A) => call((c) => fn(c, args)),
     onSettled: () => void qc.invalidateQueries({ queryKey: ["pim"] }),
+  })
+}
+
+export function useNotes(q: NoteQuery) {
+  return useQuery({ queryKey: keys.notes(q), queryFn: () => call((c) => c.listNotes(q)), placeholderData: (prev) => prev })
+}
+
+/** Read once per open: after that, the editor (and its Yjs document) is the source of truth. */
+export function useNote(id: string | null) {
+  return useQuery({ queryKey: keys.note(id ?? ""), queryFn: () => call((c) => c.getNote(id!)), enabled: id !== null, gcTime: 0 })
+}
+
+export function useNoteTags() {
+  return useQuery({ queryKey: keys.noteTags, queryFn: () => call((c) => c.noteTags()) })
+}
+
+/** Notes linked to an event, contact, or conversation. */
+export function useLinkedNotes(target: NoteTarget | null) {
+  return useQuery({
+    queryKey: keys.notes({ linked: target }),
+    queryFn: () => call((c) => c.listNotes({ linked: target })),
+    enabled: target !== null,
+  })
+}
+
+export function useNotesRelay() {
+  return useQuery({ queryKey: keys.relay, queryFn: () => call((c) => c.getNotesRelay()) })
+}
+
+/** A mutation that refreshes note lists afterwards. */
+export function useNoteAction<A, R = unknown>(fn: (c: CoreClient, args: A) => Promise<R>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (args: A) => call((c) => fn(c, args)),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" }),
   })
 }

@@ -148,6 +148,14 @@
   --c-composer-link: var(--primary);
   --c-composer-placeholder: var(--muted-foreground);
 
+  /* Notes: the first line is the title (Apple Notes convention). Checked
+     items fade instead of vanishing, so a list's progress stays visible. */
+  --c-note-title-size: 1.625rem;
+  --c-note-heading-size: 1.25rem;
+  --c-note-check-accent: var(--vertical-notes);
+  --c-note-done-text: var(--muted-foreground);
+  --c-note-code-bg: var(--muted);
+
   /* Calendar */
   --c-event-fallback: var(--vertical-calendar);
   /* How much of the calendar color tints an event's fill. */

@@ -58,7 +58,7 @@ All three come from `AppShell` + `MasterDetail` (`apps/web/src/app/shell.tsx`, `
 - **Mail:** provider adapters (IMAP/SMTP and JMAP) sync into the local store. Lists are grouped into conversations, and attachments are decoded on demand from the stored raw message ([ADR-0008](decisions/0008-mail-depth.md)). Local changes queue as ops and are pushed first. Snooze, undo send, and send-later use the server where supported, and a local scheduler otherwise (`server_side_scheduling`). Details: [ADR-0007](decisions/0007-mail-engine.md).
 - **UI data flow:** the web app talks to one `CoreClient` (`apps/web/src/core/client.ts`). It runs over Tauri IPC natively and over an in-memory demo in the browser. TanStack Query caches the results, and core events (`mail:changed`, `outbox:changed`, `accounts:changed`, `pim:changed`) invalidate the cache, so nothing polls.
 - **Calendar and contacts:** CalDAV/CardDAV through a small client on the same `reqwest` stack as JMAP (Graph and the Google APIs come in Phase 4). `calcard` parses iCalendar and vCard, expands recurrences, and writes VTIMEZONEs. Each row keeps the server's resource verbatim, and edits splice into it, so nothing we don't model is lost ([ADR-0010](decisions/0010-calendar-contacts.md)).
-- **Notes:** Markdown at rest. Yjs CRDT for multi-device sync through our own optional, self-hostable relay. Import from Apple Notes (Markdown export) and Google Keep (Takeout) ([ADR-0005](decisions/0005-notes.md)).
+- **Notes:** Markdown at rest. Yjs CRDT for multi-device sync through an optional, self-hostable Hocuspocus relay (`tools/notes-relay`). Import from Apple Notes (Markdown export), Google Keep (Takeout), and Markdown folders ([ADR-0005](decisions/0005-notes.md), [ADR-0012](decisions/0012-notes.md)).
 - **Secrets:** OS keychain via `keyring`. Never in SQLite, never in web storage.
 
 ## Repo layout
@@ -84,3 +84,7 @@ docs/                   research, stack, decisions (ADRs)
 | [0006](decisions/0006-product-name.md) | "Mailbird" is a working name only; rename before release |
 | [0007](decisions/0007-mail-engine.md) | Mail engine: store/net split, FTS5, local snooze, outbox undo, safe HTML |
 | [0008](decisions/0008-mail-depth.md) | Conversations, attachments, IDLE, backfill, JMAP, swipe gestures |
+| [0009](decisions/0009-mail-polish.md) | Sent/Archive sync-back, JMAP push, attachment previews, rich-text composer |
+| [0010](decisions/0010-calendar-contacts.md) | Calendars and contacts over CalDAV/CardDAV; splice edits into server resources |
+| [0011](decisions/0011-calendar-depth.md) | Occurrence edits, reminders, iTIP/iMIP invitations, month view |
+| [0012](decisions/0012-notes.md) | Notes: Markdown + Yjs, whole-record index sync, Hocuspocus relay, stable-key links, import |

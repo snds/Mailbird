@@ -288,3 +288,101 @@ export interface ContactDetail extends ContactSummary {
   birthday: string | null
   writable: boolean
 }
+
+// ── Notes ───────────────────────────────────────────────────────────────────
+
+/** Links use keys every device shares: an event's or contact's UID, a conversation's first Message-ID. */
+export type NoteLinkKind = "event" | "contact" | "thread"
+
+export interface NoteLink {
+  kind: NoteLinkKind
+  key: string
+  /** Shown when the target isn't on this device. */
+  label: string
+  /** The target's id here, when it's here. */
+  target?: string | null
+}
+
+export interface NoteSummary {
+  id: string
+  /** The first line, without Markdown marks. */
+  title: string
+  snippet: string
+  pinned: boolean
+  archived: boolean
+  tags: string[]
+  links: NoteLink[]
+  created: number
+  updated: number
+}
+
+export interface NoteDetail extends NoteSummary {
+  markdown: string
+  /** base64 Yjs state, once an editor has opened the note. */
+  ydoc: string | null
+}
+
+export interface NoteInput {
+  markdown: string
+  pinned?: boolean
+  tags?: string[]
+  links?: NoteLink[]
+}
+
+/** Omitted fields stay as they are. */
+export interface NoteMeta {
+  pinned?: boolean
+  archived?: boolean
+  tags?: string[]
+  links?: NoteLink[]
+}
+
+export interface NoteTarget {
+  kind: NoteLinkKind
+  id: string
+}
+
+export interface NoteQuery {
+  search?: string | null
+  tag?: string | null
+  archived?: boolean
+  linked?: NoteTarget | null
+}
+
+export interface TagCount {
+  tag: string
+  count: number
+}
+
+export interface ImportFile {
+  /** Path inside the picked folder; folders become tags. */
+  path: string
+  contents: string
+  modified?: number | null
+}
+
+export interface ImportReport {
+  imported: number
+  duplicates: number
+  trashed: number
+  attachmentsDropped: number
+  skipped: string[]
+}
+
+/** Everything but a note's text, which syncs as its own Yjs document. Newest `updated` wins. */
+export interface NoteRecord {
+  id: string
+  pinned: boolean
+  archived: boolean
+  deleted: boolean
+  tags: string[]
+  links: NoteLink[]
+  created: number
+  updated: number
+}
+
+export interface RelayConfig {
+  /** wss://… (ws:// only on this device). */
+  url: string
+  token: string
+}

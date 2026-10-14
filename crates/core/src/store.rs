@@ -33,7 +33,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -193,6 +193,9 @@ impl Store {
         }
         if version < 5 {
             tx.execute_batch(crate::pim_store::MIGRATE_V5)?;
+        }
+        if version < 6 {
+            tx.execute_batch(crate::notes_store::MIGRATE_V6)?;
         }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
@@ -1199,7 +1202,7 @@ pub(crate) fn from_json<T: serde::de::DeserializeOwned + Default>(s: String) -> 
 
 /// Turn what someone typed into a safe FTS5 query: each word becomes a quoted
 /// prefix term, so punctuation can't be read as query syntax.
-fn fts_query(input: &str) -> String {
+pub(crate) fn fts_query(input: &str) -> String {
     input
         .split_whitespace()
         .map(|w| w.replace('"', ""))

@@ -1,5 +1,6 @@
 import type { CoreClient, CoreEvent } from "./client"
 import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OutboxItem, Provider } from "./types"
+import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
 
 // An in-memory stand-in for the Rust core, so the web build is usable before
@@ -200,6 +201,34 @@ export function createDemoClient(): CoreClient {
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
+  const { noteLinks, ...pimApi } = pim
+  const notes = createDemoNotes(emit, later, {
+    linkFor: (t) => {
+      if (t.kind === "event") {
+        const e = noteLinks.event(t.id)
+        return e && { kind: "event", key: e.uid, label: e.title, target: e.id }
+      }
+      if (t.kind === "contact") {
+        const k = noteLinks.contact(t.id)
+        return k && { kind: "contact", key: k.id, label: k.fullName, target: k.id }
+      }
+      const first = thread(t.id).sort((a, b) => a.date - b.date)[0]
+      return first ? { kind: "thread", key: first.messageId ?? `local:${t.id}`, label: first.subject, target: t.id } : null
+    },
+    resolve: (l) => {
+      if (l.kind === "event") return noteLinks.eventByUid(l.key)
+      if (l.kind === "contact") return noteLinks.contact(l.key)?.id ?? null
+      return state.messages.find((m) => m.messageId === l.key || `local:${m.threadId}` === l.key)?.threadId ?? null
+    },
+    byName: (kind, name) => {
+      if (kind === "event") {
+        const e = noteLinks.eventByTitle(name)
+        return e && { kind: "event", key: e.uid, label: e.title }
+      }
+      const k = noteLinks.contactByName(name)
+      return k && { kind: "contact", key: k.id, label: k.fullName }
+    },
+  })
   const withInvite = ({ files: _f, inviteSeed, ...m }: DemoMessage): MessageDetail => ({
     ...m,
     invite: inviteSeed ? pim.inviteFor(inviteSeed, address(m.accountId)) : null,
@@ -218,7 +247,8 @@ export function createDemoClient(): CoreClient {
     setAccountDav: async () => {
       throw new Error("Connecting calendars needs the desktop app for now. The web version runs on sample data.")
     },
-    ...pim,
+    ...pimApi,
+    ...notes,
     respondToInvite: async (messageId, response, calendarId) => {
       const m = state.messages.find((x) => x.id === messageId)
       if (!m?.inviteSeed) throw new Error("this message has no invitation")

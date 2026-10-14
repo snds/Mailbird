@@ -296,9 +296,19 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     return inviteFor(seed, myEmail)
   }
 
+  /** Stable keys for note links: the event's UID, the contact's id (demo cards have no UID). */
+  const noteLinks = {
+    event: (id: string) => events.find((e) => e.id === id) ?? null,
+    eventByUid: (uid: string) => events.find((e) => e.uid === uid)?.id ?? null,
+    eventByTitle: (title: string) => events.find((e) => e.title === title) ?? null,
+    contact: (id: string) => contacts.find((k) => k.id === id) ?? null,
+    contactByName: (name: string) => contacts.find((k) => k.fullName === name) ?? null,
+  }
+
   return {
     inviteFor,
     respondTo,
+    noteLinks,
     setTimeZone: async () => {},
     listCollections: (kind: Collection["kind"]) => later(collections.filter((x) => x.kind === kind)),
     setCollectionHidden: async (id: string, hidden: boolean) => {

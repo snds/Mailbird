@@ -5,6 +5,7 @@ import { Icon, type IconName } from "@/components/icon"
 import { Button } from "@/components/ui/button"
 import { Toggle } from "@/components/ui/toggle"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 
 import { SAFE_LINK } from "./use-rich-editor"
 
@@ -12,7 +13,7 @@ export function RichEditor({ editor }: { editor: Editor }) {
   return <EditorContent editor={editor} className="flex min-h-0 flex-1 flex-col overflow-y-auto [&>div]:flex-1" />
 }
 
-function Mark({ icon, label, shortcut, pressed, onPressedChange }: { icon: IconName; label: string; shortcut?: string; pressed: boolean; onPressedChange: () => void }) {
+export function Mark({ icon, label, shortcut, pressed, onPressedChange }: { icon: IconName; label: string; shortcut?: string; pressed: boolean; onPressedChange: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger render={<Toggle size="sm" aria-label={label} pressed={pressed} onPressedChange={onPressedChange} />}>
@@ -28,7 +29,8 @@ function Mark({ icon, label, shortcut, pressed, onPressedChange }: { icon: IconN
 
 const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"
 
-export function FormatBar({ editor }: { editor: Editor }) {
+/** `notes` adds what notes need beyond mail: headings, checklists, and code. */
+export function FormatBar({ editor, notes = false }: { editor: Editor; notes?: boolean }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -38,6 +40,9 @@ export function FormatBar({ editor }: { editor: Editor }) {
       bullet: e.isActive("bulletList"),
       ordered: e.isActive("orderedList"),
       quote: e.isActive("blockquote"),
+      heading: e.isActive("heading"),
+      task: e.isActive("taskList"),
+      code: e.isActive("codeBlock"),
     }),
   })
   const [linking, setLinking] = useState<string | null>(null)
@@ -104,7 +109,15 @@ export function FormatBar({ editor }: { editor: Editor }) {
         </div>
       )}
       {/* Pressing a format button must not take focus (or the phone keyboard) from the editor. */}
-      <div className="flex items-center gap-0.5 px-2 py-1" onMouseDown={(e) => e.preventDefault()}>
+      {/* In notes on phones, keep clear of the floating New note button. */}
+      <div className={cn("flex items-center gap-0.5 overflow-x-auto px-2 py-1", notes && "max-md:pr-24")} onMouseDown={(e) => e.preventDefault()}>
+        {notes && (
+          <>
+            <Mark icon="title" label="Heading" pressed={state.heading} onPressedChange={() => chain().toggleHeading({ level: 2 }).run()} />
+            <Mark icon="checklist" label="Checklist" pressed={state.task} onPressedChange={() => chain().toggleTaskList().run()} />
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
+          </>
+        )}
         <Mark icon="format_bold" label="Bold" shortcut={`${mod}B`} pressed={state.bold} onPressedChange={() => chain().toggleBold().run()} />
         <Mark icon="format_italic" label="Italic" shortcut={`${mod}I`} pressed={state.italic} onPressedChange={() => chain().toggleItalic().run()} />
         <Mark
@@ -117,6 +130,7 @@ export function FormatBar({ editor }: { editor: Editor }) {
         <Mark icon="format_list_bulleted" label="Bulleted list" pressed={state.bullet} onPressedChange={() => chain().toggleBulletList().run()} />
         <Mark icon="format_list_numbered" label="Numbered list" pressed={state.ordered} onPressedChange={() => chain().toggleOrderedList().run()} />
         <Mark icon="format_quote" label="Quote" pressed={state.quote} onPressedChange={() => chain().toggleBlockquote().run()} />
+        {notes && <Mark icon="code_blocks" label="Code block" pressed={state.code} onPressedChange={() => chain().toggleCodeBlock().run()} />}
       </div>
     </div>
   )

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useAccounts, useCollections, useContact, useMessages, usePimAction } from "@/core/queries"
 import { shortTime } from "@/lib/time"
 
+import { LinkedNotes } from "../notes/linked-notes"
 import { PersonAvatar } from "./person"
 
 /** "1990-04-02" → "April 2, 1990"; "--04-02" → "April 2". */
@@ -154,6 +155,7 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
           ))}
         </section>
       )}
+      <LinkedNotes target={{ kind: "contact", id: c.id }} title={c.fullName} />
     </article>
   )
 }

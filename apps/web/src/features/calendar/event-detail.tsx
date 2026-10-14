@@ -12,6 +12,7 @@ import { useAccounts, useEvent, usePimAction } from "@/core/queries"
 import type { Collection, EditScope, EventDetail as Detail, Repeat } from "@/core/types"
 
 import { displayName, initials } from "../mail/format"
+import { LinkedNotes } from "../notes/linked-notes"
 import { calendarColor } from "./colors"
 import { dayLabel, fromSecs, rangeLabel } from "./dates"
 import { inputFromDetail } from "./quick-add"
@@ -214,6 +215,7 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
           </Row>
         )}
       </div>
+      <LinkedNotes target={{ kind: "event", id: eventId }} title={`${e.title} · ${fromSecs(e.start).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`} />
     </article>
   )
 }

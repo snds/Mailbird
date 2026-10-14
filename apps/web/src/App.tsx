@@ -1,11 +1,9 @@
 import { QueryClientProvider } from "@tanstack/react-query"
 import { ThemeProvider } from "next-themes"
-import { useState } from "react"
-import { toast } from "sonner"
 
 import { AppShell } from "@/app/shell"
 import { useUi } from "@/app/ui-store"
-import { VERTICALS, type VerticalId } from "@/app/verticals"
+import { type VerticalId } from "@/app/verticals"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { queryClient, useCoreEvents } from "@/core/queries"
@@ -18,6 +16,8 @@ import { ContactEditor } from "@/features/contacts/contact-editor"
 import { MailView } from "@/features/mail"
 import { Composer, OutboxWatcher } from "@/features/mail/composer"
 import { NotesView } from "@/features/notes"
+import { NotesSyncRunner } from "@/features/notes/sync-runner"
+import { useNewNote } from "@/features/notes/use-new-note"
 
 const VIEWS: Record<VerticalId, () => React.JSX.Element> = {
   mail: MailView,
@@ -27,7 +27,9 @@ const VIEWS: Record<VerticalId, () => React.JSX.Element> = {
 }
 
 function Root() {
-  const [active, setActive] = useState<VerticalId>("mail")
+  const active = useUi((s) => s.vertical)
+  const setActive = useUi((s) => s.setVertical)
+  const newNote = useNewNote()
   const openComposer = useUi((s) => s.openComposer)
   const openEventEditor = useUi((s) => s.openEventEditor)
   const openContactEditor = useUi((s) => s.openContactEditor)
@@ -45,7 +47,7 @@ function Root() {
           if (active === "mail") openComposer()
           else if (active === "calendar") openEventEditor()
           else if (active === "contacts") openContactEditor()
-          else toast(`${VERTICALS.find((v) => v.id === active)!.create.label} — coming soon`)
+          else newNote()
         }}
       >
         {/* key resets each vertical's selection when switching apps */}
@@ -57,6 +59,7 @@ function Root() {
       <AccountsDialog />
       <OutboxWatcher />
       <ReminderWatcher />
+      <NotesSyncRunner />
     </>
   )
 }

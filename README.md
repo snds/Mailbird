@@ -78,7 +78,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **1c · Mail polish** ✅ | JMAP push, Sent/Archive sync-back, rich-text composer, attachment previews ([ADR-0009](docs/decisions/0009-mail-polish.md)) |
 | **2 · Calendar + Contacts** ✅ | CalDAV/CardDAV sync, agenda/day/week views, natural-language quick add, event and contact editors, duplicate merge, recipient autocomplete ([ADR-0010](docs/decisions/0010-calendar-contacts.md)) |
 | **2b · Calendar depth** ✅ | Month view, edit one occurrence or this-and-following, reminders with desktop notifications, meeting invitations (answer, send, cancel) ([ADR-0011](docs/decisions/0011-calendar-depth.md)) |
-| **3 · Notes** | Tiptap editor, Markdown storage, Yjs sync relay, Apple Notes and Keep import |
+| **3 · Notes** ✅ | Tiptap editor with checklists, Markdown storage, live Yjs sync through a self-hosted relay, links to events, people, and conversations, Apple Notes/Keep/Markdown import ([ADR-0012](docs/decisions/0012-notes.md)) |
 | **4 · Big providers** | Gmail API + Google verification, Microsoft Graph |
 | **5 · Mobile** | Tauri mobile spike → iOS/Android builds (Capacitor fallback) |
 

@@ -6,6 +6,7 @@
 //! lock again to write the result.
 
 mod commands;
+mod notes_commands;
 mod pim_commands;
 mod secrets;
 mod workers;
@@ -41,6 +42,8 @@ pub mod events {
     pub const PIM_CHANGED: &str = "pim:changed";
     /// A reminder is due (payload: `DueReminder`); the UI shows it in-app too.
     pub const REMINDER: &str = "reminder";
+    /// Notes changed (local edit, import, or sync).
+    pub const NOTES_CHANGED: &str = "notes:changed";
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -111,6 +114,20 @@ pub fn run() {
             pim_commands::respond_to_invite,
             pim_commands::apply_invite_update,
             pim_commands::event_guests,
+            notes_commands::list_notes,
+            notes_commands::get_note,
+            notes_commands::create_note,
+            notes_commands::save_note_body,
+            notes_commands::set_note_meta,
+            notes_commands::delete_note,
+            notes_commands::restore_note,
+            notes_commands::note_tags,
+            notes_commands::note_link_for,
+            notes_commands::import_notes,
+            notes_commands::note_records,
+            notes_commands::apply_note_records,
+            notes_commands::get_notes_relay,
+            notes_commands::set_notes_relay,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

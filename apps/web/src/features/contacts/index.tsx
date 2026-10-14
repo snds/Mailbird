@@ -1,4 +1,6 @@
-import { useDeferredValue, useState } from "react"
+import { useDeferredValue, useEffect, useState } from "react"
+
+import { pendingJump, useUi } from "@/app/ui-store"
 
 import { Icon } from "@/components/icon"
 import { ListRow, SearchField } from "@/components/list-row"
@@ -21,7 +23,11 @@ const letter = (c: ContactSummary) => {
 type Selection = { kind: "contact"; id: string } | { kind: "duplicates" } | null
 
 export function ContactsView() {
-  const [selected, setSelected] = useState<Selection>(null)
+  const [selected, setSelected] = useState<Selection>(() => {
+    const j = pendingJump("contact")
+    return j ? { kind: "contact", id: j.id } : null
+  })
+  useEffect(() => void useUi.getState().takeJump("contact"), [])
   const [search, setSearch] = useState("")
   const query = useDeferredValue(search.trim())
   const { data: contacts = [], isPending } = useContacts(query)

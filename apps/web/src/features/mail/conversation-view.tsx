@@ -18,6 +18,7 @@ import { THUMB_LIMIT, previewKind, useAttachmentUrl } from "./attachment-kind"
 import { AttachmentPreview } from "./attachment-preview"
 import { displayName, formatSize, forwardDraft, initials, replyDraft, replyTarget } from "./format"
 import { HtmlBody } from "./html-body"
+import { LinkedNotes } from "../notes/linked-notes"
 import { InviteCard } from "./invite-card"
 import { SnoozeMenu } from "./snooze-menu"
 
@@ -236,6 +237,9 @@ export function ConversationView({
         <Button variant="outline" onClick={() => openComposer(forwardDraft(target))}>
           <Icon name="forward" data-icon="inline-start" /> Forward
         </Button>
+      </div>
+      <div className="pt-4">
+        <LinkedNotes target={{ kind: "thread", id: row.threadId }} title={subject} />
       </div>
     </article>
   )
