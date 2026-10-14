@@ -76,20 +76,34 @@ pub fn start(app: AppHandle, state: Shared) {
         }
     });
 
-    // Reminders: check every few seconds for alarms that came due. Starts a
-    // minute back, so one that fired while the app launched isn't lost, but
-    // never replays hours of reminders missed while it was closed.
+    // Reminders: check every few seconds for alarms that came due. The ones
+    // that came due while the app was closed, up to launch, are caught up
+    // once, as one notification, for events that haven't long started
+    // (ADR-0019). With no record of a last check (first launch), it starts
+    // a minute back instead, so one that fired during launch isn't lost.
     let (a, s) = (app.clone(), state.clone());
     tokio::spawn(async move {
-        let mut checked = now() - 60;
+        let launched = now();
+        let mut checked = if catch_up_reminders(&a, &s, launched) { launched } else { launched - 60 };
+        let mut saved = 0;
         let mut tick = tokio::time::interval(REMINDER_TICK);
         loop {
             tick.tick().await;
             let until = now();
             let due = s.store.lock().ok().and_then(|st| st.due_reminders(checked, until).ok()).unwrap_or_default();
             checked = until;
+            let fired = !due.is_empty();
             for r in due {
                 notify(&a, &r);
+            }
+            // Remember how far we got for the next launch's catch-up: about
+            // once a minute, and right after a reminder fires so quitting
+            // straight after doesn't show it again as missed.
+            if (fired || until - saved >= 60)
+                && let Ok(st) = s.store.lock()
+            {
+                let _ = st.set_reminders_checked(until);
+                saved = until;
             }
         }
     });
@@ -482,6 +496,34 @@ pub async fn background_pass(app: AppHandle, state: &Shared) -> Result<Backgroun
 }
 
 /// Shows a reminder as an OS notification and tells the UI.
+/// Reminders missed while the app was closed: one notification now, and the
+/// first few kept for the UI to show once it's up (`take_missed_reminders`).
+/// False when there was no earlier check to catch up from.
+fn catch_up_reminders(app: &AppHandle, state: &Shared, until: i64) -> bool {
+    let Some((had_checked, missed)) = state.store.lock().ok().and_then(|s| Some((s.reminders_checked().ok()?.is_some(), s.missed_reminders(until).ok()?))) else {
+        return false;
+    };
+    match missed.as_slice() {
+        [] => {}
+        [one] => {
+            let minutes = (one.start - now()) / 60;
+            let when = if minutes > 0 { format!("Starts in {minutes} min") } else { format!("Started {} min ago", -minutes) };
+            let _ = app.notify(&format!("Missed reminder: {}", one.title), &when);
+        }
+        many => {
+            let titles = many.iter().take(3).map(|r| r.title.as_str()).collect::<Vec<_>>().join(" · ");
+            let _ = app.notify(&format!("{} reminders while Mailbird was closed", many.len()), &titles);
+        }
+    }
+    if let Ok(mut kept) = state.missed_reminders.lock() {
+        *kept = missed.into_iter().take(5).collect();
+    }
+    if let Ok(s) = state.store.lock() {
+        let _ = s.set_reminders_checked(until);
+    }
+    had_checked
+}
+
 fn notify(app: &AppHandle, r: &pim_core::DueReminder) {
     let minutes = (r.start - r.fire_at) / 60;
     let when = match minutes {

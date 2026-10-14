@@ -4,6 +4,8 @@ import type { Collection, Occurrence } from "@/core/types"
 import { cn } from "@/lib/utils"
 
 import { eventStyle } from "./colors"
+import { JoinButton } from "./join-button"
+import { placeLabel } from "./meeting"
 import { DAY, addDays, dayLabel, fmt, fromSecs, rangeLabel, sameDay, secs } from "./dates"
 import { occurrenceKey } from "./layout"
 
@@ -48,31 +50,37 @@ export function Agenda({
           </h3>
           {items.length === 0 && <p className="px-4 pb-3 text-sm text-muted-foreground">Nothing planned</p>}
           {items.map((o) => (
-            <button
+            // The Join link sits beside the row's button: a link can't go inside a button.
+            <div
               key={occurrenceKey(o)}
-              type="button"
-              onClick={() => onSelect(o)}
               data-selected={selected === occurrenceKey(o)}
-              className="flex w-full items-stretch gap-3 px-4 py-2 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent data-[selected=true]:bg-surface-selected"
+              className="flex items-center has-[>button:hover]:bg-accent/50 has-[>button:focus-visible]:bg-accent data-[selected=true]:bg-surface-selected"
               style={eventStyle(calendars.get(o.calendarId))}
             >
-              <span className="w-16 shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums">
-                {o.allDay ? "All day" : fmt.time(Math.max(o.start, secs(day)))}
-                {!o.allDay && o.end > o.start && sameDay(fromSecs(o.end), day) && (
-                  <>
-                    <br />
-                    {fmt.time(o.end)}
-                  </>
-                )}
-              </span>
-              <span className="event-dot w-1 shrink-0 rounded-full" />
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-sm font-medium">{o.title || "(no title)"}</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {[o.location, o.allDay && o.end - o.start > DAY ? rangeLabel(o.start, o.end, true) : null].filter(Boolean).join(" · ")}
+              <button
+                type="button"
+                onClick={() => onSelect(o)}
+                className="flex min-w-0 flex-1 items-stretch gap-3 py-2 pl-4 text-left outline-none last:pr-4"
+              >
+                <span className="w-16 shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums">
+                  {o.allDay ? "All day" : fmt.time(Math.max(o.start, secs(day)))}
+                  {!o.allDay && o.end > o.start && sameDay(fromSecs(o.end), day) && (
+                    <>
+                      <br />
+                      {fmt.time(o.end)}
+                    </>
+                  )}
                 </span>
-              </span>
-            </button>
+                <span className="event-dot w-1 shrink-0 rounded-full" />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm font-medium">{o.title || "(no title)"}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {[placeLabel(o), o.allDay && o.end - o.start > DAY ? rangeLabel(o.start, o.end, true) : null].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+              </button>
+              {o.meetingUrl && o.end > now.getTime() / 1000 && <JoinButton url={o.meetingUrl} variant="outline" className="mx-4 shrink-0" />}
+            </div>
           ))}
         </section>
       ))}

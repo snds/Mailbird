@@ -7,7 +7,9 @@ import { cn } from "@/lib/utils"
 
 import { eventStyle } from "./colors"
 import { DAY, addDays, fmt, sameDay, secs } from "./dates"
+import { placeLabel } from "./meeting"
 import { layoutDay, occurrenceKey } from "./layout"
+import { deviceZone, useSecondZone, zoneAbbr, zoneCity, zoneHour } from "./zones"
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const hourLabel = (h: number) => new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: "numeric" })
@@ -28,6 +30,7 @@ export function TimeGrid({
   onCreateAt?: (at: Date) => void
 }) {
   const now = useNow()
+  const zone = useSecondZone()
   const scroller = useRef<HTMLDivElement>(null)
   // Open on the working day (or just before now), like Apple Calendar.
   useEffect(() => {
@@ -42,7 +45,15 @@ export function TimeGrid({
   const timed = (d: Date) => occurrences.filter((o) => !o.allDay && o.start < dayStart(d) + DAY && o.end > dayStart(d))
   const allDay = (d: Date) => occurrences.filter((o) => o.allDay && o.start < secs(addDays(d, 1)) && o.end > dayStart(d))
   const anyAllDay = days.some((d) => allDay(d).length > 0)
-  const cols = { gridTemplateColumns: `var(--c-calendar-gutter) repeat(${days.length}, minmax(0, 1fr))` }
+  // A second zone adds a gutter column to the left of the device's hours.
+  // The second column is wider: half-hour zones read "10:30 PM".
+  const gutter = zone ? "calc(var(--c-calendar-gutter) + 1.25rem) var(--c-calendar-gutter)" : "var(--c-calendar-gutter)"
+  const cols = { gridTemplateColumns: `${gutter} repeat(${days.length}, minmax(0, 1fr))` }
+  const hourAt = (h: number) => {
+    const d = new Date(days[0]!)
+    d.setHours(h, 0, 0, 0)
+    return d
+  }
 
   const chip = (o: Occurrence, className: string, style?: React.CSSProperties, compact = false) => (
     <button
@@ -62,7 +73,7 @@ export function TimeGrid({
       ) : (
         <>
           <span className="block truncate font-medium">{o.title || "(no title)"}</span>
-          {!o.allDay && <span className="block truncate opacity-80">{fmt.time(o.start)}{o.location ? ` · ${o.location}` : ""}</span>}
+          {!o.allDay && <span className="block truncate opacity-80">{fmt.time(o.start)}{placeLabel(o) ? ` · ${placeLabel(o)}` : ""}</span>}
         </>
       )}
     </button>
@@ -72,7 +83,18 @@ export function TimeGrid({
     <div className="flex min-h-0 flex-1 flex-col" data-slot="time-grid">
       {/* Day headers + all-day row stay put while hours scroll. */}
       <div className="grid shrink-0 border-b" style={cols}>
-        <div />
+        {zone ? (
+          <>
+            <div className="self-end truncate pr-2 pb-1 text-right text-[11px] text-muted-foreground" title={zoneCity(zone)}>
+              {zoneAbbr(zone, hourAt(12))}
+            </div>
+            <div className="self-end truncate pr-2 pb-1 text-right text-[11px] text-muted-foreground" title={zoneCity(deviceZone())}>
+              {zoneAbbr(deviceZone(), hourAt(12))}
+            </div>
+          </>
+        ) : (
+          <div />
+        )}
         {days.map((d) => {
           const today = sameDay(d, now)
           return (
@@ -84,7 +106,9 @@ export function TimeGrid({
         })}
         {anyAllDay && (
           <>
-            <div className="self-center pr-2 text-right text-[11px] text-muted-foreground">all-day</div>
+            <div className="self-center pr-2 text-right text-[11px] text-muted-foreground" style={{ gridColumn: zone ? "span 2" : undefined }}>
+              all-day
+            </div>
             {days.map((d) => (
               <div key={d.toISOString()} className="flex min-w-0 flex-col gap-0.5 border-l px-0.5 pb-1">
                 {allDay(d).map((o) => chip(o, "px-1.5 py-0.5"))}
@@ -95,6 +119,15 @@ export function TimeGrid({
       </div>
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
         <div className="relative grid" style={{ ...cols, height: `calc(var(--c-calendar-hour-height) * 24)` }}>
+          {zone && (
+            <div className="relative" data-slot="second-zone" aria-label={`Hours in ${zoneCity(zone)}`}>
+              {HOURS.slice(1).map((h) => (
+                <span key={h} className="absolute right-2 -translate-y-1/2 text-[11px] whitespace-nowrap text-muted-foreground/70 tabular-nums" style={{ top: `calc(var(--c-calendar-hour-height) * ${h})` }}>
+                  {zoneHour(zone, hourAt(h))}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="relative">
             {HOURS.slice(1).map((h) => (
               <span key={h} className="absolute right-2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums" style={{ top: `calc(var(--c-calendar-hour-height) * ${h})` }}>

@@ -324,6 +324,10 @@ export interface Occurrence {
   originalStart: number
   allDay: boolean
   recurring: boolean
+  /** The video-call link (Zoom, Meet, Teams …) in the location; the event view also looks in the notes and URL. */
+  meetingUrl?: string | null
+  /** Set on the Birthdays calendar: the contact whose birthday this is. */
+  contactId?: string | null
 }
 
 export interface Attendee {
@@ -351,6 +355,16 @@ export interface DueReminder {
   location: string | null
   start: number
   fireAt: number
+}
+
+/** What you have going on with one contact. */
+export interface ContactActivity {
+  /** Newest first, one row per conversation. */
+  threads: MessageSummary[]
+  /** Soonest first. */
+  upcoming: Occurrence[]
+  /** Most recent first. */
+  past: Occurrence[]
 }
 
 export type InviteResponse = "accepted" | "tentative" | "declined"

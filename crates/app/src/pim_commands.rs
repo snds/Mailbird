@@ -68,6 +68,16 @@ pub fn get_contact(state: &Shared, id: String) -> Res<ContactDetail> {
     with_store(state, |s| s.contact(&id))
 }
 
+/// Recent conversations with a contact, and meetings they're in (ADR-0019).
+pub fn contact_activity(state: &Shared, id: String) -> Res<pim_core::ContactActivity> {
+    with_store(state, |s| s.contact_activity(&id))
+}
+
+/// The reminders missed while the app was closed, once: a second call gets none.
+pub fn take_missed_reminders(state: &Shared) -> Vec<pim_core::DueReminder> {
+    state.missed_reminders.lock().map(|mut m| std::mem::take(&mut *m)).unwrap_or_default()
+}
+
 pub fn create_contact(app: AppHandle, state: &Shared, input: ContactInput) -> Res<ContactDetail> {
     let c = with_store(state, |s| s.create_contact(&input))?;
     edited(&app, state);

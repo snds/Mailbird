@@ -23,6 +23,8 @@ const keys = {
   event: (id: string, start: number | null) => ["pim", "event", id, start] as const,
   contacts: (search: string) => ["pim", "contacts", search] as const,
   contact: (id: string) => ["pim", "contact", id] as const,
+  // Mail and meetings with a contact: refreshes on "pim" and on mail changes.
+  contactActivity: (id: string) => ["pim", "activity", id] as const,
   duplicates: ["pim", "duplicates"] as const,
   // Notes refresh on their own event; links read calendar/contact data, so
   // they refresh with "pim" too (see useCoreEvents).
@@ -54,6 +56,7 @@ export function useCoreEvents() {
       core.on("mail:changed", () => {
         void qc.invalidateQueries({ queryKey: ["messages"] })
         void qc.invalidateQueries({ queryKey: ["thread"] })
+        void qc.invalidateQueries({ queryKey: ["pim", "activity"] })
       }),
       core.on("outbox:changed", () => void qc.invalidateQueries({ queryKey: keys.outbox })),
       core.on("accounts:changed", () => void qc.invalidateQueries({ queryKey: keys.accounts })),
@@ -177,6 +180,10 @@ export function useContacts(search: string) {
 
 export function useContact(id: string | null) {
   return useQuery({ queryKey: keys.contact(id ?? ""), queryFn: () => call((c) => c.getContact(id!)), enabled: id !== null })
+}
+
+export function useContactActivity(id: string) {
+  return useQuery({ queryKey: keys.contactActivity(id), queryFn: () => call((c) => c.contactActivity(id)) })
 }
 
 export function useDuplicates() {

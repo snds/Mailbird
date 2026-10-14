@@ -4,9 +4,13 @@ import { useUi } from "@/app/ui-store"
 import { Icon, type IconName } from "@/components/icon"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useAccounts, useCollections, useContact, useMessages, usePimAction } from "@/core/queries"
+import { useAccounts, useCollections, useContact, useContactActivity, usePimAction } from "@/core/queries"
+import type { ContactActivity, Occurrence } from "@/core/types"
+import { useNowSecs } from "@/hooks/use-now"
 import { shortTime } from "@/lib/time"
 
+import { dayLabel, fromSecs, rangeLabel } from "../calendar/dates"
+import { JoinButton } from "../calendar/join-button"
 import { LinkedNotes } from "../notes/linked-notes"
 import { PersonAvatar } from "./person"
 
@@ -44,9 +48,8 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
   const openEditor = useUi((s) => s.openContactEditor)
   const remove = usePimAction((core, cid: string) => core.deleteContact(cid))
   const email = c?.emails[0]?.value ?? ""
-  // Cross-vertical context: mail you've exchanged with this person.
-  const { data: found = [] } = useMessages({ lane: "inbox", search: email || null, limit: 20 })
-  const threads = c ? found.filter((m) => c.emails.some((e) => e.value.toLowerCase() === m.from.email.toLowerCase())).slice(0, 5) : []
+  // Cross-vertical context: conversations and meetings with this person.
+  const { data: activity } = useContactActivity(id)
 
   if (isPending) {
     return (
@@ -144,18 +147,58 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
         </p>
       )}
 
-      {threads.length > 0 && (
-        <section className="w-full text-left" aria-label="Recent mail">
-          <h3 className="pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Recent mail</h3>
-          {threads.map((t) => (
-            <p key={t.id} className="flex gap-2 border-b py-2 text-sm last:border-0">
-              <span className="min-w-0 flex-1 truncate">{t.subject || "(no subject)"}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{shortTime(t.date)}</span>
-            </p>
-          ))}
-        </section>
-      )}
+      {activity && <Activity activity={activity} />}
       <LinkedNotes target={{ kind: "contact", id: c.id }} title={c.fullName} />
     </article>
+  )
+}
+
+/** Recent conversations and meetings, each opening where it lives (Mail, Calendar). */
+function Activity({ activity: { threads, upcoming, past } }: { activity: ContactActivity }) {
+  const jumpTo = useUi((s) => s.jumpTo)
+  const now = useNowSecs()
+  const meeting = (o: Occurrence) => (
+    <li key={`${o.eventId}-${o.start}`} className="flex items-center gap-2 border-b last:border-0">
+      <button type="button" className="flex min-w-0 flex-1 flex-col py-2 text-left text-sm hover:text-primary" onClick={() => jumpTo({ kind: "event", id: o.eventId, start: o.start })}>
+        <span className="truncate">{o.title || "(no title)"}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {dayLabel(fromSecs(o.start))} · {rangeLabel(o.start, o.end, o.allDay)}
+        </span>
+      </button>
+      {o.meetingUrl && o.end > now && <JoinButton url={o.meetingUrl} variant="outline" className="shrink-0" />}
+    </li>
+  )
+  if (!threads.length && !upcoming.length && !past.length) return null
+  return (
+    <div className="flex w-full flex-col gap-5 text-left">
+      {upcoming.length > 0 && (
+        <section aria-label="Upcoming meetings">
+          <h3 className="pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Upcoming</h3>
+          <ul>{upcoming.map(meeting)}</ul>
+        </section>
+      )}
+      {threads.length > 0 && (
+        <section aria-label="Recent mail">
+          <h3 className="pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Recent mail</h3>
+          <ul>
+            {threads.map((t) => (
+              <li key={t.threadId} className="border-b last:border-0">
+                <button type="button" className="flex w-full gap-2 py-2 text-left text-sm hover:text-primary" onClick={() => jumpTo({ kind: "thread", id: t.threadId, row: t })}>
+                  <span className={t.seen ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate font-semibold"}>{t.subject || "(no subject)"}</span>
+                  {t.threadCount > 1 && <span className="shrink-0 text-xs text-muted-foreground tabular-nums" aria-label={`${t.threadCount} messages`}>{t.threadCount}</span>}
+                  <span className="shrink-0 text-xs text-muted-foreground">{shortTime(t.date)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {past.length > 0 && (
+        <section aria-label="Past meetings">
+          <h3 className="pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Met recently</h3>
+          <ul>{past.map(meeting)}</ul>
+        </section>
+      )}
+    </div>
   )
 }

@@ -5,6 +5,8 @@ import type {
   Capabilities,
   Collection,
   CollectionKind,
+  ContactActivity,
+  DueReminder,
   ContactDetail,
   ContactInput,
   ContactSummary,
@@ -134,6 +136,10 @@ export interface CoreClient {
   applyInviteUpdate(messageId: string): Promise<Invite>
   listContacts(search?: string | null): Promise<ContactSummary[]>
   getContact(id: string): Promise<ContactDetail>
+  /** Recent conversations and meetings with this contact. */
+  contactActivity(id: string): Promise<ContactActivity>
+  /** Reminders that came due while the app was closed; each is returned once. */
+  takeMissedReminders(): Promise<DueReminder[]>
   createContact(input: ContactInput): Promise<ContactDetail>
   updateContact(id: string, input: ContactInput): Promise<ContactDetail>
   deleteContact(id: string): Promise<void>
@@ -227,6 +233,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     applyInviteUpdate: (messageId) => call("apply_invite_update", { messageId }),
     listContacts: (search) => call("list_contacts", { search: search ?? null }),
     getContact: (id) => call("get_contact", { id }),
+    contactActivity: (id) => call("contact_activity", { id }),
+    takeMissedReminders: () => call("take_missed_reminders"),
     createContact: (input) => call("create_contact", { input }),
     updateContact: (id, input) => call("update_contact", { id, input }),
     deleteContact: (id) => call("delete_contact", { id }),
