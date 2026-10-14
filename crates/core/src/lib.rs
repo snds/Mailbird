@@ -15,6 +15,7 @@ pub mod capabilities;
 mod compose_store;
 mod connected_store;
 mod contacts_store;
+mod planning_store;
 pub mod ical;
 pub mod itip;
 pub use connected_store::BIRTHDAY_PREFIX;

@@ -103,6 +103,14 @@ pub const COMMANDS: &[&str] = &[
     "sync_pim_now",
     "respond_to_invite",
     "apply_invite_update",
+    "propose_time",
+    "accept_counter",
+    "decline_counter",
+    "find_times",
+    "calendar_sets",
+    "save_calendar_set",
+    "delete_calendar_set",
+    "apply_calendar_set",
     "event_guests",
     "get_oauth_client",
     "set_oauth_client",
@@ -335,6 +343,35 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "respond_to_invite" => {
             args!(args, message_id: String, response: InviteResponse, calendar_id: Option<String>);
             Output::json(pim_commands::respond_to_invite(app.clone(), state, message_id, response, calendar_id)?)
+        }
+        "propose_time" => {
+            args!(args, message_id: String, start: i64, end: i64, comment: Option<String>);
+            Output::json(pim_commands::propose_time(app.clone(), state, message_id, start, end, comment)?)
+        }
+        "accept_counter" => {
+            args!(args, message_id: String);
+            Output::json(pim_commands::accept_counter(app.clone(), state, message_id)?)
+        }
+        "decline_counter" => {
+            args!(args, message_id: String);
+            Output::json(pim_commands::decline_counter(app.clone(), state, message_id)?)
+        }
+        "find_times" => {
+            args!(args, from: i64, minutes: u32, day_start: u32, day_end: u32, weekdays_only: bool, limit: Option<usize>);
+            Output::json(pim_commands::find_times(state, from, minutes, day_start, day_end, weekdays_only, limit)?)
+        }
+        "calendar_sets" => Output::json(pim_commands::calendar_sets(state)?),
+        "save_calendar_set" => {
+            args!(args, name: String);
+            Output::json(pim_commands::save_calendar_set(state, name)?)
+        }
+        "delete_calendar_set" => {
+            args!(args, id: String);
+            Output::json(pim_commands::delete_calendar_set(state, id)?)
+        }
+        "apply_calendar_set" => {
+            args!(args, id: String);
+            Output::json(pim_commands::apply_calendar_set(app.clone(), state, id)?)
         }
         "apply_invite_update" => {
             args!(args, message_id: String);

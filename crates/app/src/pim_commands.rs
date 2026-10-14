@@ -181,6 +181,50 @@ pub fn apply_invite_update(app: AppHandle, state: &Shared, message_id: String) -
     Ok(inv)
 }
 
+/// Proposes another time for an invitation (an iTIP COUNTER to the organizer, ADR-0021).
+pub fn propose_time(app: AppHandle, state: &Shared, message_id: String, start: i64, end: i64, comment: Option<String>) -> Res<Invite> {
+    let inv = with_store(state, |s| s.propose_time(&message_id, start, end, comment.as_deref()))?;
+    invite_changed(&app, state);
+    Ok(inv)
+}
+
+/// Takes a guest's proposed time: moves your event and tells everyone.
+pub fn accept_counter(app: AppHandle, state: &Shared, message_id: String) -> Res<Invite> {
+    let inv = with_store(state, |s| s.accept_counter(&message_id))?;
+    invite_changed(&app, state);
+    Ok(inv)
+}
+
+/// Keeps the original time and tells the guest.
+pub fn decline_counter(app: AppHandle, state: &Shared, message_id: String) -> Res<Invite> {
+    let inv = with_store(state, |s| s.decline_counter(&message_id))?;
+    invite_changed(&app, state);
+    Ok(inv)
+}
+
+/// Free times in your calendars (see `Store::find_times`).
+pub fn find_times(state: &Shared, from: i64, minutes: u32, day_start: u32, day_end: u32, weekdays_only: bool, limit: Option<usize>) -> Res<Vec<pim_core::TimeSlot>> {
+    with_store(state, |s| s.find_times(from, minutes, day_start, day_end, weekdays_only, limit.unwrap_or(6).min(20)))
+}
+
+pub fn calendar_sets(state: &Shared) -> Res<Vec<pim_core::CalendarSet>> {
+    with_store(state, |s| s.calendar_sets())
+}
+
+pub fn save_calendar_set(state: &Shared, name: String) -> Res<Vec<pim_core::CalendarSet>> {
+    with_store(state, |s| s.save_calendar_set(&name))
+}
+
+pub fn delete_calendar_set(state: &Shared, id: String) -> Res<Vec<pim_core::CalendarSet>> {
+    with_store(state, |s| s.delete_calendar_set(&id))
+}
+
+pub fn apply_calendar_set(app: AppHandle, state: &Shared, id: String) -> Res<()> {
+    with_store(state, |s| s.apply_calendar_set(&id))?;
+    let _ = app.emit(events::PIM_CHANGED, ());
+    Ok(())
+}
+
 pub fn event_guests(state: &Shared, id: String) -> Res<Vec<Address>> {
     with_store(state, |s| s.event_guests(&id))
 }

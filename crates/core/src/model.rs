@@ -628,8 +628,42 @@ pub struct Invite {
     pub event_id: Option<String>,
     /// Your calendar already has a newer version than this message.
     pub outdated: bool,
-    /// For a reply: the guest and their answer.
+    /// For a reply: the guest and their answer. For a counter-proposal: who proposed.
     pub from: Option<Attendee>,
+    /// Events in your visible calendars at the same time (requests and counter-proposals).
+    #[serde(default)]
+    pub conflicts: Vec<Occurrence>,
+    /// For a counter-proposal: your event's time now, to compare.
+    #[serde(default)]
+    pub current_start: Option<i64>,
+    #[serde(default)]
+    pub current_end: Option<i64>,
+    /// The guest's note (COMMENT) on a reply or counter-proposal.
+    #[serde(default)]
+    pub comment: Option<String>,
+    /// For a counter-proposal you've answered: "accepted" or "declined".
+    #[serde(default)]
+    pub answered: Option<String>,
+    /// For an invitation: the new time you proposed, if you did.
+    #[serde(default)]
+    pub proposed: Option<TimeSlot>,
+}
+
+/// A free stretch of time, from "find a time".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeSlot {
+    pub start: i64,
+    pub end: i64,
+}
+
+/// A saved set of visible calendars ("Work", "Personal"), switched with one tap.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarSet {
+    pub id: String,
+    pub name: String,
+    pub calendar_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

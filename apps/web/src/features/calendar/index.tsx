@@ -12,6 +12,7 @@ import type { Collection, Occurrence } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 
 import { Agenda } from "./agenda"
+import { CalendarSets } from "./calendar-sets"
 import { calendarColor } from "./colors"
 import { DAY, addDays, addMonths, dateInput, fmt, fromSecs, secs, startOfDay, startOfWeek, timeInput } from "./dates"
 import { EventDetailPane } from "./event-detail"
@@ -114,6 +115,7 @@ function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
             ))}
         </section>
       ))}
+      <CalendarSets calendars={calendars} />
       <SecondZonePicker />
     </div>
   )

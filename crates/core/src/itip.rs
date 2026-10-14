@@ -1,6 +1,7 @@
 //! Meeting invitations: iTIP (RFC 5546) messages carried by email (iMIP,
 //! RFC 6047). Reading an invitation, answering it, and writing the
-//! REQUEST / CANCEL an organizer sends.
+//! REQUEST / CANCEL an organizer sends, and the COUNTER a guest sends to
+//! propose another time (with the organizer's DECLINECOUNTER).
 //!
 //! Servers with CalDAV scheduling (RFC 6638, `calendar-auto-schedule`) send
 //! these messages themselves when an event they hold changes; the store
@@ -19,6 +20,10 @@ pub struct InviteMeta {
     pub sequence: i64,
     pub organizer: Option<Address>,
     pub attendees: Vec<Attendee>,
+    /// COMMENT: a guest's note with a counter-proposal or a reply.
+    pub comment: Option<String>,
+    /// The master has an RRULE.
+    pub recurring: bool,
 }
 
 fn parse(ics: &str) -> Result<ICalendar> {
@@ -101,7 +106,61 @@ pub fn read_invite(ics: &str) -> Result<InviteMeta> {
                 Some(Attendee { name: a.name, email: a.email, status })
             })
             .collect(),
+        comment: ev.property(&ICalendarProperty::Comment).and_then(|e| e.values.first()).and_then(|v| v.as_text()).map(str::to_owned).filter(|c| !c.trim().is_empty()),
+        recurring: ev.has_property(&ICalendarProperty::Rrule),
     })
+}
+
+fn utc(ts: i64) -> String {
+    DateTime::from_timestamp(ts, 0).unwrap_or_default().format("%Y%m%dT%H%M%SZ").to_string()
+}
+
+/// One VEVENT's worth of lines as an iTIP message with `method`.
+fn message(method: &str, lines: &[String]) -> Result<String> {
+    let body: String = lines.iter().map(|l| format!("{l}\r\n")).collect();
+    let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Mailbird//EN\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\n{body}END:VEVENT\r\nEND:VCALENDAR\r\n");
+    // Round-trip so the result is known-valid and canonically folded.
+    Ok(finish(parse(&text)?))
+}
+
+/// A guest's METHOD:COUNTER (RFC 5546 §3.2.7): the invitation with another
+/// time, sent to the organizer, who accepts or declines it. Only for single
+/// events: proposing a new time for a whole series isn't something people do.
+pub fn counter(ics: &str, me: &Address, start: i64, end: i64, comment: Option<&str>) -> Result<String> {
+    let m = read_invite(ics)?;
+    if m.recurring {
+        return Err(Error::Invalid("you can propose a new time for a single event, not a series".into()));
+    }
+    if end <= start {
+        return Err(Error::Invalid("the new time ends before it starts".into()));
+    }
+    let org = m.organizer.as_ref().ok_or_else(|| Error::Invalid("this invitation has no organizer to ask".into()))?;
+    let cal = parse(ics)?;
+    let ev = cal.components.iter().find(|c| c.component_type == ICalendarComponentType::VEvent).ok_or_else(|| Error::Parse("the invitation has no event".into()))?;
+    let status = m.attendees.iter().find(|a| same(&a.email, &me.email)).and_then(|a| a.status.clone()).unwrap_or_else(|| "needs-action".into());
+    let mut lines = vec![format!("UID:{}", m.uid), format!("SEQUENCE:{}", m.sequence), format!("DTSTAMP:{}", stamp_now()), organizer_line(org)];
+    lines.push(attendee_line(me, &status.to_ascii_uppercase(), false));
+    for prop in [ICalendarProperty::Summary, ICalendarProperty::Location] {
+        if let Some(v) = ev.property(&prop).and_then(|e| e.values.first()).and_then(|v| v.as_text()) {
+            lines.push(format!("{}:{}", prop.as_str(), crate::ical::esc(v)));
+        }
+    }
+    lines.push(format!("DTSTART:{}", utc(start)));
+    lines.push(format!("DTEND:{}", utc(end)));
+    if let Some(c) = comment.map(str::trim).filter(|c| !c.is_empty()) {
+        lines.push(format!("COMMENT:{}", crate::ical::esc(c)));
+    }
+    message("COUNTER", &lines)
+}
+
+/// The organizer's METHOD:DECLINECOUNTER: the original time stands.
+pub fn decline_counter(counter_ics: &str) -> Result<String> {
+    let m = read_invite(counter_ics)?;
+    let org = m.organizer.as_ref().ok_or_else(|| Error::Parse("the proposal names no organizer".into()))?;
+    let guest = m.attendees.first().ok_or_else(|| Error::Parse("the proposal names no guest".into()))?;
+    let who = Address { name: guest.name.clone(), email: guest.email.clone() };
+    let lines = vec![format!("UID:{}", m.uid), format!("SEQUENCE:{}", m.sequence), format!("DTSTAMP:{}", stamp_now()), organizer_line(org), attendee_line(&who, "NEEDS-ACTION", false)];
+    message("DECLINECOUNTER", &lines)
 }
 
 /// The calendar object to store from an invitation: CalDAV forbids METHOD
@@ -275,6 +334,27 @@ mod tests {
         assert_eq!(m.attendees[0].status.as_deref(), Some("tentative"));
         assert_eq!(m.organizer.unwrap().email, "priya@studio.example");
         assert!(r.contains("DTSTART:20261020T130000Z"));
+    }
+
+    #[test]
+    fn counters_and_declines() {
+        let me = Address { name: Some("Me".into()), email: "me@studio.example".into() };
+        // 20 Oct 2026 15:00–16:00 UTC instead of 13:00–14:00.
+        let c = counter(INVITE, &me, 1_792_508_400, 1_792_512_000, Some("Clashes with standup; does 3 work?")).unwrap();
+        let m = read_invite(&c).unwrap();
+        assert_eq!((m.method.as_str(), m.uid.as_str(), m.sequence), ("COUNTER", "inv-1@other.example", 2));
+        assert_eq!(m.attendees.len(), 1, "only the proposer");
+        assert_eq!(m.organizer.unwrap().email, "priya@studio.example");
+        assert_eq!(m.comment.as_deref(), Some("Clashes with standup; does 3 work?"));
+        assert!(c.contains("DTSTART:20261020T150000Z") && c.contains("DTEND:20261020T160000Z") && c.contains("SUMMARY:Design crit"), "{c}");
+        assert!(counter(INVITE, &me, 10, 5, None).is_err(), "ends before it starts");
+        let series = INVITE.replace("SUMMARY:Design crit", "SUMMARY:Design crit\r\nRRULE:FREQ=WEEKLY");
+        assert!(counter(&series, &me, 1_792_508_400, 1_792_512_000, None).is_err(), "not for a series");
+
+        let d = decline_counter(&c).unwrap();
+        let m = read_invite(&d).unwrap();
+        assert_eq!((m.method.as_str(), m.uid.as_str()), ("DECLINECOUNTER", "inv-1@other.example"));
+        assert_eq!(m.attendees[0].email, "me@studio.example");
     }
 
     #[test]

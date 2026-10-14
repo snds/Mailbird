@@ -60,6 +60,23 @@ fn parse(ics: &str) -> Result<ICalendar> {
     ICalendar::parse(ics).map_err(|_| Error::Parse("not a valid iCalendar event".into()))
 }
 
+/// "2026-10-20T15:00" for `ts` in `zone`: the editor's local form.
+pub(crate) fn local_input(ts: i64, zone: &str) -> String {
+    DateTime::from_timestamp(ts, 0).unwrap_or_default().with_timezone(&tz(zone)).format("%Y-%m-%dT%H:%M").to_string()
+}
+
+/// The instant a local wall time in `zone` names (the earlier one when clocks fall back).
+pub(crate) fn local_to_utc(date: chrono::NaiveDate, minutes: u32, zone: &str) -> Option<i64> {
+    use chrono::TimeZone;
+    let t = date.and_hms_opt(minutes / 60, minutes % 60, 0)?;
+    tz(zone).from_local_datetime(&t).earliest().map(|d| d.timestamp())
+}
+
+/// The local calendar date of `ts` in `zone`.
+pub(crate) fn local_date(ts: i64, zone: &str) -> chrono::NaiveDate {
+    DateTime::from_timestamp(ts, 0).unwrap_or_default().with_timezone(&tz(zone)).date_naive()
+}
+
 /// An IANA zone; unknown names fall back to UTC rather than floating time.
 fn tz(name: &str) -> Tz {
     Tz::from_str(name).or_else(|_| Tz::from_str("UTC")).unwrap_or_default()

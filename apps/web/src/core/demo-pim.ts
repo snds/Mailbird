@@ -23,6 +23,9 @@ import type {
   InviteResponse,
   Occurrence,
   Repeat,
+  CalendarSet,
+  FindTimes,
+  TimeSlot,
   ContactSuggestion,
   SignatureCard,
 } from "./types"
@@ -50,15 +53,19 @@ interface DemoEvent {
   uid: string
 }
 
-/** A demo message's invitation, as the organizer sent it. */
+/** A demo message's invitation, as the organizer sent it, or a guest's counter-proposal. */
 export interface DemoInviteSeed {
   uid: string
   title: string
   location: string | null
+  /** For a counter-proposal: the time the guest proposes. */
   start: number
   end: number
   organizer: Address
   attendees: Attendee[]
+  /** "counter": a guest (`attendees[0]`) proposes another time for your event. */
+  method?: "request" | "counter"
+  comment?: string
 }
 
 type DemoContact = ContactDetail
@@ -195,6 +202,20 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     ev("cal-personal", "Cabin weekend", at(untilSaturday, 0), at(untilSaturday + 2, 0), { allDay: true }),
     ev("cal-holidays", "Bank holiday", at(9, 0), at(10, 0), { allDay: true }),
     ev("cal-work", "Quarterly planning", at(-2, 10), at(-2, 12), { organizer: priya, attendees: team("accepted") }),
+    // `?counter`: a meeting you organize, which Sam asks to move (see the demo's mail).
+    ...(new URLSearchParams(globalThis.location?.search ?? "").has("counter")
+      ? [
+          ev("cal-work", "Studio sync", at(3, 11), at(3, 12), {
+            uid: "sync-1@mailbird",
+            organizer: { name: "Me", email: "me@studio.example" },
+            attendees: [
+              { name: "Me", email: "me@studio.example", status: "accepted" },
+              { name: "Sam Okafor", email: "sam@studio.example", status: "tentative" },
+              { name: "Ana Duarte", email: "ana@example.com", status: "accepted" },
+            ],
+          }),
+        ]
+      : []),
   ]
 
   let c = 0
@@ -373,16 +394,93 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   }, 5000)
 
   /** Invitations: the demo's mail calls these for messages carrying one. */
+  // Timed events in visible calendars overlapping a time, except the invitation's own copy.
+  const conflicts = (start: number, end: number, skipUid: string) =>
+    events
+      .filter((e) => visible(e.calendarId) && !e.allDay && e.uid !== skipUid)
+      .flatMap((e) => expand(e, start, end).map((o) => occurrence(e, o)))
+      .filter((o) => o.start < end && o.end > start)
+  const proposals = new Map<string, { start: number; end: number }>()
+  const counterAnswers = new Map<string, "accepted" | "declined">()
   const inviteFor = (seed: DemoInviteSeed, myEmail: string): Invite => {
     const copy = events.find((e) => e.uid === seed.uid)
+    if (seed.method === "counter") {
+      const key = `${seed.uid}@${seed.start}`
+      return {
+        method: "counter", uid: seed.uid, title: seed.title, location: seed.location, start: seed.start, end: seed.end,
+        allDay: false, recurring: false, organizer: seed.organizer, attendees: seed.attendees, myStatus: null,
+        eventId: copy?.id ?? null, outdated: false, from: seed.attendees[0] ?? null, comment: seed.comment ?? null,
+        currentStart: copy?.start ?? null, currentEnd: copy?.end ?? null,
+        conflicts: conflicts(seed.start, seed.end, seed.uid), answered: counterAnswers.get(key) ?? null,
+      }
+    }
     const people = copy?.attendees ?? seed.attendees
     return {
       method: "request", uid: seed.uid, title: seed.title, location: seed.location, start: seed.start, end: seed.end,
       allDay: false, recurring: false, organizer: seed.organizer, attendees: people,
       myStatus: people.find((a) => normEmail(a.email) === normEmail(myEmail))?.status ?? null,
       eventId: copy?.id ?? null, outdated: false, from: null,
+      conflicts: conflicts(seed.start, seed.end, seed.uid), proposed: proposals.get(seed.uid) ?? null,
     }
   }
+  /** A guest's COUNTER, from the demo's mail. */
+  const proposeFor = (seed: DemoInviteSeed, myEmail: string, start: number, end: number) => {
+    if (end <= start) throw new Error("the new time ends before it starts")
+    proposals.set(seed.uid, { start, end })
+    return inviteFor(seed, myEmail)
+  }
+  /** The organizer's answer to a COUNTER: move the event (everyone's asked again) or keep it. */
+  const answerCounter = (seed: DemoInviteSeed, myEmail: string, accept: boolean) => {
+    const e = events.find((x) => x.uid === seed.uid)
+    if (!e) throw new Error("this event isn't in your calendar")
+    if (accept) {
+      Object.assign(e, { start: seed.start, end: seed.end })
+      const proposer = normEmail(seed.attendees[0]?.email ?? "")
+      e.attendees = e.attendees.map((a) =>
+        e.organizer && normEmail(a.email) === normEmail(e.organizer.email) ? a : { ...a, status: normEmail(a.email) === proposer ? "accepted" : "needs-action" },
+      )
+      changed()
+    }
+    counterAnswers.set(`${seed.uid}@${seed.start}`, accept ? "accepted" : "declined")
+    return inviteFor(seed, myEmail)
+  }
+
+  // Find a time: free stretches on the device clock, at most two a day, on the half hour.
+  const findTimes = ({ from, minutes, dayStart, dayEnd, weekdaysOnly, limit = 6 }: FindTimes): TimeSlot[] => {
+    const len = minutes * 60
+    if (minutes <= 0 || dayEnd <= dayStart || dayEnd > 1440 || (dayEnd - dayStart) * 60 < len) throw new Error("that length doesn't fit in the day")
+    const grid = 1800
+    const up = (t: number) => Math.ceil(t / grid) * grid
+    const start = up(Math.max(from, Math.floor(Date.now() / 1000)))
+    const busy = events
+      .filter((e) => visible(e.calendarId) && !e.allDay)
+      .flatMap((e) => expand(e, start, start + 15 * 86_400))
+      .map((o) => [o.start, o.end] as const)
+    const out: TimeSlot[] = []
+    const day = new Date(start * 1000)
+    day.setHours(0, 0, 0, 0)
+    for (let i = 0; i < 14 && out.length < limit; i++, day.setDate(day.getDate() + 1)) {
+      if (weekdaysOnly && (day.getDay() === 0 || day.getDay() === 6)) continue
+      const open = secs(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, dayStart))
+      const close = secs(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, dayEnd))
+      let at = up(Math.max(open, start))
+      let today = 0
+      while (at + len <= close && today < 2 && out.length < limit) {
+        const blocking = busy.filter(([s, e]) => s < at + len && e > at)
+        if (blocking.length) at = up(Math.max(...blocking.map(([, e]) => e)))
+        else {
+          out.push({ start: at, end: at + len })
+          today++
+          at = up(at + Math.max(len, 7200))
+        }
+      }
+    }
+    return out
+  }
+
+  // Calendar sets: saved combinations of visible calendars.
+  let sets: CalendarSet[] = []
+  let n_sets = 0
   const respondTo = (seed: DemoInviteSeed, myEmail: string, response: InviteResponse, calendarId?: string | null): Invite => {
     let copy = events.find((e) => e.uid === seed.uid)
     if (!copy && response !== "declined") {
@@ -407,6 +505,29 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   return {
     inviteFor,
     respondTo,
+    proposeFor,
+    answerCounter,
+    findTimes: async (q: FindTimes) => later(findTimes(q)),
+    calendarSets: async () => later(sets),
+    saveCalendarSet: async (name: string) => {
+      const n = name.trim()
+      if (!n) throw new Error("give the set a name")
+      const ids = collections.filter((c) => c.kind === "calendar" && !c.hidden).map((c) => c.id)
+      if (!ids.length) throw new Error("show at least one calendar first")
+      const had = sets.find((s) => s.name.toLowerCase() === n.toLowerCase())
+      sets = had ? sets.map((s) => (s === had ? { ...s, calendarIds: ids } : s)) : [...sets, { id: `set-${++n_sets}`, name: n, calendarIds: ids }]
+      return later(sets)
+    },
+    deleteCalendarSet: async (id: string) => {
+      sets = sets.filter((s) => s.id !== id)
+      return later(sets)
+    },
+    applyCalendarSet: async (id: string) => {
+      const set = sets.find((s) => s.id === id)
+      if (!set) throw new Error("that calendar set was deleted")
+      for (const c of collections.filter((x) => x.kind === "calendar")) c.hidden = !set.calendarIds.includes(c.id)
+      changed()
+    },
     noteLinks,
     setTimeZone: async () => {},
     listCollections: (kind: Collection["kind"]) => later(collections.filter((x) => x.kind === kind)),

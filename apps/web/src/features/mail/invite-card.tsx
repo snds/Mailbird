@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 
 import { dayLabel, fromSecs, rangeLabel } from "../calendar/dates"
 import { displayName } from "./format"
+import { Conflicts, CounterProposal, ProposeTime } from "./invite-planning"
 
 const ANSWERS: { value: InviteResponse; label: string; icon: IconName }[] = [
   { value: "accepted", label: "Accept", icon: "check_circle" },
@@ -76,7 +77,17 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
   const going = invite.attendees.filter((a) => a.status === "accepted").length
   return (
     <section
-      aria-label={invite.method === "cancel" ? "Canceled event" : invite.method === "reply" ? "Reply to your invitation" : "Invitation"}
+      aria-label={
+        invite.method === "cancel"
+          ? "Canceled event"
+          : invite.method === "reply"
+            ? "Reply to your invitation"
+            : invite.method === "counter"
+              ? "New time proposed"
+              : invite.method === "declinecounter"
+                ? "Time unchanged"
+                : "Invitation"
+      }
       className={cn("flex flex-col gap-3 rounded-xl border bg-muted/40 p-3", invite.method === "cancel" && "border-destructive/30 bg-destructive/5")}
       data-slot="invite-card"
     >
@@ -91,7 +102,8 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className={cn("truncate text-sm font-semibold", invite.method === "cancel" && "line-through decoration-1")}>{invite.title || "(no title)"}</span>
-          {when && <span className="text-xs text-muted-foreground">{when}</span>}
+          {when && invite.method !== "counter" && <span className="text-xs text-muted-foreground">{when}</span>}
+          {invite.method === "counter" && <span className="text-xs text-muted-foreground">{invite.from ? displayName(invite.from) : "A guest"} proposed a new time</span>}
           {invite.location && <span className="truncate text-xs text-muted-foreground">{invite.location}</span>}
           {invite.organizer && invite.method === "request" && (
             <span className="truncate text-xs text-muted-foreground">
@@ -130,12 +142,14 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
                 </NativeSelect>
               )}
             </div>
+            <Conflicts invite={invite} />
             {invite.myStatus && STATUS_TEXT[invite.myStatus] && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
                 <Icon name="event_available" className="size-3.5" /> {STATUS_TEXT[invite.myStatus]}
                 {invite.eventId ? " · in your calendar" : ""}
               </p>
             )}
+            <ProposeTime invite={invite} messageId={messageId} />
           </>
         ))}
 
@@ -148,6 +162,12 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
             </Button>
           )}
         </div>
+      )}
+
+      {invite.method === "counter" && <CounterProposal invite={invite} messageId={messageId} />}
+
+      {invite.method === "declinecounter" && (
+        <p className="text-xs text-muted-foreground">{invite.organizer ? displayName(invite.organizer) : "The organizer"} kept the original time.</p>
       )}
 
       {invite.method === "reply" && invite.from && (

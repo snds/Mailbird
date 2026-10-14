@@ -7,7 +7,10 @@ import type {
   Capabilities,
   Collection,
   CollectionKind,
+  CalendarSet,
   ContactActivity,
+  FindTimes,
+  TimeSlot,
   ContactExport,
   ContactLabel,
   ContactSuggestion,
@@ -159,6 +162,20 @@ export interface CoreClient {
   contactActivity(id: string): Promise<ContactActivity>
   /** Reminders that came due while the app was closed; each is returned once. */
   takeMissedReminders(): Promise<DueReminder[]>
+  /** Sends the organizer another time (iTIP COUNTER). */
+  proposeTime(messageId: string, start: number, end: number, comment?: string | null): Promise<Invite>
+  /** Takes a guest's proposed time: moves your event and tells everyone. */
+  acceptCounter(messageId: string): Promise<Invite>
+  /** Keeps the original time and tells the guest. */
+  declineCounter(messageId: string): Promise<Invite>
+  /** Free times in your visible calendars. */
+  findTimes(q: FindTimes): Promise<TimeSlot[]>
+  calendarSets(): Promise<CalendarSet[]>
+  /** Saves the calendars showing now under `name` (replacing a set with that name). */
+  saveCalendarSet(name: string): Promise<CalendarSet[]>
+  deleteCalendarSet(id: string): Promise<CalendarSet[]>
+  /** Shows exactly the set's calendars. */
+  applyCalendarSet(id: string): Promise<void>
   createContact(input: ContactInput): Promise<ContactDetail>
   updateContact(id: string, input: ContactInput): Promise<ContactDetail>
   deleteContact(id: string): Promise<void>
@@ -262,6 +279,14 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     getContact: (id) => call("get_contact", { id }),
     contactActivity: (id) => call("contact_activity", { id }),
     takeMissedReminders: () => call("take_missed_reminders"),
+    proposeTime: (messageId, start, end, comment) => call("propose_time", { messageId, start, end, comment: comment ?? null }),
+    acceptCounter: (messageId) => call("accept_counter", { messageId }),
+    declineCounter: (messageId) => call("decline_counter", { messageId }),
+    findTimes: (q) => call("find_times", { ...q }),
+    calendarSets: () => call("calendar_sets"),
+    saveCalendarSet: (name) => call("save_calendar_set", { name }),
+    deleteCalendarSet: (id) => call("delete_calendar_set", { id }),
+    applyCalendarSet: (id) => call("apply_calendar_set", { id }),
     createContact: (input) => call("create_contact", { input }),
     updateContact: (id, input) => call("update_contact", { id, input }),
     deleteContact: (id) => call("delete_contact", { id }),

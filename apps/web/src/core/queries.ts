@@ -23,6 +23,7 @@ const keys = {
   event: (id: string, start: number | null) => ["pim", "event", id, start] as const,
   contacts: (search: string, label: string | null) => ["pim", "contacts", search, label] as const,
   contactLabels: ["pim", "contact-labels"] as const,
+  calendarSets: ["pim", "calendar-sets"] as const,
   deletedContacts: ["pim", "contacts-deleted"] as const,
   // A message's signature against your contacts: refreshes with either.
   contactSuggestion: (messageId: string) => ["pim", "suggestion", messageId] as const,
@@ -67,6 +68,8 @@ export function useCoreEvents() {
       core.on("accounts:changed", () => void qc.invalidateQueries({ queryKey: keys.accounts })),
       core.on("pim:changed", () => {
         void qc.invalidateQueries({ queryKey: ["pim"] })
+        // An invitation in a conversation shows your calendar (its clashes, your answer).
+        void qc.invalidateQueries({ queryKey: ["thread"] })
         void qc.invalidateQueries({ queryKey: ["notes", "list"] })
       }),
       // The open note's own query stays put: its editor is the live copy.
@@ -181,6 +184,10 @@ export function useContacts(search: string, label: string | null = null) {
     queryFn: () => call((c) => c.listContacts(search || null, label)),
     placeholderData: (prev) => prev,
   })
+}
+
+export function useCalendarSets() {
+  return useQuery({ queryKey: keys.calendarSets, queryFn: () => call((c) => c.calendarSets()) })
 }
 
 export function useContactLabels() {

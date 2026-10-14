@@ -142,6 +142,25 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
         }),
       msg("work", { name: "Sam Okafor", email: "sam@example.com" }, "Density modes proposal",
         "Attached the comfortable / compact spec. The list row drops to 56px in compact.\n\n-- \nSam Okafor\nEngineer | Studio\nm: +1 555 010 2200", 4 * 24 * HOUR, { seen: true, archived: true }),
+      // `?counter`: Sam proposes another time for a meeting you organize.
+      ...(new URLSearchParams(globalThis.location?.search ?? "").has("counter")
+        ? [
+            msg("work", { name: "Sam Okafor", email: "sam@studio.example" }, "New time proposed: Studio sync", "Sam Okafor proposed a new time for “Studio sync”.", 0.2 * HOUR, {
+              inviteSeed: (() => {
+                const d = new Date()
+                d.setDate(d.getDate() + 3)
+                d.setHours(15, 0, 0, 0)
+                const start = Math.floor(d.getTime() / 1000)
+                return {
+                  method: "counter" as const, uid: "sync-1@mailbird", title: "Studio sync", location: null, start, end: start + HOUR,
+                  organizer: { name: "Me", email: "me@studio.example" },
+                  attendees: [{ name: "Sam Okafor", email: "sam@studio.example", status: "tentative" }],
+                  comment: "I'm at the kiln until 2. Could we do 3?",
+                }
+              })(),
+            }),
+          ]
+        : []),
       // `?screener`: a first-time sender, waiting in the Screener (it's on).
       ...(new URLSearchParams(globalThis.location?.search ?? "").has("screener")
         ? [msg("personal", { name: "Riley Growth", email: "hi@growth.example" }, "Quick question about your studio", "Saw your work online. Do you have 15 minutes this week?\n\nThanks,\nRiley Park\nGrowth lead at Northwind\n+1 555 010 9000", 0.5 * HOUR)]
@@ -398,6 +417,27 @@ export function createDemoClient(): CoreClient {
     },
     applyInviteUpdate: async () => {
       throw new Error("nothing to apply for this message")
+    },
+    proposeTime: async (messageId, start, end) => {
+      const m = state.messages.find((x) => x.id === messageId)
+      if (!m?.inviteSeed || m.inviteSeed.method === "counter") throw new Error("only an invitation can get a new time")
+      const inv = pim.proposeFor(m.inviteSeed, address(m.accountId), start, end)
+      done()
+      return later(inv)
+    },
+    acceptCounter: async (messageId) => {
+      const m = state.messages.find((x) => x.id === messageId)
+      if (m?.inviteSeed?.method !== "counter") throw new Error("this message doesn't propose a new time")
+      const inv = pim.answerCounter(m.inviteSeed, address(m.accountId), true)
+      done()
+      return later(inv)
+    },
+    declineCounter: async (messageId) => {
+      const m = state.messages.find((x) => x.id === messageId)
+      if (m?.inviteSeed?.method !== "counter") throw new Error("this message doesn't propose a new time")
+      const inv = pim.answerCounter(m.inviteSeed, address(m.accountId), false)
+      done()
+      return later(inv)
     },
     syncNow: () => later(undefined),
 
