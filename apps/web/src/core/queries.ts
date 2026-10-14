@@ -1,4 +1,4 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { QueryClient, keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect } from "react"
 
 import { getCoreClient, type CoreClient } from "./client"
@@ -71,11 +71,25 @@ export function useAccounts() {
   return useQuery({ queryKey: keys.accounts, queryFn: () => call((c) => c.listAccounts()) })
 }
 
+/** Rows per page of a message list; the next page loads as the list nears its end. */
+export const MESSAGE_PAGE = 200
+
 export function useMessages(q: MessageQuery) {
   return useQuery({
     queryKey: keys.messages(q),
     queryFn: () => call((c) => c.listMessages(q)),
-    placeholderData: (prev) => prev, // keep the list on screen while a search refines
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** A long list in pages: the mail list loads more as you scroll. */
+export function useMessagePages(q: MessageQuery) {
+  return useInfiniteQuery({
+    queryKey: [...keys.messages(q), "pages"],
+    queryFn: ({ pageParam }) => call((c) => c.listMessages({ ...q, limit: MESSAGE_PAGE, offset: pageParam })),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => (last.length === MESSAGE_PAGE ? pages.length * MESSAGE_PAGE : undefined),
+    placeholderData: keepPreviousData, // keep the list on screen while a search refines
   })
 }
 

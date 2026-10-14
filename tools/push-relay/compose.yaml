@@ -1,0 +1,21 @@
+# Mailbird push relay on a personal server. See README.md.
+#   cp .env.example .env   # fill in RELAY_TOKEN and RELAY_KEY
+#   docker compose up -d
+services:
+  relay:
+    build:
+      context: ../..
+      dockerfile: tools/push-relay/Dockerfile
+    image: mailbird-push-relay
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - relay-data:/data
+      # Optional push credentials (read-only):
+      # - ./secrets:/secrets:ro
+    # Listen on this machine only; put Caddy, nginx, or a tunnel in front for https.
+    ports:
+      - "127.0.0.1:8787:8787"
+
+volumes:
+  relay-data:

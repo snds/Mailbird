@@ -146,6 +146,9 @@ pub struct MessageQuery {
     /// Full-text search over sender, subject, and body.
     pub search: Option<String>,
     pub limit: Option<u32>,
+    /// Rows to skip, for paging through a long list.
+    #[serde(default)]
+    pub offset: Option<u32>,
 }
 
 /// A row in a message list. Lists are grouped by conversation: each row is

@@ -23,7 +23,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | class-variance-authority, clsx, tailwind-merge | Variant plumbing | latest | MIT / Apache-2.0 | ✅ | Standard shadcn utilities. |
 | @tanstack/react-router | Routing | 1.170 | MIT | 🟦 | Typed routes and deep links across shells. |
 | @tanstack/react-query | Server-state cache | 5.104 | MIT | ✅ | Wraps calls to the core. |
-| @tanstack/react-virtual | Long lists | 3.14 | MIT | 🟦 | Message lists with 100k+ rows. |
+| @tanstack/react-virtual | Long lists | 3.14 | MIT | ✅ | The mail list renders only visible rows and pages in 200 at a time. |
 | zustand | UI state | 5.0 | MIT | ✅ | — |
 | @tiptap/react, pm, core, starter-kit, extensions, extension-list | Composer and notes editor | 3.31.3 (pinned) | MIT | ✅ | **Avoid Tiptap Pro** (paid). Transitive menu packages are pinned to the same release in `pnpm-workspace.yaml`. |
 | @tiptap/markdown | Notes ↔ Markdown | 3.31.3 (pinned) | MIT | ✅ | Uses `marked` (MIT). Also runs headless for sync. |
@@ -73,7 +73,8 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | SQLite FTS5 (in rusqlite) | Full-text search | — | Public domain | ✅ |
 | tantivy | Full-text search at scale | 0.26 | MIT | ⚪ (deferred, ADR-0007) |
 | oauth2 | OAuth (Google, Microsoft) | 5.0 | MIT OR Apache-2.0 | ⚪ |
-| ring | PKCE (SHA-256) and OAuth state | 0.17 | Apache-2.0 AND ISC | ✅ |
+| ring | PKCE (SHA-256) and OAuth state; the push relay's sealing (AES-256-GCM) and APNs/FCM JWTs | 0.17 | Apache-2.0 AND ISC | ✅ |
+| axum | Push relay HTTP API (`tools/push-relay`) | 0.8 | MIT | ✅ |
 | keyring | OS keychain | 3.6 (4.x for Android later) | MIT OR Apache-2.0 | ✅ |
 | ammonia | HTML sanitize (native) | 4.2 | MIT OR Apache-2.0 | ⚪ (UI sanitizes with DOMPurify today) |
 | tokio-rustls + rustls (ring) + webpki-roots | TLS for IMAP | 0.26 / 0.23 / 1.0 | MIT/Apache-2.0/ISC; webpki-roots CDLA-Permissive-2.0 | ✅ |

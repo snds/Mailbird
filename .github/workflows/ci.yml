@@ -28,6 +28,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p pim-core
+      # Push relay: API, JMAP watching, Outlook webhook, signed APNs/FCM pushes.
+      - run: cargo test -p mailbird-push-relay
+      - run: cargo clippy -p mailbird-push-relay --all-targets -- -D warnings
 
   # Real IMAP (Dovecot) + SMTP (aiosmtpd) round trip: sync, flag push, archive
   # move, send, and the Sent copy. See tools/test-mail-servers/.
@@ -50,6 +53,7 @@ jobs:
       - run: cargo test -p pim-core --test imap_smtp -- --ignored
         env:
           MAILBIRD_IT_SMTP_OUT: /tmp/mbtest/smtp-out
+      - run: cargo test -p mailbird-push-relay --test imap -- --ignored
       - name: Server logs on failure
         if: failure()
         run: sudo tail -n 50 /tmp/mbtest/dovecot.log /tmp/mbtest/smtpd.log

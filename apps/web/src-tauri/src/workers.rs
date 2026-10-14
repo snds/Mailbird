@@ -22,6 +22,10 @@ const IDLE_RETRY: Duration = Duration::from_secs(60);
 const BACKFILL_PAUSE: Duration = Duration::from_secs(3);
 /// How often due reminders are checked.
 const REMINDER_TICK: Duration = Duration::from_secs(10);
+/// How often Outlook subscriptions to the push relay are checked (renewed at half-life).
+const RENEW_EVERY: Duration = Duration::from_secs(6 * 3600);
+/// How long a phone's background pass may run (iOS gives about 30 seconds).
+const BACKGROUND_BUDGET: Duration = Duration::from_secs(25);
 /// How long one Gmail or Outlook poll loop runs before the supervisor restarts it.
 const POLL_WINDOW: Duration = Duration::from_secs(10 * 60);
 
@@ -83,6 +87,16 @@ pub fn start(app: AppHandle, state: Shared) {
             for r in due {
                 notify(&a, &r);
             }
+        }
+    });
+
+    // Push relay: keep Outlook's Graph subscriptions alive (ADR-0015).
+    let s = state.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut tick = tokio::time::interval(RENEW_EVERY);
+        loop {
+            tick.tick().await;
+            crate::push::renew_outlook(&s).await;
         }
     });
 
@@ -386,6 +400,48 @@ async fn sync_outlook_pim(state: &Shared, account: &pim_core::Account) -> Result
         }
     }
     Ok(())
+}
+
+/// What a background pass found.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundOutcome {
+    new_mail: usize,
+    finished: bool,
+}
+
+/// One bounded sync for when the OS wakes the app in the background: iOS
+/// background refresh, Android WorkManager, or a push from the relay
+/// (ADR-0015). Syncs mail, renews Outlook subscriptions, and notifies about
+/// mail that's new since the last pass, within the platform's time budget.
+#[tauri::command]
+pub async fn background_pass(app: AppHandle, state: tauri::State<'_, Shared>) -> Result<BackgroundOutcome, String> {
+    let state = state.inner();
+    let unread = |s: &Shared| -> Vec<pim_core::MessageSummary> {
+        s.store
+            .lock()
+            .ok()
+            .and_then(|st| st.messages(&pim_core::MessageQuery { lane: pim_core::Lane::Unread, account_id: None, search: None, limit: None, offset: None }).ok())
+            .unwrap_or_default()
+    };
+    let before: std::collections::HashSet<String> = unread(state).into_iter().map(|m| m.id).collect();
+    let finished = tokio::time::timeout(BACKGROUND_BUDGET, async {
+        sync_pass(&app, state).await;
+        crate::push::renew_outlook(state).await;
+    })
+    .await
+    .is_ok();
+    let fresh: Vec<_> = unread(state).into_iter().filter(|m| !before.contains(&m.id)).collect();
+    // The notification is written here, on the device: the relay never saw the mail.
+    if !fresh.is_empty() {
+        use tauri_plugin_notification::NotificationExt;
+        let (title, body) = match fresh.as_slice() {
+            [one] => (one.from.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| one.from.email.clone()), one.subject.clone()),
+            many => (format!("{} new messages", many.len()), many.iter().take(3).map(|m| m.subject.as_str()).collect::<Vec<_>>().join(" · ")),
+        };
+        let _ = app.notification().builder().title(title).body(body).show();
+    }
+    Ok(BackgroundOutcome { new_mail: fresh.len(), finished })
 }
 
 /// Shows a reminder as an OS notification and tells the UI.

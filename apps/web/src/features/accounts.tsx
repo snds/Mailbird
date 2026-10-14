@@ -16,6 +16,7 @@ import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provid
 import { longTime } from "@/lib/time"
 
 import { OAuthSignIn } from "./oauth-sign-in"
+import { PushSettingsSection } from "./push-settings"
 
 interface Preset {
   id: string
@@ -197,6 +198,8 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
           ))}
         </div>
       </div>
+
+      {accounts.length > 0 && <PushSettingsSection />}
     </>
   )
 }
