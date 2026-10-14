@@ -18,6 +18,7 @@ import { THUMB_LIMIT, previewKind, useAttachmentUrl } from "./attachment-kind"
 import { AttachmentPreview } from "./attachment-preview"
 import { displayName, formatSize, forwardDraft, initials, replyDraft, replyTarget } from "./format"
 import { HtmlBody } from "./html-body"
+import { InviteCard } from "./invite-card"
 import { SnoozeMenu } from "./snooze-menu"
 
 function ToolbarButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
@@ -141,6 +142,7 @@ function MessageCard({ message, expanded, onToggle, accountAddress }: { message:
       </button>
       {expanded && (
         <div className="flex flex-col gap-4 px-4 pb-4">
+          {message.invite && <InviteCard invite={message.invite} messageId={message.id} accountId={message.accountId} />}
           {message.bodyHtml ? (
             <HtmlBody html={message.bodyHtml} />
           ) : (

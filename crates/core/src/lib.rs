@@ -13,9 +13,11 @@
 
 pub mod capabilities;
 pub mod ical;
+pub mod itip;
 pub mod mime;
 pub mod model;
 mod pim_store;
+mod invite_store;
 pub mod store;
 pub mod vcard;
 

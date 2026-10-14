@@ -20,6 +20,8 @@ const IDLE_SUPERVISE_EVERY: Duration = Duration::from_secs(30);
 const IDLE_RETRY: Duration = Duration::from_secs(60);
 /// Pause between backfill passes, so a big mailbox doesn't hog the connection.
 const BACKFILL_PAUSE: Duration = Duration::from_secs(3);
+/// How often due reminders are checked.
+const REMINDER_TICK: Duration = Duration::from_secs(10);
 
 pub fn start(app: AppHandle, state: Shared) {
     // Outbox + snooze: cheap local checks, once a second, so undo-send timing
@@ -61,6 +63,24 @@ pub fn start(app: AppHandle, state: Shared) {
         loop {
             tick.tick().await;
             sync_dav_all(&a, &s).await;
+        }
+    });
+
+    // Reminders: check every few seconds for alarms that came due. Starts a
+    // minute back, so one that fired while the app launched isn't lost, but
+    // never replays hours of reminders missed while it was closed.
+    let (a, s) = (app.clone(), state.clone());
+    tauri::async_runtime::spawn(async move {
+        let mut checked = now() - 60;
+        let mut tick = tokio::time::interval(REMINDER_TICK);
+        loop {
+            tick.tick().await;
+            let until = now();
+            let due = s.store.lock().ok().and_then(|st| st.due_reminders(checked, until).ok()).unwrap_or_default();
+            checked = until;
+            for r in due {
+                notify(&a, &r);
+            }
         }
     });
 
@@ -291,4 +311,24 @@ async fn sync_dav(state: &Shared, account: &pim_core::Account) -> Result<(), Str
         }
     }
     Ok(())
+}
+
+/// Shows a reminder as an OS notification and tells the UI.
+fn notify(app: &AppHandle, r: &pim_core::DueReminder) {
+    use tauri_plugin_notification::NotificationExt;
+    let minutes = (r.start - r.fire_at) / 60;
+    let when = match minutes {
+        m if m <= 0 => "Now".to_string(),
+        m if m < 60 => format!("In {m} min"),
+        m if m < 1440 => format!("In {} h", m / 60),
+        m => format!("In {} days", m / 1440),
+    };
+    let body = match &r.location {
+        Some(l) => format!("{when} · {l}"),
+        None => when,
+    };
+    if let Err(e) = app.notification().builder().title(&r.title).body(&body).show() {
+        log::info!("couldn't show a notification: {e}");
+    }
+    let _ = app.emit(events::REMINDER, r);
 }

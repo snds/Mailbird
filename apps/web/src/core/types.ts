@@ -117,6 +117,7 @@ export interface MessageDetail extends MessageSummary {
   attachments: AttachmentInfo[]
   /** References + In-Reply-To, oldest first; a reply appends this message's id. */
   references: string[]
+  invite?: Invite | null
 }
 
 export interface OutgoingAttachment {
@@ -160,6 +161,8 @@ export interface Collection {
   color: string | null
   writable: boolean
   hidden: boolean
+  /** The server sends invitations and replies itself (CalDAV scheduling). */
+  scheduling: boolean
 }
 
 /** "custom" is a richer rule from another app; edits keep it unchanged. */
@@ -176,7 +179,14 @@ export interface EventInput {
   allDay: boolean
   timeZone: string
   repeat: Repeat
+  /** Minutes before the start (0 = at the start). Omit to keep them as they are. */
+  reminders?: number[] | null
+  /** Guests to invite. Omit to keep the guest list; [] removes it. */
+  attendees?: Address[] | null
 }
+
+/** Which occurrences of a series an edit or delete applies to. */
+export type EditScope = "all" | "this" | "following"
 
 /** One occurrence. Seconds since the epoch; all-day ones start at local midnight. */
 export interface Occurrence {
@@ -186,6 +196,8 @@ export interface Occurrence {
   location: string | null
   start: number
   end: number
+  /** The occurrence's slot in its series; edits of one occurrence address it by this. */
+  originalStart: number
   allDay: boolean
   recurring: boolean
 }
@@ -205,6 +217,40 @@ export interface EventDetail extends Occurrence {
   attendees: Attendee[]
   url: string | null
   writable: boolean
+  /** Minutes before the start. */
+  reminders: number[]
+}
+
+export interface DueReminder {
+  eventId: string
+  title: string
+  location: string | null
+  start: number
+  fireAt: number
+}
+
+export type InviteResponse = "accepted" | "tentative" | "declined"
+
+/** The invitation, cancellation, or guest reply a message carries. */
+export interface Invite {
+  method: "request" | "cancel" | "reply" | string
+  uid: string
+  title: string
+  location: string | null
+  start: number | null
+  end: number | null
+  allDay: boolean
+  recurring: boolean
+  organizer: Address | null
+  attendees: Attendee[]
+  /** Your answer, from your calendar's copy when there is one. */
+  myStatus: string | null
+  /** Your calendar's copy of the event. */
+  eventId: string | null
+  /** Your calendar already has a newer version. */
+  outdated: boolean
+  /** For a reply: the guest and their answer. */
+  from: Attendee | null
 }
 
 export interface ContactField {

@@ -10,7 +10,10 @@ import { Switch } from "@/components/ui/switch"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
 import type { EventInput, Repeat } from "@/core/types"
 
+import { formatRecipients, parseRecipients } from "../mail/format"
+import { RecipientInput } from "../mail/recipient-input"
 import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dates"
+import { REMINDER_PRESETS, reminderLabel } from "./reminders"
 
 const REPEAT_LABELS: [Repeat, string][] = [
   ["none", "Does not repeat"],
@@ -50,11 +53,15 @@ const bare = "h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholde
 const picker = "h-9 rounded-lg border bg-transparent px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => void }) {
-  const { initial, eventId } = state
+  const { initial, eventId, guestOf } = state
+  const scope = state.scope ?? "all"
+  const single = eventId !== undefined && scope === "this"
   const { data: calendars = [] } = useCollections("calendar")
   const { data: accounts = [] } = useAccounts()
   const writable = calendars.filter((c) => c.writable)
-  const save = usePimAction((c, input: EventInput) => (eventId ? c.updateEvent(eventId, input) : c.createEvent(input)))
+  const save = usePimAction((c, input: EventInput) => (eventId ? c.updateEvent(eventId, input, scope, state.occurrence ?? null) : c.createEvent(input)))
+  const [reminders, setReminders] = useState<number[]>(initial.reminders ?? [])
+  const [guests, setGuests] = useState(formatRecipients(initial.attendees ?? []))
 
   const startDefault = nextHalfHour()
   const s = split(initial.start, startDefault)
@@ -97,7 +104,11 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
       start: allDay ? startDate : `${startDate}T${startTime}`,
       end: allDay ? dateInput(addDays(fromInputs(endDate), 1)) : `${endDate}T${endTime}`,
       timeZone: deviceTimeZone(),
-      repeat,
+      // One occurrence doesn't repeat; the series keeps its rule.
+      repeat: single ? "none" : repeat,
+      reminders,
+      // Guests belong to the organizer; one-occurrence edits keep the series' list.
+      attendees: guestOf || single ? undefined : parseRecipients(guests),
     }
     try {
       await save.mutateAsync(input)
@@ -137,8 +148,14 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
           <input aria-label="Location" placeholder="Location" className={`${bare} w-full`} value={location} onChange={(ev) => setLocation(ev.target.value)} />
         </div>
         {eventId && initial.repeat && initial.repeat !== "none" && (
+          <p className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground" data-slot="scope-note">
+            <Icon name="repeat" className="size-4" />
+            {scope === "this" ? "Changes apply to this event only." : scope === "following" ? "Changes apply to this and following events." : "Changes apply to every event in this series."}
+          </p>
+        )}
+        {guestOf && (
           <p className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
-            <Icon name="repeat" className="size-4" /> Changes apply to every event in this series.
+            <Icon name="info" className="size-4" /> {guestOf} organizes this event. Your changes stay on your calendar.
           </p>
         )}
         <label className={row}>
@@ -159,7 +176,7 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
             {!allDay && <input type="time" aria-label="End time" className={picker} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} />}
           </div>
         </div>
-        <div className={row}>
+        <div className={single ? "hidden" : row}>
           <label htmlFor="event-repeat" className={label}>
             Repeat
           </label>
@@ -176,7 +193,7 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
           <label htmlFor="event-calendar" className={label}>
             Calendar
           </label>
-          <NativeSelect id="event-calendar" value={calendarId} onChange={(ev) => setCalendarId(ev.target.value)} className="ml-auto max-w-[60%]">
+          <NativeSelect id="event-calendar" value={calendarId} onChange={(ev) => setCalendarId(ev.target.value)} className="ml-auto max-w-[60%]" disabled={single}>
             {groups.map((g) => (
               <optgroup key={g ?? "local"} label={accountName(g)}>
                 {writable
@@ -190,6 +207,49 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
             ))}
           </NativeSelect>
         </div>
+        <div className="flex min-h-12 flex-wrap items-center gap-2 border-b px-4 py-2" role="group" aria-label="Reminders">
+          <span className={label}>Remind me</span>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+            {reminders.map((m) => (
+              <span key={m} className="flex items-center gap-1 rounded-full bg-muted py-0.5 pr-1 pl-2.5 text-xs">
+                {reminderLabel(m, allDay)}
+                <button type="button" aria-label={`Remove reminder ${reminderLabel(m, allDay)}`} className="flex size-5 items-center justify-center rounded-full hover:bg-background" onClick={() => setReminders(reminders.filter((x) => x !== m))}>
+                  <Icon name="close" className="size-3.5" />
+                </button>
+              </span>
+            ))}
+            <NativeSelect
+              size="sm"
+              aria-label="Add reminder"
+              value=""
+              onChange={(ev) => ev.target.value !== "" && setReminders([...reminders, Number(ev.target.value)].sort((a, b) => a - b))}
+            >
+              <NativeSelectOption value="">{reminders.length ? "Add another" : "None"}</NativeSelectOption>
+              {REMINDER_PRESETS.filter((m) => !reminders.includes(m)).map((m) => (
+                <NativeSelectOption key={m} value={m}>
+                  {reminderLabel(m, allDay)}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+        </div>
+        {!guestOf && !single && (
+          <div className={row}>
+            <label htmlFor="event-guests" className={label}>
+              Guests
+            </label>
+            <RecipientInput id="event-guests" className={bare} value={guests} onChange={setGuests} placeholder="Add people by name or email" inputMode="email" />
+          </div>
+        )}
+        {!guestOf && !single && parseRecipients(guests).length > 0 && (
+          <p className="border-b px-4 py-2 text-xs text-muted-foreground" data-slot="invite-note">
+            {calendars.find((c) => c.id === calendarId)?.accountId
+              ? calendars.find((c) => c.id === calendarId)?.scheduling
+                ? "Your calendar server will send the invitations."
+                : "Invitations go out from your mail account when you save."
+              : "Invitations need a calendar on a mail account."}
+          </p>
+        )}
         <textarea aria-label="Notes" placeholder="Notes" className="min-h-32 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground" value={notes} onChange={(ev) => setNotes(ev.target.value)} />
       </div>
       {error && (

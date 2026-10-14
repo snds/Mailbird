@@ -9,9 +9,12 @@ import type {
   ContactInput,
   ContactSummary,
   DavConfig,
+  EditScope,
   Draft,
   EventDetail,
   EventInput,
+  Invite,
+  InviteResponse,
   Occurrence,
   MessageDetail,
   MessageQuery,
@@ -61,10 +64,14 @@ export interface CoreClient {
   /** One event at the occurrence starting at `start` (or its first). */
   getEvent(id: string, start?: number | null): Promise<EventDetail>
   createEvent(input: EventInput): Promise<EventDetail>
-  /** Edits the whole series. */
-  updateEvent(id: string, input: EventInput): Promise<EventDetail>
-  /** With `occurrence`, removes just that date of a series. */
-  deleteEvent(id: string, occurrence?: number | null): Promise<void>
+  /** For a series, `scope` picks the occurrences; `occurrence` is the one's `originalStart`. */
+  updateEvent(id: string, input: EventInput, scope?: EditScope, occurrence?: number | null): Promise<EventDetail>
+  deleteEvent(id: string, occurrence?: number | null, scope?: EditScope): Promise<void>
+  /** Guests of an event you organize (you excluded). */
+  eventGuests(id: string): Promise<Address[]>
+  respondToInvite(messageId: string, response: InviteResponse, calendarId?: string | null): Promise<Invite>
+  /** Applies a cancellation or a guest's reply. */
+  applyInviteUpdate(messageId: string): Promise<Invite>
   listContacts(search?: string | null): Promise<ContactSummary[]>
   getContact(id: string): Promise<ContactDetail>
   createContact(input: ContactInput): Promise<ContactDetail>
@@ -78,7 +85,7 @@ export interface CoreClient {
   on(event: CoreEvent, handler: (payload?: unknown) => void): () => void
 }
 
-export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed"
+export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "reminder"
 
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
@@ -112,8 +119,11 @@ async function createTauriClient(): Promise<CoreClient> {
     listOccurrences: (from, to) => invoke("list_occurrences", { from, to }),
     getEvent: (id, start) => invoke("get_event", { id, start: start ?? null }),
     createEvent: (input) => invoke("create_event", { input }),
-    updateEvent: (id, input) => invoke("update_event", { id, input }),
-    deleteEvent: (id, occurrence) => invoke("delete_event", { id, occurrence: occurrence ?? null }),
+    updateEvent: (id, input, scope, occurrence) => invoke("update_event", { id, input, scope: scope ?? null, occurrence: occurrence ?? null }),
+    deleteEvent: (id, occurrence, scope) => invoke("delete_event", { id, occurrence: occurrence ?? null, scope: scope ?? null }),
+    eventGuests: (id) => invoke("event_guests", { id }),
+    respondToInvite: (messageId, response, calendarId) => invoke("respond_to_invite", { messageId, response, calendarId: calendarId ?? null }),
+    applyInviteUpdate: (messageId) => invoke("apply_invite_update", { messageId }),
     listContacts: (search) => invoke("list_contacts", { search: search ?? null }),
     getContact: (id) => invoke("get_contact", { id }),
     createContact: (input) => invoke("create_contact", { input }),

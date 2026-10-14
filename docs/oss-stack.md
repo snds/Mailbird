@@ -48,7 +48,8 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 |---|---|---|---|---|---|
 | tauri, @tauri-apps/cli, @tauri-apps/api | Desktop + mobile shell | 2.12 | MIT OR Apache-2.0 | ✅ | Windows, macOS, and Linux now. iOS and Android are a spike (see [ADR-0002](decisions/0002-shells.md)). |
 | tauri-plugin-opener | Open saved attachments | 2.7 | MIT OR Apache-2.0 | ✅ | — |
-| tauri-plugin-notification, deep-link, biometric | Shell plugins | 2.4–2.6 | MIT OR Apache-2.0 | 🟦 | Plugin 3.0 alphas exist, so expect churn. |
+| tauri-plugin-notification | Reminder notifications | 2.4.0 (pinned) | MIT OR Apache-2.0 | ✅ | Sent from Rust; the web layer needs no JS package. Plugin 3.0 alphas exist, so expect churn. |
+| tauri-plugin-deep-link, biometric | Shell plugins | 2.4–2.6 | MIT OR Apache-2.0 | 🟦 | — |
 | @capacitor/core, ios, android | Mobile fallback shell | 8.5 | MIT | ⚪ | Used only if the Tauri mobile spike fails on background sync or push. |
 
 ## Rust core

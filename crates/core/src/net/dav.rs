@@ -129,6 +129,12 @@ impl Dav {
         let mut seen = HashSet::new();
         for home in homes {
             let url = at.join(&home).map_err(|_| Error::Network("bad home URL".into()))?;
+            // RFC 6638 servers announce scheduling in the DAV header.
+            let scheduling = kind == CollectionKind::Calendar
+                && self
+                    .send("OPTIONS", url.clone(), None, &[], None)
+                    .await
+                    .is_ok_and(|(_, headers, _, _)| headers.get_all("dav").iter().any(|v| v.to_str().is_ok_and(|v| v.contains("calendar-auto-schedule"))));
             let (rs, _) = self
                 .propfind(url, "1", "<d:resourcetype/><d:displayname/><ic:calendar-color/><c:supported-calendar-component-set/><d:current-user-privilege-set/>")
                 .await?;
@@ -149,7 +155,7 @@ impl Dav {
                 });
                 // Apple sends #RRGGBBAA; CSS takes that as-is.
                 let color = r.prop("calendar-color").map(|p| p.text.trim().to_string()).filter(|c| c.starts_with('#'));
-                out.push(RemoteCollection { href: r.href, kind, name, color, writable });
+                out.push(RemoteCollection { href: r.href, kind, name, color, writable, scheduling });
             }
         }
         Ok(out)

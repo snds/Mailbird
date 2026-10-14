@@ -169,6 +169,7 @@ async fn full_round_trip() {
         in_reply_to: Some("First-note@example.com".into()),
         references: vec![],
         attachments: vec![],
+        calendar: None,
     };
     let raw = net::send(&config(), PASS, &draft).await.unwrap();
     assert!(String::from_utf8_lossy(&raw).contains("In-Reply-To: <First-note@example.com>"));
@@ -185,6 +186,22 @@ async fn full_round_trip() {
     if let Ok(dir) = std::env::var("MAILBIRD_IT_SMTP_OUT") {
         let rcpts = std::fs::read_to_string(format!("{dir}/rcpts.txt")).unwrap();
         assert!(rcpts.lines().any(|l| l == "ana@example.com"), "SMTP sink received it");
+    }
+
+    // An invitation reply goes out as iMIP: text/calendar with METHOD:REPLY.
+    let reply = Draft {
+        subject: "Accepted: Design crit".into(),
+        body: "Test User accepted.".into(),
+        in_reply_to: None,
+        calendar: Some(pim_core::CalendarPart { method: "REPLY".into(), ics: "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:inv-1\r\nDTSTAMP:20261010T100000Z\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:tester@localhost\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n".into() }),
+        ..draft.clone()
+    };
+    net::send(&config(), PASS, &reply).await.unwrap();
+    if let Ok(dir) = std::env::var("MAILBIRD_IT_SMTP_OUT") {
+        let newest = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).filter(|e| e.path().extension().is_some_and(|x| x == "eml")).max_by_key(|e| e.metadata().unwrap().modified().unwrap()).unwrap();
+        let sent = std::fs::read(newest.path()).unwrap();
+        assert!(String::from_utf8_lossy(&sent).contains("text/calendar; method=REPLY"), "the sink got the calendar part");
+        assert!(mime::calendar_part(&sent).is_some_and(|c| c.contains("PARTSTAT=ACCEPTED")));
     }
 
     // IDLE: a change on the server wakes the waiting connection.
@@ -208,7 +225,7 @@ async fn full_round_trip() {
     };
     net::send(&config(), PASS, &with_file).await.unwrap();
     admin.select("Sent").await.unwrap();
-    let sent: Vec<_> = admin.fetch("2", "BODY.PEEK[]").await.unwrap().try_collect().await.unwrap();
+    let sent: Vec<_> = admin.fetch("*", "BODY.PEEK[]").await.unwrap().try_collect().await.unwrap();
     let raw = sent[0].body().unwrap();
     let parsed = mime::parse(raw).unwrap();
     assert_eq!(parsed.attachments[0].filename, "itinerary.pdf");

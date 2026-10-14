@@ -176,6 +176,9 @@ pub struct MessageDetail {
     /// This message's `References` + `In-Reply-To`, oldest first. A reply
     /// sends these plus this message's own id.
     pub references: Vec<String>,
+    /// A meeting invitation, cancellation, or reply carried by the message.
+    #[serde(default)]
+    pub invite: Option<Invite>,
 }
 
 /// A file to attach to an outgoing message.
@@ -211,6 +214,18 @@ pub struct Draft {
     pub references: Vec<String>,
     #[serde(default)]
     pub attachments: Vec<OutgoingAttachment>,
+    /// An iTIP message (invitation, reply, cancellation) sent as the
+    /// message's `text/calendar` alternative (iMIP, RFC 6047).
+    #[serde(default)]
+    pub calendar: Option<CalendarPart>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarPart {
+    /// "REQUEST", "REPLY", or "CANCEL"; repeated in the Content-Type.
+    pub method: String,
+    pub ics: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -375,6 +390,49 @@ pub struct EventInput {
     pub time_zone: String,
     #[serde(default)]
     pub repeat: Repeat,
+    /// Minutes before the start to remind (0 = at the start). `None` keeps
+    /// the event's reminders as they are; `Some(vec![])` removes them.
+    #[serde(default)]
+    pub reminders: Option<Vec<i64>>,
+    /// Guests to invite (you organize). `None` keeps the guest list;
+    /// `Some(vec![])` makes it a plain event again. Ignored when editing a
+    /// single occurrence.
+    #[serde(default)]
+    pub attendees: Option<Vec<Address>>,
+}
+
+/// How you answer an invitation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InviteResponse {
+    Accepted,
+    Tentative,
+    Declined,
+}
+
+/// The invitation (or cancellation, or guest's reply) a message carries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Invite {
+    /// "request", "cancel", "reply", …
+    pub method: String,
+    pub uid: String,
+    pub title: String,
+    pub location: Option<String>,
+    pub start: Option<i64>,
+    pub end: Option<i64>,
+    pub all_day: bool,
+    pub recurring: bool,
+    pub organizer: Option<Address>,
+    pub attendees: Vec<Attendee>,
+    /// Your answer: from your calendar's copy when there is one.
+    pub my_status: Option<String>,
+    /// Your calendar's copy of this event.
+    pub event_id: Option<String>,
+    /// Your calendar already has a newer version than this message.
+    pub outdated: bool,
+    /// For a reply: the guest and their answer.
+    pub from: Option<Attendee>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -447,6 +505,8 @@ pub struct Collection {
     pub color: Option<String>,
     pub writable: bool,
     pub hidden: bool,
+    /// The server sends invitations and replies for events here (RFC 6638).
+    pub scheduling: bool,
 }
 
 /// One occurrence of an event, for agenda and grid views. Times are Unix
@@ -460,8 +520,21 @@ pub struct Occurrence {
     pub location: Option<String>,
     pub start: i64,
     pub end: i64,
+    /// The occurrence's slot in its series (RECURRENCE-ID). Edits and
+    /// deletes of one occurrence address it by this, not by `start`.
+    pub original_start: i64,
     pub all_day: bool,
     pub recurring: bool,
+}
+
+/// Which occurrences of a series an edit or delete applies to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EditScope {
+    #[default]
+    All,
+    This,
+    Following,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -477,6 +550,20 @@ pub struct EventDetail {
     pub attendees: Vec<Attendee>,
     pub url: Option<String>,
     pub writable: bool,
+    /// Minutes before the start, for the series' editable reminders.
+    pub reminders: Vec<i64>,
+}
+
+/// A reminder that is due: shown as a notification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DueReminder {
+    pub event_id: String,
+    pub title: String,
+    pub location: Option<String>,
+    /// The occurrence's start (Unix seconds).
+    pub start: i64,
+    pub fire_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -512,6 +599,9 @@ pub struct RemoteCollection {
     pub name: String,
     pub color: Option<String>,
     pub writable: bool,
+    /// The server does CalDAV scheduling (RFC 6638 `calendar-auto-schedule`):
+    /// it emails invitations and replies itself.
+    pub scheduling: bool,
 }
 
 /// What the store knows about one collection's server copy.

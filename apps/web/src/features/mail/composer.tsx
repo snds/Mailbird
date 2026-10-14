@@ -111,15 +111,22 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
   // away. The dialog is modal, so for its first second any focus landing
   // outside it is that hand-back: take it back.
   useEffect(() => {
-    const onFocusIn = (e: FocusEvent) => {
+    const first = () => formRef.current?.closest("[role=dialog]")?.querySelector<HTMLElement>("[data-composer-focus]")
+    // Focus on the dialog's own container (its fallback when the field wasn't
+    // in the DOM yet) or outside it is a miss: move it to the first field.
+    const missed = (el: Element | null) => {
       const dialog = formRef.current?.closest("[role=dialog]")
-      const target = e.target instanceof Element ? e.target : null
-      if (!dialog || !target || dialog.contains(target) || target.closest("[data-sonner-toaster]")) return
-      dialog.querySelector<HTMLElement>("[data-composer-focus]")?.focus()
+      return !!dialog && (!el || el === dialog || el === document.body || (!dialog.contains(el) && !el.closest("[data-sonner-toaster]")))
+    }
+    const onFocusIn = (e: FocusEvent) => {
+      if (missed(e.target instanceof Element ? e.target : null)) first()?.focus()
     }
     document.addEventListener("focusin", onFocusIn)
+    // The editor mounts its DOM after the dialog opens; check once it has.
+    const frame = requestAnimationFrame(() => missed(document.activeElement) && first()?.focus())
     const stop = setTimeout(() => document.removeEventListener("focusin", onFocusIn), 1000)
     return () => {
+      cancelAnimationFrame(frame)
       clearTimeout(stop)
       document.removeEventListener("focusin", onFocusIn)
     }
