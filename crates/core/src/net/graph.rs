@@ -414,6 +414,65 @@ pub async fn send(config: &AccountConfig, token: &str, draft: &Draft) -> Result<
     }
 }
 
+/// A Graph change subscription: Outlook calls `notification_url` when new
+/// mail arrives in the inbox (used through the push relay, ADR-0015).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Subscription {
+    pub id: String,
+    /// Unix seconds.
+    pub expires_at: i64,
+}
+
+/// How long a subscription asks to live. Graph allows just under 7 days for
+/// mail; renewing at half-life keeps one alive across a phone's quiet days.
+pub const SUBSCRIPTION_LIFETIME: i64 = 3 * 86_400;
+
+fn iso(ts: i64) -> String {
+    chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// Asks Graph to call `notification_url` when mail arrives in the inbox.
+/// Graph checks the URL first (it must answer the validation request), and
+/// sends `client_state` back with every notification so the relay can tell
+/// real ones from forgeries.
+pub async fn subscribe(config: &AccountConfig, token: &str, notification_url: &str, client_state: &str) -> Result<Subscription> {
+    let api = Api::new(config, token)?;
+    let expires_at = crate::now() + SUBSCRIPTION_LIFETIME;
+    let body = json!({
+        "changeType": "created",
+        "notificationUrl": notification_url,
+        "resource": "me/mailFolders('inbox')/messages",
+        "expirationDateTime": iso(expires_at),
+        "clientState": client_state,
+    });
+    // Subscriptions live at the API root, not under /me.
+    let root = api.base.trim_end_matches("/me").to_owned();
+    match api.send(api.http.post(format!("{root}/subscriptions")).json(&body)).await? {
+        Reply::Ok(v) => Ok(Subscription { id: v["id"].as_str().unwrap_or_default().to_owned(), expires_at }),
+        Reply::Gone => Err(Error::Network("Microsoft couldn't create the mail subscription".into())),
+    }
+}
+
+/// Extends a subscription. `Ok(None)` when it's gone (expired or deleted):
+/// subscribe again.
+pub async fn renew(config: &AccountConfig, token: &str, id: &str) -> Result<Option<Subscription>> {
+    let api = Api::new(config, token)?;
+    let expires_at = crate::now() + SUBSCRIPTION_LIFETIME;
+    let root = api.base.trim_end_matches("/me").to_owned();
+    Ok(match api.send(api.http.patch(format!("{root}/subscriptions/{id}")).json(&json!({ "expirationDateTime": iso(expires_at) }))).await? {
+        Reply::Ok(_) => Some(Subscription { id: id.to_owned(), expires_at }),
+        Reply::Gone => None,
+    })
+}
+
+/// Stops Graph's notifications for a subscription (best effort).
+pub async fn unsubscribe(config: &AccountConfig, token: &str, id: &str) -> Result<()> {
+    let api = Api::new(config, token)?;
+    let root = api.base.trim_end_matches("/me").to_owned();
+    api.send(api.http.delete(format!("{root}/subscriptions/{id}"))).await.map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

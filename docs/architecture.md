@@ -90,3 +90,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0012](decisions/0012-notes.md) | Notes: Markdown + Yjs, whole-record index sync, Hocuspocus relay, stable-key links, import |
 | [0013](decisions/0013-google.md) | Google: OAuth for installed apps, Gmail API on the JMAP contract, CalDAV/CardDAV with bearer tokens |
 | [0014](decisions/0014-microsoft.md) | Microsoft: localhost sign-in, Graph mail per-folder delta with immutable ids, Graph calendars and contacts behind the DAV contract |
+| [0015](decisions/0015-mobile-groundwork.md) | Mobile groundwork: periodic checks or a self-hosted push relay, platform seams, virtualized paging list, keyboard inset |

@@ -20,6 +20,8 @@ import type {
   NoteDetail,
   OAuthClientInfo,
   OAuthIssuer,
+  PushSettings,
+  PushSettingsInput,
   NoteInput,
   NoteLink,
   NoteMeta,
@@ -60,6 +62,10 @@ export interface CoreClient {
   addOAuthAccount(issuer: OAuthIssuer, loginHint?: string | null): Promise<Account>
   reauthOAuthAccount(id: string): Promise<Account>
   cancelOAuthSignIn(): Promise<void>
+  // New mail on phones: periodic checks, or a self-hosted push relay
+  getPushSettings(): Promise<PushSettings>
+  setPushSettings(input: PushSettingsInput): Promise<PushSettings>
+  sendTestPush(): Promise<void>
   syncNow(): Promise<void>
   listMessages(query: MessageQuery): Promise<MessageSummary[]>
   /** A whole conversation, oldest first. */
@@ -145,6 +151,10 @@ async function createTauriClient(): Promise<CoreClient> {
     addOAuthAccount: (issuer, loginHint) => invoke("add_oauth_account", { issuer, loginHint: loginHint ?? null }),
     reauthOAuthAccount: (id) => invoke("reauth_oauth_account", { id }),
     cancelOAuthSignIn: () => invoke("cancel_oauth_sign_in"),
+    getPushSettings: () => invoke("get_push_settings"),
+    setPushSettings: (input) =>
+      invoke("set_push_settings", { mode: input.mode, relayUrl: input.relayUrl ?? null, relayToken: input.relayToken ?? null, unifiedPushEndpoint: input.unifiedPushEndpoint ?? null }),
+    sendTestPush: () => invoke("send_test_push"),
     syncNow: () => invoke("sync_now"),
     listMessages: (query) => invoke("list_messages", { query }),
     getThread: (threadId) => invoke("get_thread", { threadId }),

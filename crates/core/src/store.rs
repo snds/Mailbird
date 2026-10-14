@@ -325,6 +325,7 @@ impl Store {
         }
         let order = if q.lane == Lane::Snoozed { "snoozed_until ASC" } else { "sort_at DESC" };
         args.push(i64::from(q.limit.unwrap_or(200).min(1000)).into());
+        args.push(i64::from(q.offset.unwrap_or(0)).into());
 
         let sql = format!(
             "WITH lane AS (
@@ -336,7 +337,7 @@ impl Store {
                FROM lane
              )
              SELECT {SUMMARY_COLS_RANKED} FROM ranked m
-             WHERE rn = 1 ORDER BY {order} LIMIT ?",
+             WHERE rn = 1 ORDER BY {order}, m.id LIMIT ? OFFSET ?",
             where_ = clauses.join(" AND "),
         );
         let mut stmt = self.db.prepare(&sql)?;
@@ -1269,7 +1270,7 @@ mod tests {
     }
 
     fn lane(s: &Store, lane: Lane) -> Vec<MessageSummary> {
-        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None }).unwrap()
+        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None }).unwrap()
     }
 
     fn inbox(s: &Store) -> Vec<MessageSummary> {
@@ -1293,6 +1294,19 @@ mod tests {
         );
         assert_eq!(s.apply_sync(&acct, &batch(7, vec![fetched(2, "Two")], vec![1, 2])).unwrap(), 0);
         assert_eq!(inbox(&s).len(), 2);
+    }
+
+    #[test]
+    fn long_lists_page_without_gaps_or_repeats() {
+        let (s, acct) = store_with_account();
+        let msgs: Vec<FetchedMessage> = (1..=450).map(|i| fetched_raw(i, threaded(&format!("m{i}@x"), None, &[], &format!("Message {i}"), i % 24))).collect();
+        s.apply_sync(&acct, &batch(7, msgs, (1..=450).collect())).unwrap();
+        let page = |offset| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(200), offset: Some(offset) }).unwrap();
+        let all: Vec<String> = [0, 200, 400].into_iter().flat_map(|o| page(o).into_iter().map(|m| m.id)).collect();
+        assert_eq!(all.len(), 450, "three pages cover every conversation");
+        let unique: std::collections::HashSet<_> = all.iter().collect();
+        assert_eq!(unique.len(), 450, "even with equal dates, no row appears twice");
+        assert!(page(450).is_empty());
     }
 
     #[test]
@@ -1398,7 +1412,7 @@ mod tests {
             fetched_raw(1, raw("Ferry booking", "Saturday crossing")),
             fetched_raw(2, raw("Token audit", "semantic tier")),
         ], vec![1, 2])).unwrap();
-        let q = |text: &str| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some(text.into()), limit: None }).unwrap();
+        let q = |text: &str| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some(text.into()), limit: None, offset: None }).unwrap();
         assert_eq!(q("cross")[0].subject, "Ferry booking");
         assert_eq!(q("ana")[0].from.email, "ana@example.com");
         assert_eq!(q("semantic tier").len(), 1);
@@ -1737,7 +1751,7 @@ Content-Type: multipart/related; boundary=\"b1\"\r\n\r\n\
         )
         .unwrap();
         let s = Store::init(db).unwrap();
-        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None }).unwrap();
+        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None }).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].thread_id, "m1", "existing mail becomes its own conversation");
         let v: i64 = s.db.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();

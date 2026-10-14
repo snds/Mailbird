@@ -550,7 +550,7 @@ async fn sync(store: &Store, account: &str, cfg: &AccountConfig, token: &str) ->
 }
 
 fn subjects(store: &Store, lane: Lane) -> Vec<String> {
-    let mut s: Vec<String> = store.messages(&MessageQuery { lane, account_id: None, search: None, limit: None }).unwrap().into_iter().map(|m| m.subject).collect();
+    let mut s: Vec<String> = store.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None }).unwrap().into_iter().map(|m| m.subject).collect();
     s.sort();
     s
 }
@@ -619,7 +619,7 @@ async fn outlook_mail_end_to_end() {
     assert!(b.new_messages.iter().all(|m| m.mailbox == INBOX) && b.new_messages.len() <= 2, "the short-lived message, if seen at all, is removed again");
 
     // Local changes: read, star, archive.
-    let row = |s: &str| store.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None }).unwrap().into_iter().find(|m| m.subject == s).unwrap();
+    let row = |s: &str| store.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None }).unwrap().into_iter().find(|m| m.subject == s).unwrap();
     store.set_thread_seen(&row("Fresh news").thread_id, true).unwrap();
     store.set_thread_flagged(&row("Welcome").thread_id, true).unwrap();
     store.set_thread_archived(&row("Welcome").thread_id, true).unwrap();
@@ -653,7 +653,7 @@ async fn outlook_mail_end_to_end() {
     assert_eq!(fake.lock().unwrap().sent.len(), 1);
     store.insert_local(&account, SENT, &raw, true).unwrap();
     sync(&store, &account, &cfg, &token).await;
-    let welcome_row = store.messages(&MessageQuery { lane: Lane::Starred, account_id: None, search: None, limit: None }).unwrap().into_iter().find(|m| m.subject == "Welcome").unwrap();
+    let welcome_row = store.messages(&MessageQuery { lane: Lane::Starred, account_id: None, search: None, limit: None, offset: None }).unwrap().into_iter().find(|m| m.subject == "Welcome").unwrap();
     let sent: Vec<_> = store.thread(&welcome_row.thread_id).unwrap().into_iter().filter(|m| m.summary.mailbox == SENT).collect();
     assert_eq!(sent.len(), 1, "one Sent copy in the conversation, not two");
 

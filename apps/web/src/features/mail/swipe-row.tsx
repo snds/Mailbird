@@ -40,7 +40,6 @@ export function SwipeRow({ start, end, children }: { start: SwipeAction; end: Sw
   return (
     <div
       ref={ref}
-      role="listitem"
       className="relative touch-pan-y overflow-hidden select-none"
       onPointerDown={(e) => {
         if (e.pointerType === "mouse") return

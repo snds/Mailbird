@@ -51,7 +51,7 @@ pub async fn add_account(
     dav_password: Option<String>,
 ) -> Res<Account> {
     if !matches!(config.provider.capabilities().auth, pim_core::AuthMethod::AppPassword | pim_core::AuthMethod::Password) {
-        return Err("this provider needs browser sign-in, which is coming in a later release".into());
+        return Err("this provider signs in through the browser: choose it under Add an account".into());
     }
     match config.jmap {
         Some(_) => net::jmap::verify(&config, &password).await,
@@ -69,6 +69,7 @@ pub async fn add_account(
         return Err(e);
     }
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
+    crate::push::accounts_changed(state.inner());
     let (app2, state2) = (app.clone(), state.inner().clone());
     tauri::async_runtime::spawn(async move {
         workers::sync_all(&app2, &state2).await;
@@ -107,6 +108,7 @@ pub async fn set_account_dav(app: AppHandle, state: State<'_, Shared>, id: Strin
 #[tauri::command]
 pub async fn remove_account(app: AppHandle, state: State<'_, Shared>, id: String) -> Res<()> {
     let account = with_store(&state, |s| s.account(&id))?;
+    crate::push::account_removing(state.inner(), &account).await;
     secrets::revoke(&account).await;
     with_store(&state, |s| s.remove_account(&id))?;
     secrets::delete(&id);
@@ -114,6 +116,7 @@ pub async fn remove_account(app: AppHandle, state: State<'_, Shared>, id: String
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
     let _ = app.emit(events::PIM_CHANGED, ());
     let _ = app.emit(events::MAIL_CHANGED, ());
+    crate::push::accounts_changed(state.inner());
     Ok(())
 }
 

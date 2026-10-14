@@ -423,8 +423,15 @@ pub async fn sync_account(config: &AccountConfig, secret: &str, cursor: RemoteCu
 /// §7.3), or for `timeout`. `current_state` is the state we already have, so
 /// a server that announces the present state on connect doesn't cause a sync.
 pub async fn wait_for_change(config: &AccountConfig, secret: &str, current_state: Option<&str>, timeout: std::time::Duration) -> Result<Change> {
+    wait_for_state(config, secret, current_state, timeout).await.map(|(c, _)| c)
+}
+
+/// Like [`wait_for_change`], and also returns the `Email` state the server
+/// announced, so a watcher with no store (the push relay) can resume from it.
+/// With no `current_state`, the first announced state is only recorded.
+pub async fn wait_for_state(config: &AccountConfig, secret: &str, current_state: Option<&str>, timeout: std::time::Duration) -> Result<(Change, Option<String>)> {
     let s = connect(config, secret).await?;
-    let Some(template) = &s.event_source_url else { return Ok(Change::Unsupported) };
+    let Some(template) = &s.event_source_url else { return Ok((Change::Unsupported, None)) };
     let url = fill(template, &[("types", "Email"), ("closeafter", "no"), ("ping", "60")]);
     // A long-lived stream: no whole-request timeout, only on connect.
     let http = reqwest::Client::builder()
@@ -441,7 +448,7 @@ pub async fn wait_for_change(config: &AccountConfig, secret: &str, current_state
             .await
             .map_err(http_err)?;
         if !res.status().is_success() {
-            return Ok(Change::Unsupported);
+            return Ok((Change::Unsupported, None));
         }
         let mut buf = String::new();
         while let Some(chunk) = res.chunk().await.map_err(http_err)? {
@@ -450,21 +457,30 @@ pub async fn wait_for_change(config: &AccountConfig, secret: &str, current_state
             while let Some(end) = buf.find("\n\n").or_else(|| buf.find("\r\n\r\n")) {
                 let event: String = buf.drain(..end).collect();
                 buf = buf.trim_start_matches(['\r', '\n']).to_owned();
-                if let Some(Change::Changed) = parse_event(&event, &s.account_id, current_state) {
-                    return Ok(Change::Changed);
+                match (event_state(&event, &s.account_id), current_state) {
+                    (Some(new), Some(old)) if new != old => return Ok((Change::Changed, Some(new))),
+                    (Some(new), None) => return Ok((Change::Quiet, Some(new))),
+                    _ => {}
                 }
             }
         }
-        Ok(Change::Quiet) // the server closed the stream
+        Ok((Change::Quiet, None)) // the server closed the stream
     };
     match tokio::time::timeout(timeout, wait).await {
         Ok(result) => result,
-        Err(_) => Ok(Change::Quiet),
+        Err(_) => Ok((Change::Quiet, None)),
     }
 }
 
 /// One server-sent event: `event: state` with a StateChange `data:` payload.
+#[cfg(test)]
 fn parse_event(event: &str, account_id: &str, current_state: Option<&str>) -> Option<Change> {
+    let new = event_state(event, account_id)?;
+    (Some(new.as_str()) != current_state).then_some(Change::Changed)
+}
+
+/// The account's new `Email` state from a StateChange event, if it has one.
+fn event_state(event: &str, account_id: &str) -> Option<String> {
     let mut kind = "message";
     let mut data = String::new();
     for line in event.lines() {
@@ -478,8 +494,7 @@ fn parse_event(event: &str, account_id: &str, current_state: Option<&str>) -> Op
         return None; // pings and comments
     }
     let v: Value = serde_json::from_str(&data).ok()?;
-    let new = v["changed"][account_id]["Email"].as_str()?;
-    (Some(new) != current_state).then_some(Change::Changed)
+    v["changed"][account_id]["Email"].as_str().map(str::to_owned)
 }
 
 /// Send a draft: upload the message, file it in Sent, and submit it.

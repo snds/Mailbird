@@ -41,6 +41,7 @@ pub mod dav;
 pub mod gmail;
 pub mod graph;
 pub mod graph_pim;
+pub mod push_relay;
 pub mod jmap;
 pub mod oauth;
 
@@ -56,7 +57,7 @@ fn is_local(host: &str) -> bool {
 }
 
 /// One TLS setup for every protocol: rustls with ring and the Mozilla roots.
-fn tls_config() -> rustls::ClientConfig {
+pub fn tls_config() -> rustls::ClientConfig {
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
         .with_safe_default_protocol_versions()

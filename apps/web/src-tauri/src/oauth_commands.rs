@@ -160,6 +160,7 @@ pub async fn add_oauth_account(app: AppHandle, state: State<'_, Shared>, issuer:
         return Err(e);
     }
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
+    crate::push::accounts_changed(state.inner());
     let (app2, state2) = (app.clone(), state.inner().clone());
     tauri::async_runtime::spawn(async move {
         workers::sync_all(&app2, &state2).await;

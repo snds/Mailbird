@@ -47,6 +47,46 @@ export interface AccountConfig {
   oauth?: OAuthAccount | null
 }
 
+export type PushMode = "periodic" | "relay"
+
+/** What the push relay reports for one watched mailbox. */
+export interface PushWatchStatus {
+  kind: string
+  lastChange: number | null
+  lastPush: number | null
+  error: string | null
+}
+
+export interface PushAccount {
+  accountId: string
+  address: string
+  via: "relay" | "periodic"
+  /** Why an account stays on the phone's schedule (Gmail). */
+  note: string | null
+  status: PushWatchStatus | null
+}
+
+/** How new mail reaches this device when the app isn't open (ADR-0015). */
+export interface PushSettings {
+  mode: PushMode
+  relayUrl: string | null
+  target: "apns" | "fcm" | "unifiedpush" | null
+  unifiedPushEndpoint: string | null
+  /** The phone reported its own push service (APNs or FCM). */
+  platformPush: boolean
+  accounts: PushAccount[]
+  /** Why the relay couldn't be reached just now. */
+  error: string | null
+}
+
+export interface PushSettingsInput {
+  mode: PushMode
+  relayUrl?: string | null
+  /** Left out to keep the saved token. */
+  relayToken?: string | null
+  unifiedPushEndpoint?: string | null
+}
+
 export type OAuthIssuer = "google" | "microsoft"
 
 export interface OAuthAccount {
@@ -89,6 +129,8 @@ export interface MessageQuery {
   accountId?: string | null
   search?: string | null
   limit?: number | null
+  /** Rows to skip, for paging through a long list. */
+  offset?: number | null
 }
 
 /** A list row is a conversation: its newest matching message plus thread totals. */

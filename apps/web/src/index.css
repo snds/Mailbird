@@ -72,6 +72,10 @@
 }
 
 @layer base {
+  /* How much of the screen the on-screen keyboard covers (src/lib/keyboard-inset.ts). */
+  :root {
+    --keyboard-inset: 0px;
+  }
   * {
     @apply border-border outline-ring/50;
   }

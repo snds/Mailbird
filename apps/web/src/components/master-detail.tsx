@@ -32,7 +32,9 @@ export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLab
         )}
       >
         {header}
-        <div className="min-h-0 flex-1 overflow-y-auto">{list}</div>
+        <div data-scroll-root className="min-h-0 flex-1 overflow-y-auto">
+          {list}
+        </div>
       </section>
       <section className={cn("min-w-0 flex-1 flex-col", hasDetail ? "flex" : "hidden md:flex")}>
         {hasDetail ? (

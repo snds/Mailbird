@@ -1,9 +1,10 @@
-import { useDeferredValue, useEffect, useRef, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 
 import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon } from "@/components/icon"
 import { ListRow } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
+import { VirtualList } from "@/components/virtual-list"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -11,7 +12,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAccounts, useCore, useMailAction, useMessages, useThread } from "@/core/queries"
+import { useAccounts, useCore, useMailAction, useMessagePages, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -43,7 +44,7 @@ export function MailView() {
 
   const { data: core } = useCore()
   const { data: accounts = [] } = useAccounts()
-  const { data: messages, isPending } = useMessages({ lane, accountId, search: deferredSearch || null })
+  const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessagePages({ lane, accountId, search: deferredSearch || null })
   const { data: thread } = useThread(selectedId)
   const openComposer = useUi((s) => s.openComposer)
   const setAccountsOpen = useUi((s) => s.setAccountsOpen)
@@ -51,7 +52,8 @@ export function MailView() {
   const triage = useTriage(() => setSelected(null))
   const markSeen = triage.markSeen
 
-  const list = messages ?? []
+  const list = useMemo(() => pages?.pages.flat() ?? [], [pages])
+  const loadMore = () => hasNextPage && !isFetchingNextPage && void fetchNextPage()
   const row = list.find((m) => m.threadId === selectedId) ?? selected ?? undefined
   const select = (id: string | null) => setSelected(id ? (list.find((m) => m.threadId === id) ?? null) : null)
 
@@ -157,7 +159,7 @@ export function MailView() {
                 <Icon name="alternate_email" />
               </EmptyMedia>
               <EmptyTitle>Add your first account</EmptyTitle>
-              <EmptyDescription>iCloud, Fastmail, or any IMAP account. Gmail and Outlook are coming.</EmptyDescription>
+              <EmptyDescription>Gmail, Outlook, iCloud, Fastmail, or any IMAP account.</EmptyDescription>
             </EmptyHeader>
             <Button onClick={() => setAccountsOpen(true)}>
               <Icon name="add" data-icon="inline-start" /> Add account
@@ -174,10 +176,14 @@ export function MailView() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <div role="list" aria-label={laneInfo.label}>
-            {list.map((m) => (
+          <VirtualList
+            items={list}
+            itemKey={(m) => m.threadId}
+            estimate={76}
+            onEnd={loadMore}
+            label={laneInfo.label}
+            render={(m) => (
               <SwipeRow
-                key={m.threadId}
                 // Apple Mail mapping: swipe left to archive, right to toggle read.
                 start={{ icon: m.seen ? "mark_email_unread" : "drafts", label: m.seen ? "Unread" : "Read", tone: "bg-vertical-mail", onCommit: () => triage.toggleSeen(m) }}
                 end={{ icon: m.archived ? "unarchive" : "archive", label: m.archived ? "Inbox" : "Archive", tone: "bg-vertical-contacts", onCommit: () => triage.toggleArchive(m) }}
@@ -190,8 +196,8 @@ export function MailView() {
                   account={multiAccount && !accountId ? accounts.find((a) => a.id === m.accountId)?.displayName : undefined}
                 />
               </SwipeRow>
-            ))}
-          </div>
+            )}
+          />
         )
       }
       detail={

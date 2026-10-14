@@ -9,6 +9,7 @@ mod commands;
 mod notes_commands;
 mod oauth_commands;
 mod pim_commands;
+mod push;
 mod secrets;
 mod workers;
 
@@ -137,6 +138,11 @@ pub fn run() {
             notes_commands::apply_note_records,
             notes_commands::get_notes_relay,
             notes_commands::set_notes_relay,
+            push::get_push_settings,
+            push::set_push_settings,
+            push::set_push_target,
+            push::send_test_push,
+            workers::background_pass,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

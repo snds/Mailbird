@@ -62,7 +62,14 @@ export function Composer() {
   return (
     <Sheet open={open} onOpenChange={(o) => !o && close()}>
       {/* Full-screen on phones, like Apple Mail and Gmail. */}
-      <SheetContent side="bottom" className="gap-0 rounded-none border-0 pt-[env(safe-area-inset-top)] data-[side=bottom]:h-dvh" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
+      {/* Above the keyboard on iOS too, which covers the page instead of resizing it. */}
+      <SheetContent
+        side="bottom"
+        className="gap-0 rounded-none border-0 pt-[env(safe-area-inset-top)] data-[side=bottom]:bottom-(--keyboard-inset) data-[side=bottom]:h-[calc(100dvh-var(--keyboard-inset))]"
+        showCloseButton={false}
+        initialFocus={firstField}
+        finalFocus={returnFocus}
+      >
         <SheetTitle className="sr-only">New message</SheetTitle>
         {body}
       </SheetContent>

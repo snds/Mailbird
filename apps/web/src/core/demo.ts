@@ -1,5 +1,5 @@
 import type { CoreClient, CoreEvent } from "./client"
-import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OAuthClientInfo, OAuthIssuer, OutboxItem, Provider } from "./types"
+import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OAuthClientInfo, OAuthIssuer, OutboxItem, Provider, PushSettings } from "./types"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
 
@@ -139,8 +139,31 @@ function seed(): { accounts: Account[]; messages: DemoMessage[] } {
   }
 }
 
+/**
+ * `?bulk=10000` adds that many older conversations, for testing long lists
+ * (scrolling, paging) without an account. Capped at 50,000.
+ */
+function bulkMessages(): DemoMessage[] {
+  const n = Math.min(Number(new URLSearchParams(globalThis.location?.search ?? "").get("bulk")) || 0, 50_000)
+  const t = now()
+  const senders = [{ name: "Priya Raman", email: "priya@studio.example" }, { name: "Marcus Lee", email: "marcus@example.com" }, { name: "Design Systems Weekly", email: "news@dsweekly.example" }, { name: null, email: "noreply@service.example" }]
+  return Array.from({ length: n }, (_, i) => {
+    const date = t - 5 * 24 * HOUR - i * 1800
+    const id = `bulk-${i}`
+    const from = senders[i % senders.length]!
+    return {
+      id, accountId: i % 3 ? "personal" : "work", threadId: id, threadCount: 1, hasAttachments: i % 7 === 0,
+      from, subject: `Archive message ${i + 1}`, preview: `Older mail number ${i + 1}, for scrolling.`, date, sortAt: date,
+      seen: i % 5 !== 0, flagged: i % 11 === 0, archived: false, snoozedUntil: null, mailbox: "INBOX",
+      to: [{ name: "Me", email: "me@personal.example" }], cc: [], messageId: `${id}@demo.example`, bodyText: `Older mail number ${i + 1}.`, bodyHtml: null,
+      attachments: [], references: [], files: {},
+    }
+  })
+}
+
 export function createDemoClient(): CoreClient {
   const state = seed()
+  state.messages.push(...bulkMessages())
   const outbox = new Map<string, OutboxItem>()
   const listeners = new Map<CoreEvent, Set<(p?: unknown) => void>>()
   const emit = (e: CoreEvent, p?: unknown) => listeners.get(e)?.forEach((h) => h(p))
@@ -198,6 +221,22 @@ export function createDemoClient(): CoreClient {
   }, 1000)
 
   const oauthClients: Partial<Record<OAuthIssuer, OAuthClientInfo>> = {}
+  const push = { mode: "periodic" as PushSettings["mode"], relayUrl: null as string | null, endpoint: null as string | null, tokenSaved: false }
+  const pushView = (): PushSettings => ({
+    mode: push.mode,
+    relayUrl: push.relayUrl,
+    target: push.mode === "relay" ? "unifiedpush" : null,
+    unifiedPushEndpoint: push.endpoint,
+    platformPush: false,
+    accounts: state.accounts.map((a) => ({
+      accountId: a.id,
+      address: a.address,
+      via: push.mode === "relay" ? "relay" : "periodic",
+      note: null,
+      status: push.mode === "relay" ? { kind: "imap", lastChange: null, lastPush: null, error: null } : null,
+    })),
+    error: null,
+  })
   const later = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 60))
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
@@ -259,6 +298,23 @@ export function createDemoClient(): CoreClient {
       throw new Error("Signing in again needs the desktop app.")
     },
     cancelOAuthSignIn: async () => {},
+    // A pretend relay, so the setting can be explored without a server.
+    getPushSettings: async () => later(pushView()),
+    setPushSettings: async (input) => {
+      if (input.mode === "relay") {
+        const url = input.relayUrl?.trim() ?? ""
+        if (!/^https:\/\//.test(url)) throw new Error("the push relay needs an https:// address")
+        if (!push.tokenSaved && (input.relayToken?.trim().length ?? 0) < 16) throw new Error("the relay token is at least 16 characters")
+        if (!input.unifiedPushEndpoint?.trim()) throw new Error("this device has no push service yet: enter a UnifiedPush address (an ntfy topic, for example)")
+        Object.assign(push, { mode: "relay", relayUrl: url, endpoint: input.unifiedPushEndpoint.trim(), tokenSaved: true })
+      } else {
+        push.mode = "periodic"
+      }
+      return later(pushView())
+    },
+    sendTestPush: async () => {
+      if (push.mode !== "relay") throw new Error("set up the relay first")
+    },
     setAccountDav: async () => {
       throw new Error("Connecting calendars needs the desktop app for now. The web version runs on sample data.")
     },
@@ -302,7 +358,8 @@ export function createDemoClient(): CoreClient {
       }
       let list = [...rows.values()]
       if (q.lane === "snoozed") list = list.sort((a, b) => a.snoozedUntil! - b.snoozedUntil!)
-      return later(list.slice(0, q.limit ?? 200))
+      const offset = q.offset ?? 0
+      return later(list.slice(offset, offset + (q.limit ?? 200)))
     },
     getThread: async (threadId) => {
       const list = thread(threadId).sort((a, b) => a.date - b.date)
