@@ -23,6 +23,20 @@ import { InviteCard } from "./invite-card"
 import { FollowUpAtMenu } from "./send-later"
 import { SnoozeMenu } from "./snooze-menu"
 import { UnsubscribeButton } from "./unsubscribe-button"
+import { CATEGORIES } from "./lanes"
+import { useSenderActions } from "./sender-actions"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import type { Category } from "@/core/types"
 import { useMailAction } from "@/core/queries"
 import { useNowSecs } from "@/hooks/use-now"
 
@@ -172,6 +186,8 @@ export function ConversationView({
   account,
   showAccount,
   triage,
+  screening = false,
+  onLeave,
 }: {
   /** The list row for this conversation (thread-level state). */
   row: MessageSummary | undefined
@@ -179,11 +195,23 @@ export function ConversationView({
   account: Account | undefined
   showAccount: boolean
   triage: ReturnType<typeof useTriage>
+  /** Opened from the Screener: offer to let the sender in or screen them out. */
+  screening?: boolean
+  /** Close the reader: its conversation is leaving the list (screened out, blocked). */
+  onLeave?: () => void
 }) {
   const openComposer = useUi((s) => s.openComposer)
   // Gmail/Apple Mail convention: open the newest and anything unread.
   const [expanded, setExpanded] = useState<Set<string> | null>(null)
   const now = useNowSecs()
+  const senderActions = useSenderActions()
+  // Screening out or blocking archives the conversation, so the reader closes, as it does for Archive.
+  const senders = {
+    move: senderActions.move,
+    decide: (from: Parameters<typeof senderActions.decide>[0], d: Parameters<typeof senderActions.decide>[1]) => {
+      senderActions.decide(from, d, d === "allowed" ? undefined : onLeave)
+    },
+  }
   const setFollowUp = useMailAction<{ threadId: string; at: number }>((c, a) => c.setFollowUp(a.threadId, a.at))
   const cancelFollowUp = useMailAction<string>((c, threadId) => c.cancelFollowUp(threadId))
   const remind = (threadId: string, at: number, label: string) =>
@@ -241,6 +269,34 @@ export function ConversationView({
           )}
           <ToolbarButton icon="star" label={row.flagged ? "Unstar" : "Star"} shortcut="S" active={row.flagged} onClick={() => triage.toggleFlag(row)} />
           <ToolbarButton icon="mark_email_unread" label="Mark unread" shortcut="U" onClick={() => triage.markSeen(row, false)} />
+          {target.mailbox !== "Sent" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Sender options" />}>
+                <Icon name="more_vert" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64 bg-popover">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="truncate">{displayName(target.from)}</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value={row.category ?? "people"} onValueChange={(v) => senders.move(target.from, v as Category)}>
+                    {CATEGORIES.map((c) => (
+                      <DropdownMenuRadioItem key={c.id} value={c.id} closeOnClick>
+                        Always in {c.label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => senders.decide(target.from, "screened_out")}>
+                  <Icon name="person_off" />
+                  Screen out sender
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => senders.decide(target.from, "blocked")}>
+                  <Icon name="block" />
+                  Block sender
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {reminder !== null ? (
             <ToolbarButton icon="notifications_active" label="Cancel reminder" active onClick={() => cancelFollowUp.mutate(row.threadId, { onSuccess: () => toast("Reminder cancelled") })} />
           ) : (
@@ -252,6 +308,23 @@ export function ConversationView({
           )}
         </div>
       </div>
+
+      {screening && target.mailbox !== "Sent" && (
+        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border bg-accent/40 px-4 py-3 text-sm">
+          <Icon name="waving_hand" className="size-5 text-muted-foreground" />
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">{displayName(target.from)}</span> is writing to you for the first time. Do you want their mail in your inbox?
+          </span>
+          <span className="flex gap-1">
+            <Button variant="ghost" size="sm" onClick={() => senders.decide(target.from, "screened_out")}>
+              <Icon name="person_off" data-icon="inline-start" /> Screen out
+            </Button>
+            <Button size="sm" onClick={() => senders.decide(target.from, "allowed")}>
+              <Icon name="how_to_reg" data-icon="inline-start" /> Let in
+            </Button>
+          </span>
+        </div>
+      )}
 
       {due && (
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-vertical-mail/30 bg-vertical-mail/5 px-4 py-3 text-sm">

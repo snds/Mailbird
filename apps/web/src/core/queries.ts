@@ -117,6 +117,15 @@ export function useSignatures() {
   return useQuery({ queryKey: keys.signatures, queryFn: () => call((c) => c.listSignatures()) })
 }
 
+/** Under "messages", so every mail change refreshes them. */
+export function useScreener() {
+  return useQuery({ queryKey: ["messages", "screener-status"], queryFn: () => call((c) => c.screenerStatus()) })
+}
+
+export function useSenders() {
+  return useQuery({ queryKey: ["messages", "senders"], queryFn: () => call((c) => c.listSenders()) })
+}
+
 /** Messages scheduled to send later, soonest first. */
 export function useScheduled() {
   return useQuery({

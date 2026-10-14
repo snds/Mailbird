@@ -53,7 +53,7 @@ pub fn parse_mailto(uri: &str) -> Option<(String, String, String)> {
 }
 
 /// The header block, unfolded: continuation lines join the line above.
-fn header_block(raw: &[u8]) -> Vec<(String, String)> {
+pub(crate) fn header_block(raw: &[u8]) -> Vec<(String, String)> {
     let text = String::from_utf8_lossy(raw);
     let mut out: Vec<(String, String)> = Vec::new();
     for line in text.split('\n') {
@@ -73,7 +73,7 @@ fn header_block(raw: &[u8]) -> Vec<(String, String)> {
     out
 }
 
-fn header(headers: &[(String, String)], name: &str) -> Option<String> {
+pub(crate) fn header(headers: &[(String, String)], name: &str) -> Option<String> {
     headers.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone())
 }
 

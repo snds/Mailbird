@@ -12,7 +12,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAccounts, useCore, useMailAction, useMessagePages, useThread } from "@/core/queries"
+import { useAccounts, useCore, useMailAction, useMessagePages, useScreener, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -20,7 +20,8 @@ import { useTriage } from "./actions"
 import { useNowSecs } from "@/hooks/use-now"
 
 import { ConversationView } from "./conversation-view"
-import { LANES, type MailTab } from "./lanes"
+import { CATEGORIES, LANES, type MailTab } from "./lanes"
+import { useSenderActions } from "./sender-actions"
 import { displayName, initials } from "./format"
 import { ScheduledList } from "./scheduled-list"
 import { SwipeRow } from "./swipe-row"
@@ -31,6 +32,11 @@ export function MailView() {
   const tab = useUi((s) => s.mailTab)
   const setTab = useUi((s) => s.setMailTab)
   const lane: Lane = tab === "scheduled" ? "inbox" : tab
+  // People / Updates / Newsletters chips filter the inbox.
+  const category = useUi((s) => s.mailCategory)
+  const setCategory = useUi((s) => s.setMailCategory)
+  const { data: screener } = useScreener()
+  const senderActions = useSenderActions()
   const now = useNowSecs()
   const [accountId, setAccountId] = useState<string | null>(null)
   const search = useUi((s) => s.mailSearch)
@@ -45,7 +51,7 @@ export function MailView() {
 
   const { data: core } = useCore()
   const { data: accounts = [] } = useAccounts()
-  const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessagePages({ lane, accountId, search: deferredSearch || null })
+  const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessagePages({ lane, accountId, search: deferredSearch || null, category: tab === "inbox" ? category : null })
   const { data: thread } = useThread(selectedId)
   const openComposer = useUi((s) => s.openComposer)
   const setAccountsOpen = useUi((s) => s.setAccountsOpen)
@@ -69,6 +75,9 @@ export function MailView() {
 
   const multiAccount = accounts.length > 1
   const laneInfo = LANES.find((l) => l.id === tab)!
+  // The Screener tab only exists while it's on (or still holds mail).
+  const tabs = LANES.filter((l) => l.id !== "screener" || screener?.enabled || tab === "screener")
+  const emptyText = tab === "inbox" && category ? CATEGORIES.find((c) => c.id === category)!.empty : laneInfo.empty
 
   useMailShortcuts({
     list,
@@ -139,14 +148,38 @@ export function MailView() {
             <div className="-mx-4 no-scrollbar overflow-x-auto px-4 [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
               <Tabs value={tab} onValueChange={(v) => (setTab(v as MailTab), setSelected(null))} className="w-max pr-6">
                 <TabsList>
-                  {LANES.map((l) => (
+                  {tabs.map((l) => (
                     <TabsTrigger key={l.id} value={l.id}>
                       {l.label}
+                      {l.id === "screener" && !!screener?.waiting && (
+                        <span className="ml-1 rounded-full bg-vertical-mail px-1.5 text-[11px] leading-4 font-semibold text-white" aria-label={`${screener.waiting} waiting`}>
+                          {screener.waiting}
+                        </span>
+                      )}
                     </TabsTrigger>
                   ))}
                 </TabsList>
               </Tabs>
             </div>
+            {tab === "inbox" && (
+              <div role="group" aria-label="Show" className="-mx-4 no-scrollbar flex gap-1.5 overflow-x-auto px-4">
+                {[{ id: null, label: "All" } as const, ...CATEGORIES].map((c) => (
+                  <Button
+                    key={c.label}
+                    size="xs"
+                    variant={category === c.id ? "secondary" : "ghost"}
+                    aria-pressed={category === c.id}
+                    className="rounded-full px-3"
+                    onClick={() => (setCategory(c.id), setSelected(null))}
+                  >
+                    {c.label}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {tab === "screener" && (
+              <p className="text-xs text-muted-foreground">First-time senders wait here. Let them in and their mail goes to your inbox; screen them out and it never does.</p>
+            )}
           </div>
         </>
       }
@@ -174,7 +207,7 @@ export function MailView() {
               <EmptyMedia variant="icon">
                 <Icon name={deferredSearch ? "search_off" : "done_all"} />
               </EmptyMedia>
-              <EmptyTitle>{deferredSearch ? "No matches" : laneInfo.empty}</EmptyTitle>
+              <EmptyTitle>{deferredSearch ? "No matches" : emptyText}</EmptyTitle>
               {deferredSearch && <EmptyDescription>Nothing in {laneInfo.label} matches “{deferredSearch}”.</EmptyDescription>}
             </EmptyHeader>
           </Empty>
@@ -188,8 +221,17 @@ export function MailView() {
             render={(m) => (
               <SwipeRow
                 // Apple Mail mapping: swipe left to archive, right to toggle read.
-                start={{ icon: m.seen ? "mark_email_unread" : "drafts", label: m.seen ? "Unread" : "Read", tone: "bg-vertical-mail", onCommit: () => triage.toggleSeen(m) }}
-                end={{ icon: m.archived ? "unarchive" : "archive", label: m.archived ? "Inbox" : "Archive", tone: "bg-vertical-contacts", onCommit: () => triage.toggleArchive(m) }}
+                // In the Screener: right lets the sender in, left screens them out.
+                start={
+                  tab === "screener"
+                    ? { icon: "how_to_reg", label: "Let in", tone: "bg-vertical-mail", onCommit: () => senderActions.decide(m.from, "allowed") }
+                    : { icon: m.seen ? "mark_email_unread" : "drafts", label: m.seen ? "Unread" : "Read", tone: "bg-vertical-mail", onCommit: () => triage.toggleSeen(m) }
+                }
+                end={
+                  tab === "screener"
+                    ? { icon: "block", label: "Screen out", tone: "bg-destructive", onCommit: () => senderActions.decide(m.from, "screened_out") }
+                    : { icon: m.archived ? "unarchive" : "archive", label: m.archived ? "Inbox" : "Archive", tone: "bg-vertical-contacts", onCommit: () => triage.toggleArchive(m) }
+                }
               >
                 <MessageRow
                   message={m}
@@ -213,6 +255,8 @@ export function MailView() {
             account={accounts.find((a) => a.id === row?.accountId)}
             showAccount={multiAccount}
             triage={triage}
+            screening={tab === "screener"}
+            onLeave={() => setSelected(null)}
           />
         )
       }

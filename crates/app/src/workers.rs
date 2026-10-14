@@ -261,6 +261,9 @@ async fn sync_pass(app: &AppHandle, state: &Shared) -> bool {
     let mut more_older = false;
     let _guard = state.sync_lock.lock().await;
     let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
+    // Ops this pass creates (a screened-out sender's new mail gets archived)
+    // reach the server on a quick second pass, not 30 seconds later.
+    let mut created_ops = false;
     for account in accounts {
         let result = match secret(state, &account).await {
             Err(e) => Err(e),
@@ -268,6 +271,11 @@ async fn sync_pass(app: &AppHandle, state: &Shared) -> bool {
             Ok(password) if account.config.jmap.is_some() => sync_remote(state, &account, &password, Remote::Jmap).await,
             Ok(password) => sync_imap(state, &account, &password).await,
         };
+        let (result, created) = match result {
+            Ok((older, created)) => (Ok(older), created),
+            Err(e) => (Err(e), false),
+        };
+        created_ops |= created;
         if let Ok(s) = state.store.lock() {
             let _ = s.record_sync_result(&account.id, result.as_ref().err().map(String::as_str));
         }
@@ -275,12 +283,16 @@ async fn sync_pass(app: &AppHandle, state: &Shared) -> bool {
     }
     let _ = app.emit(events::MAIL_CHANGED, ());
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
+    if created_ops {
+        sync_soon(app, state);
+    }
     more_older
 }
 
 /// One IMAP pass for one account: INBOX, Archive, and Sent on one connection.
 /// Returns whether older mail remains anywhere.
-async fn sync_imap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<bool, String> {
+/// Also returns whether storing the new mail queued ops for the server.
+async fn sync_imap(state: &Shared, account: &pim_core::Account, password: &str) -> Result<(bool, bool), String> {
     let plans = {
         let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
         [INBOX, ARCHIVE, SENT]
@@ -297,11 +309,13 @@ async fn sync_imap(state: &Shared, account: &pim_core::Account, password: &str) 
     let batches = net::sync_account(&account.config, password, plans).await.map_err(|e| e.to_string())?;
     let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
     let mut more_older = false;
+    let before = s.pending_op_count().unwrap_or(0);
+    let pushed: i64 = batches.iter().map(|b| b.applied_ops.len() as i64).sum();
     for batch in &batches {
         s.apply_sync(&account.id, batch).map_err(|e| e.to_string())?;
         more_older |= batch.more_older;
     }
-    Ok(more_older)
+    Ok((more_older, s.pending_op_count().unwrap_or(0) > before - pushed))
 }
 
 #[derive(Clone, Copy)]
@@ -312,7 +326,7 @@ enum Remote {
 }
 
 /// One JMAP, Gmail, or Outlook pass for one account (every mailbox at once). Returns whether older mail remains.
-async fn sync_remote(state: &Shared, account: &pim_core::Account, password: &str, kind: Remote) -> Result<bool, String> {
+async fn sync_remote(state: &Shared, account: &pim_core::Account, password: &str, kind: Remote) -> Result<(bool, bool), String> {
     let (cursor, ops) = {
         let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
         (
@@ -327,8 +341,9 @@ async fn sync_remote(state: &Shared, account: &pim_core::Account, password: &str
     }
     .map_err(|e| e.to_string())?;
     let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
+    let before = s.pending_op_count().unwrap_or(0) - batch.applied_ops.len() as i64;
     s.apply_remote(&account.id, &batch).map_err(|e| e.to_string())?;
-    Ok(batch.more_older)
+    Ok((batch.more_older, s.pending_op_count().unwrap_or(0) > before))
 }
 
 /// Sync calendars and contacts shortly, after a local edit.
@@ -444,7 +459,7 @@ pub async fn background_pass(app: AppHandle, state: &Shared) -> Result<Backgroun
         s.store
             .lock()
             .ok()
-            .and_then(|st| st.messages(&pim_core::MessageQuery { lane: pim_core::Lane::Unread, account_id: None, search: None, limit: None, offset: None }).ok())
+            .and_then(|st| st.messages(&pim_core::MessageQuery { lane: pim_core::Lane::Unread, account_id: None, search: None, limit: None, offset: None, category: None }).ok())
             .unwrap_or_default()
     };
     let before: std::collections::HashSet<String> = unread(state).into_iter().map(|m| m.id).collect();

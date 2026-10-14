@@ -154,5 +154,16 @@ async fn compose_commands() {
     call("set_signature", json!({ "accountId": account, "html": "<p>— Me</p>" })).await.unwrap();
     assert_eq!(call("list_signatures", Value::Null).await.unwrap(), json!([{ "accountId": account, "html": "<p>— Me</p>" }]));
     assert!(host.events.lock().unwrap().contains(&"compose:changed".to_string()));
+
+    // The Screener and sender decisions, by their UI names.
+    assert_eq!(call("screener_status", Value::Null).await.unwrap()["enabled"], false);
+    assert_eq!(call("set_screener", json!({ "enabled": true })).await.unwrap()["enabled"], true);
+    call("decide_sender", json!({ "email": "deals@shop.example", "decision": "blocked" })).await.unwrap();
+    call("set_sender_category", json!({ "email": "news@list.example", "category": "newsletters" })).await.unwrap();
+    let senders = call("list_senders", Value::Null).await.unwrap();
+    assert_eq!(senders.as_array().unwrap().len(), 2);
+    assert!(call("decide_sender", json!({ "email": "x", "decision": "nope" })).await.unwrap_err().contains("bad arguments"));
+    let screener = call("list_messages", json!({ "query": { "lane": "screener", "category": "people" } })).await.unwrap();
+    assert_eq!(screener, json!([]));
     let _ = std::fs::remove_dir_all(dir);
 }

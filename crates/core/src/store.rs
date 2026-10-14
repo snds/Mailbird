@@ -18,6 +18,7 @@ use base64::Engine;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::compose_store::FOLLOW_UP_AT;
+use crate::sender_store::{CATEGORY, DECISION, screened};
 
 use crate::{
     Account, AccountConfig, Address, AttachmentInfo, Draft, Error, Lane,
@@ -35,7 +36,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -202,12 +203,19 @@ impl Store {
         if version < 7 {
             tx.execute_batch(crate::compose_store::MIGRATE_V7)?;
         }
+        if version < 8 {
+            tx.execute_batch(crate::sender_store::MIGRATE_V8)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
         let store = Self { db };
         if (1..5).contains(&version) {
             // Fill the new reminder index for events stored before it existed.
             store.reindex_events()?;
+        }
+        if (1..8).contains(&version) {
+            // Sort mail stored before categories existed.
+            store.reclassify_all()?;
         }
         Ok(store)
     }
@@ -313,16 +321,27 @@ impl Store {
         // Sent copies belong to conversations but never make a thread "in the
         // inbox", unless a follow-up reminder brought them back.
         let received = format!("m.mailbox <> '{SENT}'");
+        // Mail from new senders waits in the Screener while it's on; mail
+        // from screened-out senders never fills the inbox.
+        let screen = match self.screener_since()? {
+            Some(since) => format!(" AND NOT {}", screened(since)),
+            None => String::new(),
+        };
+        let kept = format!("COALESCE({DECISION}, '') NOT IN ('screened_out', 'blocked'){screen}");
         match q.lane {
             Lane::Inbox => {
-                clauses.push(format!("(({received} AND m.archived = 0 AND {awake}) OR {FOLLOW_UP_AT} <= ?)"));
+                clauses.push(format!("(({received} AND m.archived = 0 AND {awake} AND {kept}) OR {FOLLOW_UP_AT} <= ?)"));
                 args.push(t.into());
                 args.push(t.into());
             }
             Lane::Unread => {
-                clauses.push(format!("{received} AND m.archived = 0 AND m.seen = 0 AND {awake}"));
+                clauses.push(format!("{received} AND m.archived = 0 AND m.seen = 0 AND {awake} AND {kept}"));
                 args.push(t.into());
             }
+            Lane::Screener => match self.screener_since()? {
+                Some(since) => clauses.push(format!("m.archived = 0 AND {}", screened(since))),
+                None => clauses.push("0".into()),
+            },
             Lane::Starred => clauses.push("m.flagged = 1".into()),
             Lane::Snoozed => {
                 clauses.push(format!("{received} AND m.snoozed_until > ?"));
@@ -333,6 +352,10 @@ impl Store {
                 clauses.push(format!("{FOLLOW_UP_AT} > ?"));
                 args.push(t.into());
             }
+        }
+        if let Some(c) = q.category {
+            clauses.push(format!("{CATEGORY} = ?"));
+            args.push(c.as_str().to_string().into());
         }
         let order = match q.lane {
             Lane::Snoozed => "snoozed_until ASC",
@@ -1092,15 +1115,16 @@ fn insert_message(
     let id = uuid::Uuid::new_v4().to_string();
     let date = p.date.unwrap_or_else(now);
     let has_files = p.attachments.iter().any(|a| !a.inline);
+    let category = if mailbox == SENT { crate::Category::People } else { crate::triage::classify(raw, &p.from.email) };
     let n = tx.execute(
         "INSERT OR IGNORE INTO messages (id, account_id, mailbox, uid, message_id, from_name, from_email,
            to_json, cc_json, subject, preview, body_text, body_html, date, sort_at, seen, flagged,
-           thread_id, has_attachments, raw, remote_id, archived)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18, ?19, ?20)",
+           thread_id, has_attachments, raw, remote_id, archived, category)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18, ?19, ?20, ?21)",
         params![
             id, account_id, mailbox, uid, p.message_id, p.from.name, p.from.email, json(&p.to),
             json(&p.cc), p.subject, p.preview, p.body_text, p.body_html, date, seen, flagged,
-            has_files, raw, remote_id, mailbox == ARCHIVE
+            has_files, raw, remote_id, mailbox == ARCHIVE, category.as_str()
         ],
     )?;
     if n == 0 {
@@ -1142,6 +1166,25 @@ fn insert_message(
     }
     let refs: BTreeSet<&str> = chain.iter().copied().collect();
     assign_thread(tx, account_id, &id, p.message_id.as_deref(), &refs)?;
+    // Writing to someone makes them known to the Screener.
+    if mailbox == SENT {
+        for a in p.to.iter().chain(&p.cc) {
+            crate::sender_store::remember_recipient(tx, &a.email)?;
+        }
+    }
+    // New mail from a screened-out or blocked sender skips the inbox, on the server too.
+    if crate::sender_store::rules_apply(mailbox)
+        && let Some(rule) = crate::sender_store::arrival_rule(tx, &p.from.email)?
+    {
+        let blocked = rule == crate::SenderDecision::Blocked;
+        tx.execute("UPDATE messages SET archived = 1, seen = seen OR ?2 WHERE id = ?1", params![id, blocked])?;
+        if !matches!(key, ServerKey::Local) {
+            tx.execute("INSERT INTO pending_ops (message_id, kind, created_at) VALUES (?1, 'archive', ?2)", params![id, now()])?;
+            if blocked && !seen {
+                tx.execute("INSERT INTO pending_ops (message_id, kind, created_at) VALUES (?1, 'seen', ?2)", params![id, now()])?;
+            }
+        }
+    }
     // A reply to something you're waiting on ends the wait.
     if mailbox != SENT {
         for r in &chain {
@@ -1192,7 +1235,8 @@ const SUMMARY_COLS_PLAIN: &str = "m.id, m.account_id, m.thread_id, \
      m.from_name, m.from_email, m.subject, m.preview, m.date, m.sort_at, m.seen, m.flagged, \
      m.archived, m.snoozed_until, m.mailbox, \
      (SELECT f.due_at FROM follow_ups f WHERE m.mailbox = 'Sent' AND f.account_id = m.account_id AND f.message_id = m.message_id), \
-     CASE WHEN m.mailbox = 'Sent' THEN COALESCE(json_extract(m.to_json, '$[0].name'), json_extract(m.to_json, '$[0].email')) END";
+     CASE WHEN m.mailbox = 'Sent' THEN COALESCE(json_extract(m.to_json, '$[0].name'), json_extract(m.to_json, '$[0].email')) END, \
+     COALESCE((SELECT s.category FROM senders s WHERE s.email = lower(m.from_email)), m.category)";
 
 /// Same columns for list rows, with read and starred rolled up per thread.
 const SUMMARY_COLS_RANKED: &str = "m.id, m.account_id, m.thread_id, \
@@ -1201,7 +1245,8 @@ const SUMMARY_COLS_RANKED: &str = "m.id, m.account_id, m.thread_id, \
      m.from_name, m.from_email, m.subject, m.preview, m.date, m.sort_at, m.thread_seen, \
      EXISTS (SELECT 1 FROM messages t WHERE t.thread_id = m.thread_id AND t.flagged = 1), \
      m.archived, m.snoozed_until, m.mailbox, m.follow_up_at, \
-     CASE WHEN m.mailbox = 'Sent' THEN COALESCE(json_extract(m.to_json, '$[0].name'), json_extract(m.to_json, '$[0].email')) END";
+     CASE WHEN m.mailbox = 'Sent' THEN COALESCE(json_extract(m.to_json, '$[0].name'), json_extract(m.to_json, '$[0].email')) END, \
+     COALESCE((SELECT s.category FROM senders s WHERE s.email = lower(m.from_email)), m.category)";
 
 fn summary_row(r: &Row) -> rusqlite::Result<MessageSummary> {
     Ok(MessageSummary {
@@ -1222,17 +1267,18 @@ fn summary_row(r: &Row) -> rusqlite::Result<MessageSummary> {
         mailbox: r.get(15)?,
         follow_up_at: r.get(16)?,
         sent_to: r.get(17)?,
+        category: r.get::<_, String>(18).ok().as_deref().and_then(crate::Category::parse).unwrap_or_default(),
     })
 }
 
 fn detail_row(r: &Row) -> rusqlite::Result<MessageDetail> {
     Ok(MessageDetail {
         summary: summary_row(r)?,
-        to: from_json(r.get(18)?),
-        cc: from_json(r.get(19)?),
-        message_id: r.get(20)?,
-        body_text: r.get(21)?,
-        body_html: r.get(22)?,
+        to: from_json(r.get(19)?),
+        cc: from_json(r.get(20)?),
+        message_id: r.get(21)?,
+        body_text: r.get(22)?,
+        body_html: r.get(23)?,
         attachments: vec![],
         references: vec![],
         invite: None,
@@ -1342,7 +1388,7 @@ mod tests {
     }
 
     fn lane(s: &Store, lane: Lane) -> Vec<MessageSummary> {
-        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None }).unwrap()
+        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap()
     }
 
     fn inbox(s: &Store) -> Vec<MessageSummary> {
@@ -1373,7 +1419,7 @@ mod tests {
         let (s, acct) = store_with_account();
         let msgs: Vec<FetchedMessage> = (1..=450).map(|i| fetched_raw(i, threaded(&format!("m{i}@x"), None, &[], &format!("Message {i}"), i % 24))).collect();
         s.apply_sync(&acct, &batch(7, msgs, (1..=450).collect())).unwrap();
-        let page = |offset| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(200), offset: Some(offset) }).unwrap();
+        let page = |offset| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(200), offset: Some(offset), category: None }).unwrap();
         let all: Vec<String> = [0, 200, 400].into_iter().flat_map(|o| page(o).into_iter().map(|m| m.id)).collect();
         assert_eq!(all.len(), 450, "three pages cover every conversation");
         let unique: std::collections::HashSet<_> = all.iter().collect();
@@ -1484,7 +1530,7 @@ mod tests {
             fetched_raw(1, raw("Ferry booking", "Saturday crossing")),
             fetched_raw(2, raw("Token audit", "semantic tier")),
         ], vec![1, 2])).unwrap();
-        let q = |text: &str| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some(text.into()), limit: None, offset: None }).unwrap();
+        let q = |text: &str| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some(text.into()), limit: None, offset: None, category: None }).unwrap();
         assert_eq!(q("cross")[0].subject, "Ferry booking");
         assert_eq!(q("ana")[0].from.email, "ana@example.com");
         assert_eq!(q("semantic tier").len(), 1);
@@ -1824,7 +1870,7 @@ Content-Type: multipart/related; boundary=\"b1\"\r\n\r\n\
         )
         .unwrap();
         let s = Store::init(db).unwrap();
-        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None }).unwrap();
+        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].thread_id, "m1", "existing mail becomes its own conversation");
         let v: i64 = s.db.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();

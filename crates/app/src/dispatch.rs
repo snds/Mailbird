@@ -13,7 +13,7 @@ use serde_json::Value;
 use crate::notes_commands::RelayConfig;
 use crate::push::PushMode;
 use pim_core::net::push_relay::PushTarget;
-use crate::{AppHandle, Shared, commands, compose_commands, notes_commands, oauth_commands, pim_commands, push, workers};
+use crate::{AppHandle, Shared, commands, compose_commands, notes_commands, sender_commands, oauth_commands, pim_commands, push, workers};
 
 /// A command's result: JSON, or raw bytes (attachments, so a 10 MB PDF
 /// isn't a 13 MB string).
@@ -68,6 +68,11 @@ pub const COMMANDS: &[&str] = &[
     "delete_template",
     "list_signatures",
     "set_signature",
+    "screener_status",
+    "set_screener",
+    "decide_sender",
+    "set_sender_category",
+    "list_senders",
     "set_account_dav",
     "set_time_zone",
     "list_collections",
@@ -202,6 +207,20 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(compose_commands::delete_template(app.clone(), state, id)?)
         }
         "list_signatures" => Output::json(compose_commands::list_signatures(state)?),
+        "screener_status" => Output::json(sender_commands::screener_status(state)?),
+        "set_screener" => {
+            args!(args, enabled: bool);
+            Output::json(sender_commands::set_screener(app.clone(), state, enabled)?)
+        }
+        "decide_sender" => {
+            args!(args, email: String, decision: Option<SenderDecision>);
+            Output::json(sender_commands::decide_sender(app.clone(), state, email, decision)?)
+        }
+        "set_sender_category" => {
+            args!(args, email: String, category: Option<Category>);
+            Output::json(sender_commands::set_sender_category(app.clone(), state, email, category)?)
+        }
+        "list_senders" => Output::json(sender_commands::list_senders(state)?),
         "set_signature" => {
             args!(args, account_id: String, html: String);
             Output::json(compose_commands::set_signature(app.clone(), state, account_id, html)?)
