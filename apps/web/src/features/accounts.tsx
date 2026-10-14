@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
-import type { AccountConfig, JmapConfig, Provider, Security, ServerConfig } from "@/core/types"
+import type { Account, AccountConfig, DavConfig, JmapConfig, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
 
 interface Preset {
@@ -30,6 +30,10 @@ interface Preset {
   custom?: "imap" | "jmap"
   passwordLabel: string
   passwordHelp?: { text: string; href: string }
+  /** Calendars and contacts. `ask` lets people enter their own servers. */
+  dav?: DavConfig | "ask"
+  /** Help for a separate calendar app password (`dav.separateSecret`). */
+  davPasswordHelp?: { text: string; href: string }
 }
 
 const PRESETS: Preset[] = [
@@ -39,6 +43,8 @@ const PRESETS: Preset[] = [
     smtp: { host: "smtp.mail.me.com", port: 587, security: "start_tls" },
     passwordLabel: "App-specific password",
     passwordHelp: { text: "Create one at account.apple.com → Sign-In and Security.", href: "https://support.apple.com/102654" },
+    // The same app-specific password covers iCloud Calendar and Contacts.
+    dav: { calendarUrl: "https://caldav.icloud.com/", contactsUrl: "https://contacts.icloud.com/" },
   },
   {
     id: "fastmail", label: "Fastmail", icon: "bolt", provider: "jmap",
@@ -46,17 +52,22 @@ const PRESETS: Preset[] = [
     jmap: { sessionUrl: "https://api.fastmail.com/jmap/session", bearer: true },
     passwordLabel: "API token",
     passwordHelp: { text: "In Fastmail: Settings → Privacy & Security → Connected apps & API tokens. Choose JMAP and allow Email and Email submission. (Not available on Basic plans.)", href: "https://www.fastmail.help/hc/en-us/articles/5254602856719" },
+    // API tokens can't do CalDAV, so calendars need a separate app password.
+    dav: { calendarUrl: "https://caldav.fastmail.com/", contactsUrl: "https://carddav.fastmail.com/", separateSecret: true },
+    davPasswordHelp: { text: "Optional. In Fastmail: Settings → Privacy & Security → App passwords, with access to calendars and contacts.", href: "https://www.fastmail.help/hc/en-us/articles/1500000278342" },
   },
   {
     id: "other", label: "Other (IMAP)", icon: "dns", provider: "generic", custom: "imap",
     imap: { host: "", port: 993, security: "tls" },
     smtp: { host: "", port: 465, security: "tls" },
     passwordLabel: "Password",
+    dav: "ask",
   },
   {
     id: "jmap", label: "Other (JMAP)", icon: "api", provider: "jmap", custom: "jmap",
     jmap: { sessionUrl: "", bearer: false },
     passwordLabel: "Password",
+    dav: "ask",
   },
   { id: "google", label: "Gmail", icon: "mail", provider: "google", passwordLabel: "", unavailable: "Needs Google sign-in and app verification — planned for a later release." },
   { id: "microsoft", label: "Outlook / Microsoft 365", icon: "mail", provider: "microsoft", passwordLabel: "", unavailable: "Needs Microsoft sign-in — planned for a later release." },
@@ -66,17 +77,24 @@ export function AccountsDialog() {
   const open = useUi((s) => s.accountsOpen)
   const setOpen = useUi((s) => s.setAccountsOpen)
   const [preset, setPreset] = useState<Preset | null>(null)
+  const [connecting, setConnecting] = useState<Account | null>(null)
 
   return (
     <Dialog open={open} onOpenChange={(o) => (setOpen(o), !o && setPreset(null))}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-        {preset ? <AddAccountForm preset={preset} onBack={() => setPreset(null)} onDone={() => setPreset(null)} /> : <AccountList onAdd={setPreset} />}
+        {preset ? (
+          <AddAccountForm preset={preset} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
+        ) : connecting ? (
+          <ConnectDavForm account={connecting} onDone={() => setConnecting(null)} />
+        ) : (
+          <AccountList onAdd={setPreset} onConnect={setConnecting} />
+        )}
       </DialogContent>
     </Dialog>
   )
 }
 
-function AccountList({ onAdd }: { onAdd: (p: Preset) => void }) {
+function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConnect: (a: Account) => void }) {
   const { data: accounts = [] } = useAccounts()
   const { data: core } = useCore()
   const qc = useQueryClient()
@@ -112,6 +130,19 @@ function AccountList({ onAdd }: { onAdd: (p: Preset) => void }) {
                   <span className="text-xs text-destructive">Sync problem: {a.lastError}</span>
                 ) : (
                   <span className="text-xs text-muted-foreground">{a.lastSync ? `Synced ${longTime(a.lastSync)}` : "Waiting for first sync"}</span>
+                )}
+                {a.dav ? (
+                  a.davError ? (
+                    <span className="text-xs text-destructive">Calendars and contacts: {a.davError}</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Calendars and contacts {a.davLastSync ? `synced ${longTime(a.davLastSync)}` : "connecting"}</span>
+                  )
+                ) : (
+                  core?.kind === "native" && (
+                    <button type="button" className="self-start text-xs font-medium text-primary hover:underline" onClick={() => onConnect(a)}>
+                      Connect calendars and contacts
+                    </button>
+                  )
                 )}
               </div>
               {core?.kind === "native" && (
@@ -182,6 +213,9 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
   const [imap, setImap] = useState(preset.imap ?? UNUSED)
   const [smtp, setSmtp] = useState(preset.smtp ?? UNUSED)
   const [sessionUrl, setSessionUrl] = useState(preset.jmap?.sessionUrl ?? "")
+  const [davPassword, setDavPassword] = useState("")
+  const [calendarUrl, setCalendarUrl] = useState("")
+  const [contactsUrl, setContactsUrl] = useState("")
   const custom = preset.custom
   const qc = useQueryClient()
 
@@ -195,8 +229,9 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
         imap,
         smtp,
         jmap: preset.jmap ? { sessionUrl: sessionUrl.trim(), bearer: preset.jmap.bearer } : null,
+        dav: davFor(preset, calendarUrl, contactsUrl, davPassword),
       }
-      return (await getCoreClient()).addAccount(config, password)
+      return (await getCoreClient()).addAccount(config, password, davPassword || null)
     },
     onSuccess: (a) => {
       void qc.invalidateQueries()
@@ -255,6 +290,26 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
             <ServerFields label="Outgoing (SMTP)" value={smtp} onChange={setSmtp} idPrefix="smtp" />
           </>
         )}
+        {typeof preset.dav === "object" && preset.dav.separateSecret && (
+          <Field>
+            <FieldLabel htmlFor="acct-dav-password">App password for calendars and contacts</FieldLabel>
+            <Input id="acct-dav-password" type="password" value={davPassword} onChange={(e) => setDavPassword(e.target.value)} autoComplete="off" />
+            {preset.davPasswordHelp && (
+              <FieldDescription>
+                {preset.davPasswordHelp.text}{" "}
+                <a href={preset.davPasswordHelp.href} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                  How
+                </a>
+              </FieldDescription>
+            )}
+          </Field>
+        )}
+        {preset.dav === "ask" && <DavUrlFields calendarUrl={calendarUrl} setCalendarUrl={setCalendarUrl} contactsUrl={contactsUrl} setContactsUrl={setContactsUrl} />}
+        {typeof preset.dav === "object" && !preset.dav.separateSecret && (
+          <p className="flex gap-2 text-xs text-muted-foreground">
+            <Icon name="calendar_month" className="size-4 shrink-0" /> Calendars and contacts connect with the same password.
+          </p>
+        )}
       </FieldGroup>
 
       {add.error && (
@@ -268,6 +323,91 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
         </Badge>
         <Button type="submit" disabled={add.isPending}>
           {add.isPending ? "Connecting…" : "Add account"}
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+}
+
+/** The DAV part of a new account: preset servers, typed ones, or none. */
+function davFor(preset: Preset, calendarUrl: string, contactsUrl: string, davPassword: string): DavConfig | null {
+  if (preset.dav === "ask") {
+    const cal = calendarUrl.trim() || null
+    const card = contactsUrl.trim() || null
+    return cal || card ? { calendarUrl: cal, contactsUrl: card } : null
+  }
+  if (!preset.dav) return null
+  // A separate-secret preset only connects when that password was given.
+  return preset.dav.separateSecret && !davPassword ? null : preset.dav
+}
+
+function DavUrlFields({ calendarUrl, setCalendarUrl, contactsUrl, setContactsUrl }: { calendarUrl: string; setCalendarUrl: (v: string) => void; contactsUrl: string; setContactsUrl: (v: string) => void }) {
+  return (
+    <>
+      <Field>
+        <FieldLabel htmlFor="acct-caldav">Calendar server (CalDAV)</FieldLabel>
+        <Input id="acct-caldav" type="url" placeholder="https://dav.example.com/" value={calendarUrl} onChange={(e) => setCalendarUrl(e.target.value)} autoCapitalize="none" />
+        <FieldDescription>Optional. The server address is enough; we find your calendars from there.</FieldDescription>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="acct-carddav">Contacts server (CardDAV)</FieldLabel>
+        <Input id="acct-carddav" type="url" placeholder="https://dav.example.com/" value={contactsUrl} onChange={(e) => setContactsUrl(e.target.value)} autoCapitalize="none" />
+      </Field>
+    </>
+  )
+}
+
+/** Adds calendars and contacts to an account that only has mail. */
+function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => void }) {
+  const preset = PRESETS.find((p) => p.provider === account.provider && typeof p.dav === "object" && (p.jmap ? !!account.jmap : !account.jmap))
+  const fixed = preset && typeof preset.dav === "object" ? preset.dav : null
+  const [calendarUrl, setCalendarUrl] = useState(fixed?.calendarUrl ?? "")
+  const [contactsUrl, setContactsUrl] = useState(fixed?.contactsUrl ?? "")
+  // Without a preset, JMAP accounts (API tokens) need their own DAV password.
+  const separate = fixed?.separateSecret ?? !!account.jmap
+  const [password, setPassword] = useState("")
+  const qc = useQueryClient()
+  const connect = useMutation({
+    mutationFn: async () => {
+      const dav: DavConfig = { calendarUrl: calendarUrl.trim() || null, contactsUrl: contactsUrl.trim() || null, separateSecret: separate }
+      if (!dav.calendarUrl && !dav.contactsUrl) throw new Error("Enter a calendar or contacts server.")
+      return (await getCoreClient()).setAccountDav(account.id, dav, password || null)
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries()
+      toast.success("Calendars and contacts connected — syncing")
+      onDone()
+    },
+  })
+  return (
+    <form onSubmit={(e) => (e.preventDefault(), connect.mutate())} className="flex flex-col gap-4">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onDone} aria-label="Back">
+            <Icon name="arrow_back" />
+          </Button>
+          Calendars and contacts
+        </DialogTitle>
+        <DialogDescription>{account.address}</DialogDescription>
+      </DialogHeader>
+      <FieldGroup>
+        {!fixed && <DavUrlFields calendarUrl={calendarUrl} setCalendarUrl={setCalendarUrl} contactsUrl={contactsUrl} setContactsUrl={setContactsUrl} />}
+        <Field>
+          <FieldLabel htmlFor="dav-password">{separate ? "App password for calendars and contacts" : "Password"}</FieldLabel>
+          <Input id="dav-password" type="password" required={separate} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+          <FieldDescription>
+            {separate ? (preset?.davPasswordHelp?.text ?? "This server needs its own password for calendars.") : "Leave blank to use the account's saved password."}
+          </FieldDescription>
+        </Field>
+      </FieldGroup>
+      {connect.error && (
+        <p role="alert" className="flex gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <Icon name="error" className="mt-0.5 size-4 shrink-0" /> {connect.error.message}
+        </p>
+      )}
+      <DialogFooter>
+        <Button type="submit" disabled={connect.isPending}>
+          {connect.isPending ? "Connecting…" : "Connect"}
         </Button>
       </DialogFooter>
     </form>

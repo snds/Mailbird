@@ -37,6 +37,7 @@ pub(crate) const TIMEOUT: Duration = Duration::from_secs(30);
 
 pub const INBOX: &str = "INBOX";
 
+pub mod dav;
 pub mod jmap;
 
 trait Io: AsyncRead + AsyncWrite + Unpin + Send + Debug {}
@@ -536,6 +537,7 @@ mod tests {
             imap: server.clone(),
             smtp: ServerConfig { port: 465, ..server },
             jmap: None,
+            dav: None,
         }
     }
 

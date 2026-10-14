@@ -29,6 +29,7 @@ fn config() -> AccountConfig {
         imap: unused.clone(),
         smtp: unused,
         jmap: Some(JmapConfig { session_url: URL.into(), bearer: false }),
+        dav: None,
     }
 }
 

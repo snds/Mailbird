@@ -12,9 +12,12 @@
 //! - [`capabilities`] tells the UI what each provider supports.
 
 pub mod capabilities;
+pub mod ical;
 pub mod mime;
 pub mod model;
+mod pim_store;
 pub mod store;
+pub mod vcard;
 
 #[cfg(feature = "net")]
 pub mod net;

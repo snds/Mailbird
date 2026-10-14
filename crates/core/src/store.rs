@@ -33,7 +33,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -157,7 +157,7 @@ ALTER TABLE sync_state ADD COLUMN state TEXT;
 const MAX_INLINE_IMAGE: u64 = 3 * 1024 * 1024;
 
 pub struct Store {
-    db: Connection,
+    pub(crate) db: Connection,
 }
 
 impl Store {
@@ -188,6 +188,9 @@ impl Store {
         if version < 3 {
             tx.execute_batch(MIGRATE_V3)?;
         }
+        if version < 4 {
+            tx.execute_batch(crate::pim_store::MIGRATE_V4)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
         Ok(Self { db })
@@ -210,7 +213,7 @@ impl Store {
     pub fn accounts(&self) -> Result<Vec<Account>> {
         let mut stmt = self
             .db
-            .prepare("SELECT id, config, last_sync, last_error FROM accounts ORDER BY created_at")?;
+            .prepare("SELECT id, config, last_sync, last_error, dav_last_sync, dav_error FROM accounts ORDER BY created_at")?;
         let rows = stmt.query_map([], account_row)?;
         rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
     }
@@ -218,12 +221,32 @@ impl Store {
     pub fn account(&self, id: &str) -> Result<Account> {
         self.db
             .query_row(
-                "SELECT id, config, last_sync, last_error FROM accounts WHERE id = ?1",
+                "SELECT id, config, last_sync, last_error, dav_last_sync, dav_error FROM accounts WHERE id = ?1",
                 [id],
                 account_row,
             )
             .optional()?
             .ok_or_else(|| Error::NotFound("that account no longer exists".into()))
+    }
+
+    /// Connects (or disconnects, with `None`) calendars and contacts. Turning
+    /// DAV off drops the account's synced collections and everything in them.
+    pub fn set_account_dav(&self, id: &str, dav: Option<&crate::DavConfig>) -> Result<Account> {
+        let mut account = self.account(id)?;
+        account.config.dav = dav.cloned();
+        self.db.execute("UPDATE accounts SET config = ?2, dav_error = NULL WHERE id = ?1", params![id, json(&account.config)])?;
+        if dav.is_none() {
+            self.db.execute("DELETE FROM collections WHERE account_id = ?1", [id])?;
+        }
+        self.account(id)
+    }
+
+    pub fn record_dav_result(&self, account_id: &str, error: Option<&str>) -> Result<()> {
+        match error {
+            None => self.db.execute("UPDATE accounts SET dav_last_sync = ?2, dav_error = NULL WHERE id = ?1", params![account_id, now()])?,
+            Some(e) => self.db.execute("UPDATE accounts SET dav_error = ?2 WHERE id = ?1", params![account_id, e])?,
+        };
+        Ok(())
     }
 
     pub fn remove_account(&self, id: &str) -> Result<()> {
@@ -1132,6 +1155,8 @@ fn account_row(r: &Row) -> rusqlite::Result<Account> {
             .map_err(|e| rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(e)))?,
         last_sync: r.get(2)?,
         last_error: r.get(3)?,
+        dav_last_sync: r.get(4)?,
+        dav_error: r.get(5)?,
     })
 }
 
@@ -1153,11 +1178,11 @@ fn outbox_row(r: &Row) -> rusqlite::Result<OutboxItem> {
     })
 }
 
-fn json<T: serde::Serialize>(v: &T) -> String {
+pub(crate) fn json<T: serde::Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("model types always serialize")
 }
 
-fn from_json<T: serde::de::DeserializeOwned + Default>(s: String) -> T {
+pub(crate) fn from_json<T: serde::de::DeserializeOwned + Default>(s: String) -> T {
     serde_json::from_str(&s).unwrap_or_default()
 }
 
@@ -1190,6 +1215,7 @@ mod tests {
                 imap: server.clone(),
                 smtp: ServerConfig { port: 25, ..server },
                 jmap: None,
+                dav: None,
             })
             .unwrap();
         (s, a.id)

@@ -12,6 +12,8 @@ import { queryClient, useCoreEvents } from "@/core/queries"
 import { AccountsDialog } from "@/features/accounts"
 import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
+import { EventEditor } from "@/features/calendar/event-editor"
+import { ContactEditor } from "@/features/contacts/contact-editor"
 import { MailView } from "@/features/mail"
 import { Composer, OutboxWatcher } from "@/features/mail/composer"
 import { NotesView } from "@/features/notes"
@@ -26,6 +28,8 @@ const VIEWS: Record<VerticalId, () => React.JSX.Element> = {
 function Root() {
   const [active, setActive] = useState<VerticalId>("mail")
   const openComposer = useUi((s) => s.openComposer)
+  const openEventEditor = useUi((s) => s.openEventEditor)
+  const openContactEditor = useUi((s) => s.openContactEditor)
   const setAccountsOpen = useUi((s) => s.setAccountsOpen)
   useCoreEvents()
   const View = VIEWS[active]
@@ -36,16 +40,19 @@ function Root() {
         active={active}
         onNavigate={setActive}
         onSettings={() => setAccountsOpen(true)}
-        onCreate={() =>
-          active === "mail"
-            ? openComposer()
-            : toast(`${VERTICALS.find((v) => v.id === active)!.create.label} — coming soon`)
-        }
+        onCreate={() => {
+          if (active === "mail") openComposer()
+          else if (active === "calendar") openEventEditor()
+          else if (active === "contacts") openContactEditor()
+          else toast(`${VERTICALS.find((v) => v.id === active)!.create.label} — coming soon`)
+        }}
       >
         {/* key resets each vertical's selection when switching apps */}
         <View key={active} />
       </AppShell>
       <Composer />
+      <EventEditor />
+      <ContactEditor />
       <AccountsDialog />
       <OutboxWatcher />
     </>

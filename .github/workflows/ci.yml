@@ -52,8 +52,9 @@ jobs:
         if: failure()
         run: sudo tail -n 50 /tmp/mbtest/dovecot.log /tmp/mbtest/smtpd.log
 
-  # Real JMAP server (Stalwart, AGPL, test-only): sync, Email/changes, archive
-  # move, and EmailSubmission send. The server binary is cached between runs.
+  # Real JMAP + CalDAV/CardDAV server (Stalwart, AGPL, test-only): mail sync
+  # and send, plus calendar and contact sync between two devices. The server
+  # binary is cached between runs.
   jmap-integration:
     runs-on: ubuntu-latest
     steps:
@@ -69,6 +70,7 @@ jobs:
         run: tools/test-mail-servers/start-jmap.sh
         timeout-minutes: 45
       - run: cargo test -p pim-core --test jmap -- --ignored
+      - run: cargo test -p pim-core --test dav -- --ignored
       - name: Server log on failure
         if: failure()
         run: tail -n 80 /tmp/mbjmap/stalwart.log

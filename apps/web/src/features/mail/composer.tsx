@@ -13,6 +13,7 @@ import type { Draft, OutgoingAttachment } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 
 import { UNDO_SECONDS, formatRecipients, formatSize, parseRecipients } from "./format"
+import { RecipientInput } from "./recipient-input"
 import { FormatBar, RichEditor } from "./rich-editor"
 import { useRichEditor } from "./use-rich-editor"
 import { htmlToText, textToHtml } from "./rich-text"
@@ -215,7 +216,7 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
         </Row>
       )}
       <Row label="To" htmlFor="composer-to">
-        <input id="composer-to" className={bare} value={to} onChange={(e) => setTo(e.target.value)} data-composer-focus={initial.to?.length ? undefined : ""} inputMode="email" autoComplete="email" />
+        <RecipientInput id="composer-to" className={bare} value={to} onChange={setTo} data-composer-focus={initial.to?.length ? undefined : ""} inputMode="email" />
         {!showCc && (
           <Button type="button" variant="ghost" size="sm" onClick={() => setShowCc(true)}>
             Cc
@@ -224,7 +225,7 @@ function ComposerForm({ initial, onDone }: { initial: Partial<Draft>; onDone: ()
       </Row>
       {showCc && (
         <Row label="Cc" htmlFor="composer-cc">
-          <input id="composer-cc" className={bare} value={cc} onChange={(e) => setCc(e.target.value)} inputMode="email" />
+          <RecipientInput id="composer-cc" className={bare} value={cc} onChange={setCc} inputMode="email" />
         </Row>
       )}
       <Row label="Subject" htmlFor="composer-subject">

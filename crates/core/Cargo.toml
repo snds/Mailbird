@@ -20,6 +20,7 @@ net = [
   "dep:tokio-rustls",
   "dep:webpki-roots",
   "dep:reqwest",
+  "dep:quick-xml",
 ]
 
 [dependencies]
@@ -42,6 +43,11 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 webpki-roots = { version = "1.0", optional = true }
 # JMAP over HTTPS. No default TLS: we hand it the same rustls/ring config as IMAP.
 reqwest = { version = "0.13", default-features = false, features = ["json", "http2", "rustls-no-provider"], optional = true }
+# iCalendar + vCard parsing and recurrence expansion (Stalwart's, Apache-2.0 OR MIT).
+calcard = { version = "=0.3.14", default-features = false }
+# WebDAV multistatus parsing for CalDAV/CardDAV.
+quick-xml = { version = "0.42", optional = true }
+chrono = { version = "0.4", default-features = false }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

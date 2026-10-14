@@ -1,8 +1,18 @@
 import type {
   Account,
   AccountConfig,
+  Address,
   Capabilities,
+  Collection,
+  CollectionKind,
+  ContactDetail,
+  ContactInput,
+  ContactSummary,
+  DavConfig,
   Draft,
+  EventDetail,
+  EventInput,
+  Occurrence,
   MessageDetail,
   MessageQuery,
   MessageSummary,
@@ -20,7 +30,10 @@ export interface CoreClient {
   readonly kind: "native" | "demo"
   providerCapabilities(provider: Provider): Promise<Capabilities>
   listAccounts(): Promise<Account[]>
-  addAccount(config: AccountConfig, password: string): Promise<Account>
+  /** `davPassword` only when CalDAV needs its own app password. */
+  addAccount(config: AccountConfig, password: string, davPassword?: string | null): Promise<Account>
+  /** Connect (or, with null, disconnect) calendars and contacts. */
+  setAccountDav(id: string, dav: DavConfig | null, password?: string | null): Promise<Account>
   removeAccount(id: string): Promise<void>
   syncNow(): Promise<void>
   listMessages(query: MessageQuery): Promise<MessageSummary[]>
@@ -39,11 +52,33 @@ export interface CoreClient {
   queueSend(draft: Draft, undoSecs: number): Promise<OutboxItem>
   cancelSend(id: string): Promise<Draft>
   listOutbox(): Promise<OutboxItem[]>
+  // Calendars and contacts
+  setTimeZone(tz: string): Promise<void>
+  listCollections(kind: CollectionKind): Promise<Collection[]>
+  setCollectionHidden(id: string, hidden: boolean): Promise<void>
+  /** Occurrences overlapping [from, to), in seconds. */
+  listOccurrences(from: number, to: number): Promise<Occurrence[]>
+  /** One event at the occurrence starting at `start` (or its first). */
+  getEvent(id: string, start?: number | null): Promise<EventDetail>
+  createEvent(input: EventInput): Promise<EventDetail>
+  /** Edits the whole series. */
+  updateEvent(id: string, input: EventInput): Promise<EventDetail>
+  /** With `occurrence`, removes just that date of a series. */
+  deleteEvent(id: string, occurrence?: number | null): Promise<void>
+  listContacts(search?: string | null): Promise<ContactSummary[]>
+  getContact(id: string): Promise<ContactDetail>
+  createContact(input: ContactInput): Promise<ContactDetail>
+  updateContact(id: string, input: ContactInput): Promise<ContactDetail>
+  deleteContact(id: string): Promise<void>
+  duplicateContacts(): Promise<ContactSummary[][]>
+  mergeContacts(primary: string, others: string[]): Promise<ContactDetail>
+  suggestRecipients(prefix: string): Promise<Address[]>
+  syncPimNow(): Promise<void>
   /** Subscribe to core change events; returns an unsubscribe function. */
   on(event: CoreEvent, handler: (payload?: unknown) => void): () => void
 }
 
-export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed"
+export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed"
 
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
@@ -55,7 +90,8 @@ async function createTauriClient(): Promise<CoreClient> {
     kind: "native",
     providerCapabilities: (provider) => invoke("provider_capabilities", { provider }),
     listAccounts: () => invoke("list_accounts"),
-    addAccount: (config, password) => invoke("add_account", { config, password }),
+    addAccount: (config, password, davPassword) => invoke("add_account", { config, password, davPassword: davPassword ?? null }),
+    setAccountDav: (id, dav, password) => invoke("set_account_dav", { id, dav, password: password ?? null }),
     removeAccount: (id) => invoke("remove_account", { id }),
     syncNow: () => invoke("sync_now"),
     listMessages: (query) => invoke("list_messages", { query }),
@@ -70,6 +106,23 @@ async function createTauriClient(): Promise<CoreClient> {
     queueSend: (draft, undoSecs) => invoke("queue_send", { draft, undoSecs }),
     cancelSend: (id) => invoke("cancel_send", { id }),
     listOutbox: () => invoke("list_outbox"),
+    setTimeZone: (tz) => invoke("set_time_zone", { tz }),
+    listCollections: (kind) => invoke("list_collections", { kind }),
+    setCollectionHidden: (id, hidden) => invoke("set_collection_hidden", { id, hidden }),
+    listOccurrences: (from, to) => invoke("list_occurrences", { from, to }),
+    getEvent: (id, start) => invoke("get_event", { id, start: start ?? null }),
+    createEvent: (input) => invoke("create_event", { input }),
+    updateEvent: (id, input) => invoke("update_event", { id, input }),
+    deleteEvent: (id, occurrence) => invoke("delete_event", { id, occurrence: occurrence ?? null }),
+    listContacts: (search) => invoke("list_contacts", { search: search ?? null }),
+    getContact: (id) => invoke("get_contact", { id }),
+    createContact: (input) => invoke("create_contact", { input }),
+    updateContact: (id, input) => invoke("update_contact", { id, input }),
+    deleteContact: (id) => invoke("delete_contact", { id }),
+    duplicateContacts: () => invoke("duplicate_contacts"),
+    mergeContacts: (primary, others) => invoke("merge_contacts", { primary, others }),
+    suggestRecipients: (prefix) => invoke("suggest_recipients", { prefix }),
+    syncPimNow: () => invoke("sync_pim_now"),
     on(event, handler) {
       let off: (() => void) | undefined
       let cancelled = false

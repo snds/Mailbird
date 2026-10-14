@@ -1,5 +1,6 @@
 import type { CoreClient, CoreEvent } from "./client"
 import type { Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OutboxItem, Provider } from "./types"
+import { createDemoPim } from "./demo-pim"
 
 // An in-memory stand-in for the Rust core, so the web build is usable before
 // the gateway exists. It follows the same rules as crates/core/src/store.rs:
@@ -45,6 +46,7 @@ function seed(): { accounts: Account[]; messages: DemoMessage[] } {
   const account = (id: string, displayName: string, address: string): Account => ({
     id, displayName, address, username: address, provider: "generic",
     imap: server, smtp: { ...server, port: 465 }, lastSync: t, lastError: null,
+    dav: { calendarUrl: "https://demo.invalid/", contactsUrl: "https://demo.invalid/" }, davLastSync: t, davError: null,
   })
   const accounts = [account("personal", "Personal", "me@personal.example"), account("work", "Work", "me@studio.example")]
   const me = (acct: string) => ({ name: "Me", email: accounts.find((a) => a.id === acct)!.address })
@@ -187,6 +189,10 @@ export function createDemoClient(): CoreClient {
     removeAccount: async () => {
       throw new Error("Sample accounts can't be removed.")
     },
+    setAccountDav: async () => {
+      throw new Error("Connecting calendars needs the desktop app for now. The web version runs on sample data.")
+    },
+    ...createDemoPim(emit, later),
     syncNow: () => later(undefined),
 
     listMessages: (q: MessageQuery) => {

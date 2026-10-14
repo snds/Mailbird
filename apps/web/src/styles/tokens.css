@@ -148,6 +148,16 @@
   --c-composer-link: var(--primary);
   --c-composer-placeholder: var(--muted-foreground);
 
+  /* Calendar */
+  --c-event-fallback: var(--vertical-calendar);
+  /* How much of the calendar color tints an event's fill. */
+  --c-event-tint: 16%;
+  --c-event-tint-hover: 26%;
+  --c-calendar-hour-height: 3rem;
+  --c-calendar-gutter: 3.5rem;
+  --c-calendar-now: var(--vertical-calendar);
+  --c-calendar-today: var(--vertical-calendar);
+
   /* Icon defaults (Material Symbols axes) */
   --c-icon-fill: 0;
   --c-icon-wght: 400;

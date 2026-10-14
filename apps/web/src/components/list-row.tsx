@@ -55,13 +55,13 @@ export function ListRow({
   )
 }
 
-export function SearchField({ placeholder }: { placeholder: string }) {
+export function SearchField({ placeholder, value, onChange }: { placeholder: string; value?: string; onChange?: (v: string) => void }) {
   return (
     <InputGroup className="h-10 rounded-xl bg-background">
       <InputGroupAddon>
         <Icon name="search" />
       </InputGroupAddon>
-      <InputGroupInput placeholder={placeholder} aria-label={placeholder} />
+      <InputGroupInput type="search" placeholder={placeholder} aria-label={placeholder} value={value} onChange={onChange && ((e) => onChange(e.target.value))} />
     </InputGroup>
   )
 }

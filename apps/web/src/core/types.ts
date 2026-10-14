@@ -41,12 +41,25 @@ export interface AccountConfig {
   smtp: ServerConfig
   /** When set, mail syncs and sends over JMAP instead of IMAP/SMTP. */
   jmap?: JmapConfig | null
+  /** Calendars and contacts over CalDAV/CardDAV. */
+  dav?: DavConfig | null
+}
+
+export interface DavConfig {
+  /** CalDAV entry point: a server root (well-known discovery) or a known path. */
+  calendarUrl?: string | null
+  contactsUrl?: string | null
+  /** DAV signs in with its own app password (Fastmail). */
+  separateSecret?: boolean
 }
 
 export interface Account extends AccountConfig {
   id: string
   lastSync: number | null
   lastError: string | null
+  /** Calendar/contacts sync is tracked apart from mail. */
+  davLastSync: number | null
+  davError: string | null
 }
 
 export interface Address {
@@ -132,4 +145,100 @@ export interface OutboxItem {
   sendAt: number
   state: OutboxState
   error: string | null
+}
+
+// ── Calendars and contacts ───────────────────────────────────────────────
+
+export type CollectionKind = "calendar" | "contacts"
+
+export interface Collection {
+  id: string
+  /** null: lives only on this device. */
+  accountId: string | null
+  kind: CollectionKind
+  name: string
+  color: string | null
+  writable: boolean
+  hidden: boolean
+}
+
+/** "custom" is a richer rule from another app; edits keep it unchanged. */
+export type Repeat = "none" | "daily" | "weekly" | "monthly" | "yearly" | "custom"
+
+/** Wall-clock times in `timeZone` ("2026-10-14T09:30"); all-day uses dates with an exclusive end. */
+export interface EventInput {
+  calendarId: string
+  title: string
+  location?: string | null
+  notes?: string | null
+  start: string
+  end: string
+  allDay: boolean
+  timeZone: string
+  repeat: Repeat
+}
+
+/** One occurrence. Seconds since the epoch; all-day ones start at local midnight. */
+export interface Occurrence {
+  eventId: string
+  calendarId: string
+  title: string
+  location: string | null
+  start: number
+  end: number
+  allDay: boolean
+  recurring: boolean
+}
+
+export interface Attendee {
+  name: string | null
+  email: string
+  /** "accepted" | "declined" | "tentative" | "needs-action" … */
+  status: string | null
+}
+
+export interface EventDetail extends Occurrence {
+  notes: string | null
+  repeat: Repeat
+  timeZone: string | null
+  organizer: Address | null
+  attendees: Attendee[]
+  url: string | null
+  writable: boolean
+}
+
+export interface ContactField {
+  /** vCard TYPE: "work", "home", "cell"… */
+  label: string | null
+  value: string
+}
+
+export interface ContactInput {
+  bookId: string
+  fullName: string
+  emails: ContactField[]
+  phones: ContactField[]
+  org?: string | null
+  title?: string | null
+  note?: string | null
+  /** "YYYY-MM-DD", or "--MM-DD" without a year. */
+  birthday?: string | null
+}
+
+export interface ContactSummary {
+  id: string
+  bookId: string
+  fullName: string
+  org: string | null
+  emails: ContactField[]
+  phones: ContactField[]
+  /** data: URL; remote photos are never fetched. */
+  photo: string | null
+}
+
+export interface ContactDetail extends ContactSummary {
+  title: string | null
+  note: string | null
+  birthday: string | null
+  writable: boolean
 }

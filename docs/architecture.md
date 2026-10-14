@@ -56,8 +56,8 @@ All three come from `AppShell` + `MasterDetail` (`apps/web/src/app/shell.tsx`, `
 
 - **Local store:** SQLite (rusqlite, bundled) per device, with FTS5 for full-text search. Tantivy is deferred ([ADR-0007](decisions/0007-mail-engine.md)).
 - **Mail:** provider adapters (IMAP/SMTP and JMAP) sync into the local store. Lists are grouped into conversations, and attachments are decoded on demand from the stored raw message ([ADR-0008](decisions/0008-mail-depth.md)). Local changes queue as ops and are pushed first. Snooze, undo send, and send-later use the server where supported, and a local scheduler otherwise (`server_side_scheduling`). Details: [ADR-0007](decisions/0007-mail-engine.md).
-- **UI data flow:** the web app talks to one `CoreClient` (`apps/web/src/core/client.ts`). It runs over Tauri IPC natively and over an in-memory demo in the browser. TanStack Query caches the results, and core events (`mail:changed`, `outbox:changed`, `accounts:changed`) invalidate the cache, so nothing polls.
-- **Calendar and contacts:** CalDAV/CardDAV via `libdav`, Graph, and the Google APIs. iCalendar and vCard parsing uses `calcard`.
+- **UI data flow:** the web app talks to one `CoreClient` (`apps/web/src/core/client.ts`). It runs over Tauri IPC natively and over an in-memory demo in the browser. TanStack Query caches the results, and core events (`mail:changed`, `outbox:changed`, `accounts:changed`, `pim:changed`) invalidate the cache, so nothing polls.
+- **Calendar and contacts:** CalDAV/CardDAV through a small client on the same `reqwest` stack as JMAP (Graph and the Google APIs come in Phase 4). `calcard` parses iCalendar and vCard, expands recurrences, and writes VTIMEZONEs. Each row keeps the server's resource verbatim, and edits splice into it, so nothing we don't model is lost ([ADR-0010](decisions/0010-calendar-contacts.md)).
 - **Notes:** Markdown at rest. Yjs CRDT for multi-device sync through our own optional, self-hostable relay. Import from Apple Notes (Markdown export) and Google Keep (Takeout) ([ADR-0005](decisions/0005-notes.md)).
 - **Secrets:** OS keychain via `keyring`. Never in SQLite, never in web storage.
 

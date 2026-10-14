@@ -129,3 +129,19 @@
     }
   }
 }
+
+/* Event chips take one input, --event (the calendar's color), and derive
+   fill, edge, and text from it so any server color stays legible. */
+@layer components {
+  .event-chip {
+    background: color-mix(in oklab, var(--event) var(--c-event-tint), var(--background));
+    border-left: 3px solid var(--event);
+    color: color-mix(in oklab, var(--event) 35%, var(--foreground));
+    &:hover {
+      background: color-mix(in oklab, var(--event) var(--c-event-tint-hover), var(--background));
+    }
+  }
+  .event-dot {
+    background: var(--event);
+  }
+}
