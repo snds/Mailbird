@@ -60,8 +60,52 @@ pub fn delete_event(app: AppHandle, state: &Shared, id: String, occurrence: Opti
     Ok(())
 }
 
-pub fn list_contacts(state: &Shared, search: Option<String>) -> Res<Vec<ContactSummary>> {
-    with_store(state, |s| s.contacts(search.as_deref()))
+pub fn list_contacts(state: &Shared, search: Option<String>, label: Option<String>) -> Res<Vec<ContactSummary>> {
+    with_store(state, |s| s.contacts_labeled(search.as_deref(), label.as_deref()))
+}
+
+/// Every label in use, with counts (ADR-0020).
+pub fn contact_labels(state: &Shared) -> Res<Vec<pim_core::ContactLabel>> {
+    with_store(state, |s| s.contact_labels())
+}
+
+/// Recently deleted contacts (30 days).
+pub fn deleted_contacts(state: &Shared) -> Res<Vec<pim_core::DeletedContact>> {
+    with_store(state, |s| s.deleted_contacts())
+}
+
+pub fn restore_contact(app: AppHandle, state: &Shared, id: String) -> Res<ContactDetail> {
+    let c = with_store(state, |s| s.restore_contact(&id))?;
+    edited(&app, state);
+    Ok(c)
+}
+
+/// The card as a `.vcf` file to save or share.
+pub fn contact_vcard(state: &Shared, id: String) -> Res<pim_core::ContactExport> {
+    with_store(state, |s| s.contact_vcard(&id))
+}
+
+/// Saves the card to Downloads (desktop and phones); returns where it went.
+pub fn save_contact_vcard(app: AppHandle, state: &Shared, id: String) -> Res<String> {
+    let file = with_store(state, |s| s.contact_vcard(&id))?;
+    let path = crate::commands::unique_path(&app.download_dir()?, &crate::commands::safe_filename(&file.file_name));
+    std::fs::write(&path, file.vcf).map_err(|e| format!("couldn't save {}: {e}", file.file_name))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// A QR code (SVG) of a short card, to scan with a phone.
+pub fn contact_qr(state: &Shared, id: String) -> Res<String> {
+    with_store(state, |s| s.contact_qr(&id))
+}
+
+/// A contact (or missing details) from a message's signature, if it has one.
+pub fn contact_suggestion(state: &Shared, message_id: String) -> Res<Option<pim_core::ContactSuggestion>> {
+    with_store(state, |s| s.contact_suggestion(&message_id))
+}
+
+/// Pasted signature text, read into a card for the editor.
+pub fn parse_signature(text: String) -> pim_core::SignatureCard {
+    pim_core::signature::parse_signature(&text, None)
 }
 
 pub fn get_contact(state: &Shared, id: String) -> Res<ContactDetail> {

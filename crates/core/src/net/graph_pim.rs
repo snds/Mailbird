@@ -484,6 +484,11 @@ pub fn contact_to_vcf(c: &Value) -> String {
     if let Some(b) = s("birthday").and_then(|b| b.get(..10)) {
         lines.push(format!("BDAY:{}", b.replace('-', "")));
     }
+    // Outlook categories are labels.
+    let categories: Vec<String> = c["categories"].as_array().into_iter().flatten().filter_map(Value::as_str).map(|l| esc(&l.replace(',', " "))).filter(|l| !l.is_empty()).collect();
+    if !categories.is_empty() {
+        lines.push(format!("CATEGORIES:{}", categories.join(",")));
+    }
     lines.push("END:VCARD".into());
     lines.iter().map(|l| format!("{l}\r\n")).collect()
 }
@@ -518,6 +523,7 @@ pub fn contact_json(vcf: &str) -> Result<Value> {
         "jobTitle": m.title,
         "personalNotes": m.note.clone().unwrap_or_default(),
         "birthday": birthday,
+        "categories": m.labels,
     }))
 }
 
@@ -880,7 +886,8 @@ mod tests {
             "id": "AAMkC1", "displayName": "Ana Duarte", "givenName": "Ana", "surname": "Duarte",
             "emailAddresses": [{ "name": "Ana", "address": "ana@example.com" }],
             "businessPhones": ["+1 555 0100"], "homePhones": [], "mobilePhone": "+1 555 0199",
-            "companyName": "Contoso; Ltd", "jobTitle": "Designer", "personalNotes": "Met at Config", "birthday": "1990-05-01T11:59:00Z"
+            "companyName": "Contoso; Ltd", "jobTitle": "Designer", "personalNotes": "Met at Config", "birthday": "1990-05-01T11:59:00Z",
+            "categories": ["Clay club", "Red category"]
         });
         let vcf = contact_to_vcf(&c);
         assert!(vcf.contains("UID:AAMkC1\r\n") && vcf.contains("N:Duarte;Ana;;;") && vcf.contains("ORG:Contoso\\; Ltd"));
@@ -892,6 +899,8 @@ mod tests {
         assert_eq!(back["birthday"], "1990-05-01T12:00:00Z");
         assert_eq!(back["emailAddresses"][0]["address"], "ana@example.com");
         assert_eq!(back["companyName"], "Contoso; Ltd");
+        assert_eq!(meta.labels, vec!["Clay club", "Red category"], "categories are labels");
+        assert_eq!(back["categories"], json!(["Clay club", "Red category"]));
     }
 
     #[test]

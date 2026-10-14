@@ -240,6 +240,7 @@ mod tests {
             title: None,
             note: None,
             birthday: birthday.map(Into::into),
+            labels: None,
         })
         .unwrap()
         .summary

@@ -92,7 +92,7 @@ const MAX_LEAD_MINUTES: i64 = 14 * 24 * 60;
 const SLACK: i64 = 86_400;
 
 const SYNCED: &str = "synced";
-const CHANGED: &str = "changed";
+pub(crate) const CHANGED: &str = "changed";
 const DELETED: &str = "deleted";
 
 fn table(kind: CollectionKind) -> &'static str {
@@ -138,7 +138,7 @@ fn sort_key(meta: &vcard::ContactMeta) -> String {
     format!("{} {}", lead.to_lowercase(), meta.full_name.to_lowercase())
 }
 
-fn name_key(name: &str) -> String {
+pub(crate) fn name_key(name: &str) -> String {
     name.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
@@ -545,30 +545,38 @@ impl Store {
             emails: from_json(r.get(4)?),
             phones: from_json(r.get(5)?),
             photo: r.get(6)?,
+            labels: from_json(r.get(7)?),
         })
     }
 
     /// Contacts in visible address books, by family name. `search` matches
     /// names, companies, emails, and phone numbers.
     pub fn contacts(&self, search: Option<&str>) -> Result<Vec<ContactSummary>> {
+        self.contacts_labeled(search, None)
+    }
+
+    /// The same, narrowed to one label (case doesn't matter).
+    pub fn contacts_labeled(&self, search: Option<&str>, label: Option<&str>) -> Result<Vec<ContactSummary>> {
         let like = search.map(str::trim).filter(|s| !s.is_empty()).map(|s| format!("%{}%", s.replace(['%', '_'], "")));
+        let label = label.map(str::trim).filter(|l| !l.is_empty());
         let mut st = self.db.prepare(
-            "SELECT k.id, k.collection_id, k.full_name, k.org, k.emails, k.phones, k.photo FROM contacts k
+            "SELECT k.id, k.collection_id, k.full_name, k.org, k.emails, k.phones, k.photo, k.labels FROM contacts k
              JOIN collections c ON c.id = k.collection_id
              WHERE c.hidden = 0 AND k.state != 'deleted'
                AND (?1 IS NULL OR k.full_name LIKE ?1 OR k.org LIKE ?1 OR k.emails LIKE ?1 OR k.phones LIKE ?1)
+               AND (?2 IS NULL OR EXISTS (SELECT 1 FROM json_each(k.labels) l WHERE lower(l.value) = lower(?2)))
              ORDER BY k.sort_key",
         )?;
-        Ok(st.query_map([like], Self::contact_summary)?.collect::<rusqlite::Result<_>>()?)
+        Ok(st.query_map(params![like, label], Self::contact_summary)?.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn contact(&self, id: &str) -> Result<ContactDetail> {
         let (summary, vcf): (ContactSummary, String) = self
             .db
             .query_row(
-                "SELECT id, collection_id, full_name, org, emails, phones, photo, vcf FROM contacts WHERE id = ?1 AND state != 'deleted'",
+                "SELECT id, collection_id, full_name, org, emails, phones, photo, labels, vcf FROM contacts WHERE id = ?1 AND state != 'deleted'",
                 [id],
-                |r| Ok((Self::contact_summary(r)?, r.get(7)?)),
+                |r| Ok((Self::contact_summary(r)?, r.get(8)?)),
             )
             .optional()?
             .ok_or_else(|| Error::NotFound("that contact was deleted".into()))?;
@@ -581,22 +589,22 @@ impl Store {
         vcard::read_contact(vcf).unwrap_or_else(|_| vcard::ContactMeta { full_name: "(unreadable contact)".into(), ..Default::default() })
     }
 
-    fn insert_contact(&self, book_id: &str, href: Option<&str>, etag: Option<&str>, vcf: &str, state: &str) -> Result<String> {
+    pub(crate) fn insert_contact(&self, book_id: &str, href: Option<&str>, etag: Option<&str>, vcf: &str, state: &str) -> Result<String> {
         let m = Self::index_contact(vcf);
         let id = uuid::Uuid::new_v4().to_string();
         self.db.execute(
-            "INSERT INTO contacts (id, collection_id, href, etag, uid, vcf, state, full_name, sort_key, org, emails, phones, photo, birthday)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![id, book_id, href, etag, m.uid, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo, m.birthday],
+            "INSERT INTO contacts (id, collection_id, href, etag, uid, vcf, state, full_name, sort_key, org, emails, phones, photo, birthday, labels)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![id, book_id, href, etag, m.uid, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo, m.birthday, json(&m.labels)],
         )?;
         Ok(id)
     }
 
-    fn rewrite_contact(&self, id: &str, vcf: &str, state: &str) -> Result<()> {
+    pub(crate) fn rewrite_contact(&self, id: &str, vcf: &str, state: &str) -> Result<()> {
         let m = Self::index_contact(vcf);
         self.db.execute(
-            "UPDATE contacts SET vcf = ?2, state = ?3, full_name = ?4, sort_key = ?5, org = ?6, emails = ?7, phones = ?8, photo = ?9, birthday = ?10 WHERE id = ?1",
-            params![id, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo, m.birthday],
+            "UPDATE contacts SET vcf = ?2, state = ?3, full_name = ?4, sort_key = ?5, org = ?6, emails = ?7, phones = ?8, photo = ?9, birthday = ?10, labels = ?11 WHERE id = ?1",
+            params![id, vcf, state, m.full_name, sort_key(&m), m.org, json(&m.emails), json(&m.phones), m.photo, m.birthday, json(&m.labels)],
         )?;
         Ok(())
     }
@@ -627,9 +635,11 @@ impl Store {
         self.contact(&new_id)
     }
 
+    /// Deletes a contact, keeping a copy in Recently deleted for 30 days.
     pub fn delete_contact(&self, id: &str) -> Result<()> {
         let book_id: String = self.db.query_row("SELECT collection_id FROM contacts WHERE id = ?1", [id], |r| r.get(0))?;
         let c = self.writable(&book_id)?;
+        self.trash_contact(id)?;
         self.remove_item(CollectionKind::Contacts, id, &c)
     }
 
@@ -687,6 +697,8 @@ impl Store {
                 self.db.query_row("SELECT collection_id, vcf FROM contacts WHERE id = ?1", [other], |r| Ok((r.get(0)?, r.get(1)?)))?;
             vcf = vcard::merge_contacts(&vcf, &other_vcf)?;
             let ob = self.writable(&other_book)?;
+            // A merge can be undone from Recently deleted too.
+            self.trash_contact(other)?;
             self.remove_item(CollectionKind::Contacts, other, &ob)?;
         }
         self.rewrite_contact(primary, &vcf, Self::edit_state(&c))?;
@@ -858,6 +870,7 @@ mod tests {
             title: None,
             note: None,
             birthday: None,
+            labels: None,
         }
     }
 

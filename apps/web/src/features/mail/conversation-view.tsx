@@ -21,6 +21,7 @@ import { HtmlBody } from "./html-body"
 import { LinkedNotes } from "../notes/linked-notes"
 import { InviteCard } from "./invite-card"
 import { FollowUpAtMenu } from "./send-later"
+import { SignatureSuggestion } from "./signature-suggestion"
 import { SnoozeMenu } from "./snooze-menu"
 import { UnsubscribeButton } from "./unsubscribe-button"
 import { CATEGORIES } from "./lanes"
@@ -167,6 +168,7 @@ function MessageCard({ message, expanded, onToggle, accountAddress }: { message:
           ) : (
             <div className="text-[15px] leading-relaxed break-words whitespace-pre-line">{message.bodyText}</div>
           )}
+          {!mine && <SignatureSuggestion messageId={message.id} />}
           {files.length > 0 && (
             <div className="flex flex-wrap gap-2" aria-label="Attachments">
               {files.map((f) => (

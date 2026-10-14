@@ -36,7 +36,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 9;
+const SCHEMA_VERSION: i64 = 10;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -209,6 +209,9 @@ impl Store {
         if version < 9 {
             tx.execute_batch(crate::connected_store::MIGRATE_V9)?;
         }
+        if version < 10 {
+            tx.execute_batch(crate::contacts_store::MIGRATE_V10)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
         let store = Self { db };
@@ -223,6 +226,10 @@ impl Store {
         if (4..9).contains(&version) {
             // Contacts stored before birthdays had a column.
             store.backfill_birthdays()?;
+        }
+        if (4..10).contains(&version) {
+            // Contacts stored before labels had a column.
+            store.backfill_labels()?;
         }
         Ok(store)
     }

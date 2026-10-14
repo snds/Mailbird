@@ -5,6 +5,8 @@ import type {
 } from "./types"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
+import { signatureFromMessage } from "./demo-signature"
+import { downloadVcard } from "@/lib/download"
 
 // An in-memory stand-in for the Rust core, so the web build is usable before
 // the gateway exists. It follows the same rules as crates/core/src/store.rs:
@@ -131,7 +133,7 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
 <p><a href="https://example.com/issue-212">Read the issue →</a></p>`,
         }),
       msg("personal", { name: "Ana Duarte", email: "ana@example.com" }, "Photos from the trip",
-        "Finally sorted them. The lighthouse ones came out great — two favorites attached.", 3 * 24 * HOUR, {
+        "Finally sorted them. The lighthouse ones came out great — two favorites attached.\n\nAna Duarte\nLighthouse Studio\nm: +351 913 555 010", 3 * 24 * HOUR, {
           seen: true, flagged: true,
           ...withFiles([
             file("att-light", "lighthouse.png", "image/png", swatch(37, 99, 235)),
@@ -139,10 +141,10 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
           ]),
         }),
       msg("work", { name: "Sam Okafor", email: "sam@example.com" }, "Density modes proposal",
-        "Attached the comfortable / compact spec. The list row drops to 56px in compact.", 4 * 24 * HOUR, { seen: true, archived: true }),
+        "Attached the comfortable / compact spec. The list row drops to 56px in compact.\n\n-- \nSam Okafor\nEngineer | Studio\nm: +1 555 010 2200", 4 * 24 * HOUR, { seen: true, archived: true }),
       // `?screener`: a first-time sender, waiting in the Screener (it's on).
       ...(new URLSearchParams(globalThis.location?.search ?? "").has("screener")
-        ? [msg("personal", { name: "Riley Growth", email: "hi@growth.example" }, "Quick question about your studio", "Saw your work online. Do you have 15 minutes this week?", 0.5 * HOUR)]
+        ? [msg("personal", { name: "Riley Growth", email: "hi@growth.example" }, "Quick question about your studio", "Saw your work online. Do you have 15 minutes this week?\n\nThanks,\nRiley Park\nGrowth lead at Northwind\n+1 555 010 9000", 0.5 * HOUR)]
         : []),
       // Sent with a follow-up reminder that hasn't come due (the Waiting lane).
       msg("personal", me("personal"), "Quote for the kitchen shelves", "Hi Jo, could you send a quote for the oak shelves we talked about?", 22 * HOUR, {
@@ -290,7 +292,7 @@ export function createDemoClient(): CoreClient {
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
-  const { noteLinks, ...pimApi } = pim
+  const { noteLinks, suggestFor, ...pimApi } = pim
   const notes = createDemoNotes(emit, later, {
     linkFor: (t) => {
       if (t.kind === "event") {
@@ -369,6 +371,13 @@ export function createDemoClient(): CoreClient {
       throw new Error("Connecting calendars needs the desktop app for now. The web version runs on sample data.")
     },
     ...pimApi,
+    saveContactVcard: async (id) => downloadVcard(await pimApi.contactVcard(id)),
+    contactSuggestion: async (messageId) => {
+      const m = state.messages.find((x) => x.id === messageId)
+      if (!m || m.mailbox === SENT || categoryOf(m) !== "people" || state.accounts.some((a) => a.address === m.from.email)) return later(null)
+      const card = signatureFromMessage(m.bodyText, m.from.name)
+      return later(card && suggestFor(m.from.email, m.from.name, card))
+    },
     contactActivity: async (id) => {
       const { contactMeetings, getContact } = pimApi
       const emails = (await getContact(id)).emails.map((e) => e.value.trim().toLowerCase())

@@ -6,7 +6,8 @@ import { EditorFrame, EditorHeader } from "@/components/editor-frame"
 import { Icon } from "@/components/icon"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { useAccounts, useCollections, usePimAction } from "@/core/queries"
+import { getCoreClient } from "@/core/client"
+import { useAccounts, useCollections, useContactLabels, usePimAction } from "@/core/queries"
 import type { ContactField, ContactInput } from "@/core/types"
 
 const EMAIL_LABELS = ["home", "work", "other"]
@@ -23,6 +24,54 @@ export function ContactEditor() {
 }
 
 const bare = "h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+
+/** Labels as removable chips, plus a field that suggests labels already in use. */
+function LabelField({ values, onChange }: { values: string[]; onChange: (v: string[]) => void }) {
+  const { data: known = [] } = useContactLabels()
+  const [draft, setDraft] = useState("")
+  const add = (raw: string) => {
+    const l = raw.trim().replace(/,/g, " ")
+    // Reuse an existing label's spelling, so "clay club" joins "Clay club".
+    const name = known.find((k) => k.name.toLowerCase() === l.toLowerCase())?.name ?? l
+    if (name && !values.some((v) => v.toLowerCase() === name.toLowerCase())) onChange([...values, name])
+    setDraft("")
+  }
+  return (
+    <div className="flex min-h-12 flex-wrap items-center gap-1.5 border-b px-4 py-2" role="group" aria-label="Labels">
+      <span className="w-24 shrink-0 text-sm text-muted-foreground">Labels</span>
+      {values.map((l) => (
+        <span key={l} className="inline-flex h-7 items-center gap-1 rounded-full bg-muted pr-1 pl-2.5 text-xs font-medium">
+          {l}
+          <button type="button" aria-label={`Remove label ${l}`} className="flex size-5 items-center justify-center rounded-full hover:bg-foreground/10" onClick={() => onChange(values.filter((v) => v !== l))}>
+            <Icon name="close" className="size-3.5" />
+          </button>
+        </span>
+      ))}
+      <input
+        className="h-8 min-w-24 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        placeholder={values.length ? "Add" : "Add a label"}
+        aria-label="Add a label"
+        list="contact-label-options"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => draft.trim() && add(draft)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault()
+            // Enter adds a label here; it doesn't submit the form.
+            e.stopPropagation()
+            if (draft.trim()) add(draft)
+          } else if (e.key === "Backspace" && !draft && values.length) onChange(values.slice(0, -1))
+        }}
+      />
+      <datalist id="contact-label-options">
+        {known.filter((k) => !values.some((v) => v.toLowerCase() === k.name.toLowerCase())).map((k) => (
+          <option key={k.name} value={k.name} />
+        ))}
+      </datalist>
+    </div>
+  )
+}
 
 /** A repeatable label + value list (emails, phone numbers). */
 function FieldList({ kind, values, onChange, labels }: { kind: "email" | "phone"; values: ContactField[]; onChange: (v: ContactField[]) => void; labels: string[] }) {
@@ -76,6 +125,25 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
   const [phones, setPhones] = useState<ContactField[]>(initial.phones ?? [])
   const [birthday, setBirthday] = useState(initial.birthday?.startsWith("--") ? "" : (initial.birthday ?? ""))
   const [note, setNote] = useState(initial.note ?? "")
+  const [labels, setLabels] = useState<string[]>(initial.labels ?? [])
+  const [pasting, setPasting] = useState(false)
+  const [pasted, setPasted] = useState("")
+  // Fills the form from a pasted signature; what you've typed stays unless the signature has it.
+  const fillFrom = async () => {
+    const card = await (await getCoreClient()).parseSignature(pasted)
+    if (card.fullName) setFullName(card.fullName)
+    if (card.org) setOrg(card.org)
+    if (card.title) setTitle(card.title)
+    const kept = <T extends ContactField>(have: T[], more: T[]) => [...have.filter((f) => f.value.trim()), ...more.filter((m) => !have.some((h) => h.value.trim().toLowerCase() === m.value.trim().toLowerCase()))]
+    if (card.emails.length) setEmails((e) => kept(e, card.emails))
+    if (card.phones.length) setPhones((p) => kept(p, card.phones))
+    const found = [card.fullName && "name", card.title && "title", card.org && "company", card.phones.length && "phone", card.emails.length && "email"].filter(Boolean)
+    if (found.length) {
+      toast.success(`Filled in ${found.join(", ")}`, { duration: 2500 })
+      setPasting(false)
+      setPasted("")
+    } else toast.error("Couldn't find a name, phone, or email in that text")
+  }
   const [chosen, setBook] = useState(initial.bookId ?? "")
   const bookId = chosen || writable[0]?.id || ""
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +161,8 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
       // A yearless birthday from another app stays as it was unless replaced.
       birthday: birthday || (initial.birthday?.startsWith("--") ? initial.birthday : null),
       note: note.trim() || null,
+      // An editor opened without the card's labels leaves them alone.
+      labels: initial.labels !== undefined || labels.length ? labels : null,
     }
     try {
       await save.mutateAsync(input)
@@ -116,6 +186,31 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {!contactId &&
+          (pasting ? (
+            <div className="flex flex-col gap-2 border-b bg-muted/40 px-4 py-3">
+              <textarea
+                aria-label="Signature"
+                placeholder={"Paste an email signature, like:\nPriya Raman\nDesign systems lead | Studio\nm: +1 555 010 4410"}
+                className="min-h-28 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setPasting(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" size="sm" disabled={!pasted.trim()} onClick={() => void fillFrom().catch((e) => toast.error(String(e)))}>
+                  Fill in
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="flex h-11 w-full items-center gap-2 border-b px-4 text-sm text-primary hover:bg-muted/50" onClick={() => setPasting(true)}>
+              <Icon name="content_paste" className="size-4" /> Paste a signature to fill this in
+            </button>
+          ))}
         <div className="border-b px-4 py-2">
           <input aria-label="Name" placeholder="Name" autoComplete="name" className="h-11 w-full bg-transparent text-lg font-medium outline-none placeholder:text-muted-foreground" value={fullName} onChange={(e) => setFullName(e.target.value)} data-editor-focus="" />
           <input aria-label="Company" placeholder="Company" autoComplete="organization" className={`${bare} w-full`} value={org} onChange={(e) => setOrg(e.target.value)} />
@@ -123,6 +218,7 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
         </div>
         <FieldList kind="email" values={emails} onChange={setEmails} labels={EMAIL_LABELS} />
         <FieldList kind="phone" values={phones} onChange={setPhones} labels={PHONE_LABELS} />
+        <LabelField values={labels} onChange={setLabels} />
         <label className="flex min-h-12 items-center gap-3 border-b px-4">
           <span className="w-24 shrink-0 text-sm text-muted-foreground">Birthday</span>
           <input type="date" aria-label="Birthday" className="ml-auto h-9 rounded-lg border bg-transparent px-2 text-sm dark:bg-input/30" value={birthday} onChange={(e) => setBirthday(e.target.value)} />

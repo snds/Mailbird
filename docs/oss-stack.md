@@ -38,6 +38,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | cmdk | Command palette | 1.1 | MIT | 🟦 | shadcn Command. |
 | sonner | Toasts / undo | 2.0 | MIT | 🟦 | — |
 | cmdk | ⌘K command menu (shadcn Command) | 1.1 | MIT | ✅ | Uses four small Radix packages (dialog, id, primitive, compose-refs), all MIT. |
+| uqr | QR codes in the web demo only (the apps get theirs from the core) | 0.1.3 | MIT | ✅ | No dependencies; loaded only when a demo QR code is shown. |
 | react-hook-form + zod | Forms | 7.90 / 4.6 | MIT | 🟦 | — |
 | i18next | Localization | 26 | MIT | 🟦 | — |
 | vite-plugin-pwa | Installable web app | 2.0 | MIT | 🟦 | Confirm Vite 8 compatibility. |
@@ -70,6 +71,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | libdav | CalDAV / CardDAV client | 0.11 | ISC | ⚪ (not used: brings its own hyper stack; our small client on reqwest covers it, ADR-0010) |
 | quick-xml | WebDAV multistatus parsing | 0.42 | MIT | ✅ |
 | chrono | Date math (calcard's types) | 0.4 | MIT OR Apache-2.0 | ✅ |
+| qrcode | A contact as a QR code (SVG), ADR-0020 | 0.14 (no default features, `svg` only) | MIT OR Apache-2.0 | ✅ |
 | rusqlite (bundled) | Local store | 0.40 | MIT | ✅ |
 | SQLite FTS5 (in rusqlite) | Full-text search | — | Public domain | ✅ |
 | tantivy | Full-text search at scale | 0.26 | MIT | ⚪ (deferred, ADR-0007) |

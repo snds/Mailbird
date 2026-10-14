@@ -191,6 +191,7 @@ async fn dav_round_trip() {
         title: None,
         note: None,
         birthday: None,
+        labels: None,
     };
     let ana = a.create_contact(&person("Ana Duarte", "ana@studio.example")).unwrap();
     let dup = a.create_contact(&person("Ana D.", "ANA@studio.example")).unwrap();

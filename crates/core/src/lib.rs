@@ -14,10 +14,14 @@
 pub mod capabilities;
 mod compose_store;
 mod connected_store;
+mod contacts_store;
 pub mod ical;
 pub mod itip;
 pub use connected_store::BIRTHDAY_PREFIX;
+pub use contacts_store::{ContactExport, ContactLabel, ContactSuggestion, DeletedContact};
+pub use signature::SignatureCard;
 pub mod meeting;
+pub mod signature;
 pub mod mime;
 pub mod model;
 mod pim_store;

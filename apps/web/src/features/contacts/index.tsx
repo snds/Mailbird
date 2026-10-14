@@ -5,12 +5,14 @@ import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon } from "@/components/icon"
 import { ListRow, SearchField } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
-import { useContacts, useDuplicates } from "@/core/queries"
+import { Button } from "@/components/ui/button"
+import { useContactLabels, useContacts, useDeletedContacts, useDuplicates } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 
 import { ContactDetailPane } from "./contact-detail"
 import { DuplicatesPane } from "./duplicates"
 import { PersonAvatar } from "./person"
+import { RecentlyDeletedPane } from "./recently-deleted"
 
 /** Section letter for the A–Z list (accents fold: "Élodie" files under E). */
 const letter = (c: ContactSummary) => {
@@ -20,7 +22,7 @@ const letter = (c: ContactSummary) => {
   return /[A-Z]/.test(base) ? base : "#"
 }
 
-type Selection = { kind: "contact"; id: string } | { kind: "duplicates" } | null
+type Selection = { kind: "contact"; id: string } | { kind: "duplicates" } | { kind: "deleted" } | null
 
 export function ContactsView() {
   const [selected, setSelected] = useState<Selection>(() => {
@@ -28,10 +30,25 @@ export function ContactsView() {
     return j ? { kind: "contact", id: j.id } : null
   })
   useEffect(() => void useUi.getState().takeJump("contact"), [])
+  // A jump while Contacts is already open (a birthday, an Undo) selects that card.
+  useEffect(
+    () =>
+      useUi.subscribe((s) => {
+        if (s.jump?.kind !== "contact") return
+        setSelected({ kind: "contact", id: s.jump.id })
+        s.takeJump("contact")
+      }),
+    [],
+  )
   const [search, setSearch] = useState("")
+  const [label, setLabel] = useState<string | null>(null)
   const query = useDeferredValue(search.trim())
-  const { data: contacts = [], isPending } = useContacts(query)
+  const { data: labels = [] } = useContactLabels()
+  // A label that's gone (its last contact edited or deleted) stops filtering.
+  const active = label && labels.some((l) => l.name === label) ? label : null
+  const { data: contacts = [], isPending } = useContacts(query, active)
   const { data: dupes = [] } = useDuplicates()
+  const { data: gone = [] } = useDeletedContacts()
 
   // The core sorts by family name; group consecutive rows by that letter.
   const sections: { letter: string; items: ContactSummary[] }[] = []
@@ -51,12 +68,22 @@ export function ContactsView() {
           <PaneHeader title="Contacts" />
           <div className="px-4 pb-3">
             <SearchField placeholder="Search people" value={search} onChange={setSearch} />
+            {labels.length > 0 && (
+              <div role="group" aria-label="Labels" className="-mx-4 no-scrollbar mt-3 flex gap-1.5 overflow-x-auto px-4">
+                {[{ name: null, count: 0 } as const, ...labels].map((l) => (
+                  <Button key={l.name ?? "all"} size="xs" variant={active === l.name ? "secondary" : "ghost"} aria-pressed={active === l.name} className="shrink-0 rounded-full px-3" onClick={() => setLabel(l.name)}>
+                    {l.name ?? "All"}
+                    {l.name && <span className="text-muted-foreground tabular-nums">{l.count}</span>}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         </>
       }
       list={
         <div role="list" aria-label="Contacts">
-          {dupes.length > 0 && !query && (
+          {dupes.length > 0 && !query && !active && (
             <button
               type="button"
               onClick={() => setSelected({ kind: "duplicates" })}
@@ -74,7 +101,9 @@ export function ContactsView() {
             </button>
           )}
           {!isPending && contacts.length === 0 && (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{query ? `No one matches “${query}”.` : "No contacts yet."}</p>
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+              {query ? `No one matches “${query}”${active ? ` in ${active}` : ""}.` : active ? `No one has the ${active} label.` : "No contacts yet."}
+            </p>
           )}
           {sections.map((s) => (
             <section key={s.letter} aria-label={s.letter}>
@@ -92,10 +121,25 @@ export function ContactsView() {
               ))}
             </section>
           ))}
+          {gone.length > 0 && !query && !active && (
+            <button
+              type="button"
+              onClick={() => setSelected({ kind: "deleted" })}
+              data-selected={selected?.kind === "deleted"}
+              className="mx-3 my-3 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted data-[selected=true]:bg-surface-selected"
+            >
+              <Icon name="delete" className="size-5" />
+              <span className="flex-1">Recently deleted</span>
+              <span className="tabular-nums">{gone.length}</span>
+              <Icon name="chevron_right" className="size-4" />
+            </button>
+          )}
         </div>
       }
       detail={
-        selected?.kind === "duplicates" ? (
+        selected?.kind === "deleted" ? (
+          <RecentlyDeletedPane onRestored={(id) => setSelected({ kind: "contact", id })} />
+        ) : selected?.kind === "duplicates" ? (
           <DuplicatesPane />
         ) : selected?.kind === "contact" ? (
           <ContactDetailPane key={selected.id} id={selected.id} onDeleted={() => setSelected(null)} />

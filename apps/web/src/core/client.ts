@@ -1,3 +1,5 @@
+import { downloadVcard } from "@/lib/download"
+
 import type {
   Account,
   AccountConfig,
@@ -6,6 +8,11 @@ import type {
   Collection,
   CollectionKind,
   ContactActivity,
+  ContactExport,
+  ContactLabel,
+  ContactSuggestion,
+  DeletedContact,
+  SignatureCard,
   DueReminder,
   ContactDetail,
   ContactInput,
@@ -134,7 +141,19 @@ export interface CoreClient {
   respondToInvite(messageId: string, response: InviteResponse, calendarId?: string | null): Promise<Invite>
   /** Applies a cancellation or a guest's reply. */
   applyInviteUpdate(messageId: string): Promise<Invite>
-  listContacts(search?: string | null): Promise<ContactSummary[]>
+  listContacts(search?: string | null, label?: string | null): Promise<ContactSummary[]>
+  contactLabels(): Promise<ContactLabel[]>
+  /** Recently deleted, newest first (30 days). */
+  deletedContacts(): Promise<DeletedContact[]>
+  restoreContact(id: string): Promise<ContactDetail>
+  contactVcard(id: string): Promise<ContactExport>
+  /** Saves the card as a .vcf file; says where it went. */
+  saveContactVcard(id: string): Promise<string>
+  /** An SVG QR code of a short card. */
+  contactQr(id: string): Promise<string>
+  /** A new contact, or missing details, from a message's signature. */
+  contactSuggestion(messageId: string): Promise<ContactSuggestion | null>
+  parseSignature(text: string): Promise<SignatureCard>
   getContact(id: string): Promise<ContactDetail>
   /** Recent conversations and meetings with this contact. */
   contactActivity(id: string): Promise<ContactActivity>
@@ -231,7 +250,15 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     eventGuests: (id) => call("event_guests", { id }),
     respondToInvite: (messageId, response, calendarId) => call("respond_to_invite", { messageId, response, calendarId: calendarId ?? null }),
     applyInviteUpdate: (messageId) => call("apply_invite_update", { messageId }),
-    listContacts: (search) => call("list_contacts", { search: search ?? null }),
+    listContacts: (search, label) => call("list_contacts", { search: search ?? null, label: label ?? null }),
+    contactLabels: () => call("contact_labels"),
+    deletedContacts: () => call("deleted_contacts"),
+    restoreContact: (id) => call("restore_contact", { id }),
+    contactVcard: (id) => call("contact_vcard", { id }),
+    saveContactVcard: (id) => call("save_contact_vcard", { id }),
+    contactQr: (id) => call("contact_qr", { id }),
+    contactSuggestion: (messageId) => call("contact_suggestion", { messageId }),
+    parseSignature: (text) => call("parse_signature", { text }),
     getContact: (id) => call("get_contact", { id }),
     contactActivity: (id) => call("contact_activity", { id }),
     takeMissedReminders: () => call("take_missed_reminders"),
@@ -360,6 +387,7 @@ function createGatewayClient(): CoreClient {
       a.click()
       return "your browser's downloads"
     },
+    saveContactVcard: async (id) => downloadVcard(await call<ContactExport>("contact_vcard", { id })),
     on(event, handler) {
       const set = handlers.get(event) ?? new Set()
       set.add(handler)
