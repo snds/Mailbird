@@ -25,3 +25,17 @@ pub fn delete(account_id: &str) {
         let _ = e.delete_credential();
     }
 }
+
+/// Keychain key for an account's separate calendar/contacts password
+/// (`DavConfig::separate_secret`).
+pub fn dav_key(account_id: &str) -> String {
+    format!("{account_id}:dav")
+}
+
+/// The secret CalDAV/CardDAV signs in with: its own, or the mail one.
+pub fn dav_secret(account: &pim_core::Account) -> Result<String, String> {
+    match &account.config.dav {
+        Some(d) if d.separate_secret => get(&dav_key(&account.id)),
+        _ => get(&account.id),
+    }
+}

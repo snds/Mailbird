@@ -54,6 +54,16 @@ pub fn start(app: AppHandle, state: Shared) {
         }
     });
 
+    // Calendars and contacts: CalDAV/CardDAV has no push we can rely on, so poll.
+    let (a, s) = (app.clone(), state.clone());
+    tauri::async_runtime::spawn(async move {
+        let mut tick = tokio::time::interval(net::dav::POLL);
+        loop {
+            tick.tick().await;
+            sync_dav_all(&a, &s).await;
+        }
+    });
+
     // Push: keep one IDLE connection per account.
     tauri::async_runtime::spawn(async move {
         let mut tick = tokio::time::interval(IDLE_SUPERVISE_EVERY);
@@ -221,4 +231,64 @@ async fn sync_jmap(state: &Shared, account: &pim_core::Account, password: &str) 
     let s = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
     s.apply_remote(&account.id, &batch).map_err(|e| e.to_string())?;
     Ok(batch.more_older)
+}
+
+/// Sync calendars and contacts shortly, after a local edit.
+pub fn dav_sync_soon(app: &AppHandle, state: &Shared) {
+    let (app, state) = (app.clone(), state.clone());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        sync_dav_all(&app, &state).await;
+    });
+}
+
+/// One CalDAV/CardDAV pass over every account that has it.
+pub async fn sync_dav_all(app: &AppHandle, state: &Shared) {
+    let _guard = state.dav_lock.lock().await;
+    let accounts = state.store.lock().ok().and_then(|s| s.accounts().ok()).unwrap_or_default();
+    for account in accounts.into_iter().filter(|a| a.config.dav.is_some()) {
+        let result = sync_dav(state, &account).await;
+        if let Ok(s) = state.store.lock() {
+            let _ = s.record_dav_result(&account.id, result.as_ref().err().map(String::as_str));
+        }
+        if let Err(e) = result {
+            log::info!("calendar sync for {} failed: {e}", account.config.address);
+        }
+    }
+    let _ = app.emit(events::PIM_CHANGED, ());
+    let _ = app.emit(events::ACCOUNTS_CHANGED, ());
+}
+
+async fn sync_dav(state: &Shared, account: &pim_core::Account) -> Result<(), String> {
+    use pim_core::CollectionKind;
+    let Some(cfg) = account.config.dav.clone() else { return Ok(()) };
+    let secret = secrets::dav_secret(account)?;
+    let user = &account.config.username;
+    let unavailable = || "the database is unavailable".to_string();
+    for (kind, url) in [(CollectionKind::Calendar, &cfg.calendar_url), (CollectionKind::Contacts, &cfg.contacts_url)] {
+        let Some(url) = url else { continue };
+        let dav = net::dav::Dav::new(url, user, &secret).map_err(|e| e.to_string())?;
+        let remote = dav.discover(kind).await.map_err(|e| e.to_string())?;
+        let plans = {
+            let s = state.store.lock().map_err(|_| unavailable())?;
+            s.sync_collections(&account.id, kind, &remote).map_err(|e| e.to_string())?;
+            s.dav_cursors(&account.id)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .filter(|(c, _)| c.kind == kind)
+                .map(|(c, cursor)| {
+                    Ok(net::dav::DavPlan { changes: s.pending_dav(&c.id).map_err(|e| e.to_string())?, collection_id: c.id, kind, cursor })
+                })
+                .collect::<Result<Vec<_>, String>>()?
+        };
+        let results = net::dav::sync(&dav, plans).await.map_err(|e| e.to_string())?;
+        let s = state.store.lock().map_err(|_| unavailable())?;
+        for r in results {
+            for (item, outcome) in &r.outcomes {
+                s.dav_result(&r.collection_id, item, outcome).map_err(|e| e.to_string())?;
+            }
+            s.apply_dav(&r.collection_id, &r.batch).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }

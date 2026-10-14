@@ -2,7 +2,7 @@ import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/re
 import { useEffect } from "react"
 
 import { getCoreClient, type CoreClient } from "./client"
-import type { MessageQuery } from "./types"
+import type { CollectionKind, MessageQuery } from "./types"
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,6 +17,13 @@ const keys = {
   messages: (q: MessageQuery) => ["messages", q] as const,
   thread: (id: string) => ["thread", id] as const,
   outbox: ["outbox"] as const,
+  // Everything calendar and contacts lives under "pim", so one event refreshes it all.
+  collections: (kind: CollectionKind) => ["pim", "collections", kind] as const,
+  occurrences: (from: number, to: number) => ["pim", "occurrences", from, to] as const,
+  event: (id: string, start: number | null) => ["pim", "event", id, start] as const,
+  contacts: (search: string) => ["pim", "contacts", search] as const,
+  contact: (id: string) => ["pim", "contact", id] as const,
+  duplicates: ["pim", "duplicates"] as const,
 }
 
 export function useCore() {
@@ -40,7 +47,10 @@ export function useCoreEvents() {
       }),
       core.on("outbox:changed", () => void qc.invalidateQueries({ queryKey: keys.outbox })),
       core.on("accounts:changed", () => void qc.invalidateQueries({ queryKey: keys.accounts })),
+      core.on("pim:changed", () => void qc.invalidateQueries({ queryKey: ["pim"] })),
     ]
+    // All-day events sit on the device clock; tell the core which one that is.
+    void core.setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone).then(() => qc.invalidateQueries({ queryKey: ["pim"] }))
     return () => offs.forEach((off) => off())
   }, [core, qc])
 }
@@ -78,5 +88,50 @@ export function useMailAction<A>(fn: (c: CoreClient, args: A) => Promise<unknown
       void qc.invalidateQueries({ queryKey: ["messages"] })
       void qc.invalidateQueries({ queryKey: ["thread"] })
     },
+  })
+}
+
+export function useCollections(kind: CollectionKind) {
+  return useQuery({ queryKey: keys.collections(kind), queryFn: () => call((c) => c.listCollections(kind)) })
+}
+
+export function useOccurrences(from: number, to: number) {
+  return useQuery({
+    queryKey: keys.occurrences(from, to),
+    queryFn: () => call((c) => c.listOccurrences(from, to)),
+    placeholderData: (prev) => prev, // no flash while paging weeks
+  })
+}
+
+export function useEvent(id: string | null, start: number | null) {
+  return useQuery({
+    queryKey: keys.event(id ?? "", start),
+    queryFn: () => call((c) => c.getEvent(id!, start)),
+    enabled: id !== null,
+  })
+}
+
+export function useContacts(search: string) {
+  return useQuery({
+    queryKey: keys.contacts(search),
+    queryFn: () => call((c) => c.listContacts(search || null)),
+    placeholderData: (prev) => prev,
+  })
+}
+
+export function useContact(id: string | null) {
+  return useQuery({ queryKey: keys.contact(id ?? ""), queryFn: () => call((c) => c.getContact(id!)), enabled: id !== null })
+}
+
+export function useDuplicates() {
+  return useQuery({ queryKey: keys.duplicates, queryFn: () => call((c) => c.duplicateContacts()) })
+}
+
+/** A mutation that refreshes calendars and contacts afterwards. */
+export function usePimAction<A, R = unknown>(fn: (c: CoreClient, args: A) => Promise<R>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (args: A) => call((c) => fn(c, args)),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["pim"] }),
   })
 }

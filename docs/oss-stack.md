@@ -27,8 +27,9 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | zustand | UI state | 5.0 | MIT | ✅ | — |
 | @tiptap/react, pm, starter-kit, extensions | Composer editor (notes next) | 3.31.3 (pinned) | MIT | ✅ | **Avoid Tiptap Pro** (paid). Collaboration uses Yjs + Hocuspocus (MIT). |
 | yjs | CRDT for notes sync | 13.6 | MIT | 🟦 | — |
-| @schedule-x/calendar | Calendar views | 4.9 | MIT core | 🟦 | **Avoid Premium plugins.** We may build our own views on the same tokens. |
-| ical.js | iCal / vCard parsing (web) | 2.2 | MPL-2.0 | 🟦 | Use unmodified only. The Rust core is the source of truth. |
+| @schedule-x/calendar | Calendar views | 4.9 | MIT core | ⚪ | Not used: Phase 2 built its own agenda/day/week views on our tokens ([ADR-0010](decisions/0010-calendar-contacts.md)). |
+| ical.js | iCal / vCard parsing (web) | 2.2 | MPL-2.0 | ⚪ | Not needed: the Rust core parses everything and the UI gets typed rows. |
+| chrono-node | Natural-language dates (quick add) | 2.10.1 (pinned) | MIT | ✅ | “Lunch with Ana tomorrow 1pm”. |
 | dompurify | Sanitize email HTML (web) | 3.4 | Apache-2.0 option | ✅ | Elect Apache-2.0. Rendered inside a sandboxed iframe. |
 | temporal-polyfill | Dates and time zones | 1.0 | MIT | 🟦 | Prefer Temporal over date-fns for time-zone-correct calendar math. |
 | cmdk | Command palette | 1.1 | MIT | 🟦 | shadcn Command. |
@@ -60,8 +61,10 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | mail-parser | MIME parsing | 0.11 | Apache-2.0 OR MIT | ✅ |
 | mail-auth | DKIM/SPF/DMARC checks | 0.13 | Apache-2.0 OR MIT | 🟦 |
 | jmap-client | JMAP client | 0.4 | Apache-2.0 OR MIT | ⚪ (not used: defaults to aws-lc-rs; our small client covers what we need, ADR-0008) |
-| calcard | iCalendar + vCard | 0.3 | Apache-2.0 OR MIT | 🟦 |
-| libdav | CalDAV / CardDAV client | 0.11 | ISC | 🟦 |
+| calcard | iCalendar + vCard, recurrence, VTIMEZONE | 0.3.14 (pinned) | Apache-2.0 OR MIT | ✅ |
+| libdav | CalDAV / CardDAV client | 0.11 | ISC | ⚪ (not used: brings its own hyper stack; our small client on reqwest covers it, ADR-0010) |
+| quick-xml | WebDAV multistatus parsing | 0.42 | MIT | ✅ |
+| chrono | Date math (calcard's types) | 0.4 | MIT OR Apache-2.0 | ✅ |
 | rusqlite (bundled) | Local store | 0.40 | MIT | ✅ |
 | SQLite FTS5 (in rusqlite) | Full-text search | — | Public domain | ✅ |
 | tantivy | Full-text search at scale | 0.26 | MIT | ⚪ (deferred, ADR-0007) |

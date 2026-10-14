@@ -52,6 +52,25 @@ pub struct AccountConfig {
     /// When set, mail syncs and sends over JMAP instead of IMAP/SMTP.
     #[serde(default)]
     pub jmap: Option<JmapConfig>,
+    /// Calendars and contacts over CalDAV/CardDAV, when the provider has them.
+    #[serde(default)]
+    pub dav: Option<DavConfig>,
+}
+
+/// Where an account's calendars and contacts live.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DavConfig {
+    /// CalDAV entry point: a server root (discovery uses `/.well-known/caldav`)
+    /// or a known path such as `https://caldav.fastmail.com/dav/calendars`.
+    #[serde(default)]
+    pub calendar_url: Option<String>,
+    #[serde(default)]
+    pub contacts_url: Option<String>,
+    /// DAV signs in with its own app password, stored apart from the mail
+    /// secret (Fastmail: the JMAP API token can't do CalDAV).
+    #[serde(default)]
+    pub separate_secret: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +83,12 @@ pub struct Account {
     pub last_sync: Option<i64>,
     /// Last sync error, shown on the account so failures are never silent.
     pub last_error: Option<String>,
+    /// Calendar and contacts sync, tracked apart from mail: one can fail
+    /// while the other works.
+    #[serde(default)]
+    pub dav_last_sync: Option<i64>,
+    #[serde(default)]
+    pub dav_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,4 +338,217 @@ pub struct RemoteBatch {
     pub removed: Vec<String>,
     pub applied_ops: Vec<i64>,
     pub more_older: bool,
+}
+
+// ── Calendar ────────────────────────────────────────────────────────────────
+
+/// How an event repeats, as far as the editor can express it. `Custom` is any
+/// richer rule from another client; edits keep it unchanged.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Repeat {
+    #[default]
+    None,
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+    Custom,
+}
+
+/// An event as the editor submits it. Times are wall-clock in `time_zone`
+/// ("2026-10-14T09:30"); all-day events use dates ("2026-10-14") with an
+/// exclusive end, as iCalendar does.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventInput {
+    pub calendar_id: String,
+    pub title: String,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    pub start: String,
+    pub end: String,
+    #[serde(default)]
+    pub all_day: bool,
+    pub time_zone: String,
+    #[serde(default)]
+    pub repeat: Repeat,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Attendee {
+    pub name: Option<String>,
+    pub email: String,
+    /// RFC 5545 PARTSTAT, lowercased: "accepted", "declined", "tentative", "needs-action".
+    pub status: Option<String>,
+}
+
+// ── Contacts ────────────────────────────────────────────────────────────────
+
+/// One email address or phone number, with its vCard TYPE ("work", "cell"…).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactField {
+    pub label: Option<String>,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactInput {
+    pub book_id: String,
+    pub full_name: String,
+    #[serde(default)]
+    pub emails: Vec<ContactField>,
+    #[serde(default)]
+    pub phones: Vec<ContactField>,
+    #[serde(default)]
+    pub org: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+    /// "YYYY-MM-DD", or "--MM-DD" without a year.
+    #[serde(default)]
+    pub birthday: Option<String>,
+}
+
+// ── Calendar and contact collections ────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CollectionKind {
+    Calendar,
+    Contacts,
+}
+
+impl CollectionKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CollectionKind::Calendar => "calendar",
+            CollectionKind::Contacts => "contacts",
+        }
+    }
+}
+
+/// A calendar or address book: on a CalDAV/CardDAV server, or on this device.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Collection {
+    pub id: String,
+    /// `None` for collections that live only on this device.
+    pub account_id: Option<String>,
+    pub kind: CollectionKind,
+    pub name: String,
+    /// CSS color from the server (`calendar-color`), if any.
+    pub color: Option<String>,
+    pub writable: bool,
+    pub hidden: bool,
+}
+
+/// One occurrence of an event, for agenda and grid views. Times are Unix
+/// seconds; all-day occurrences start at local midnight.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Occurrence {
+    pub event_id: String,
+    pub calendar_id: String,
+    pub title: String,
+    pub location: Option<String>,
+    pub start: i64,
+    pub end: i64,
+    pub all_day: bool,
+    pub recurring: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventDetail {
+    #[serde(flatten)]
+    pub occurrence: Occurrence,
+    pub notes: Option<String>,
+    pub repeat: Repeat,
+    /// The zone the event was written in, when it isn't floating or all-day.
+    pub time_zone: Option<String>,
+    pub organizer: Option<Address>,
+    pub attendees: Vec<Attendee>,
+    pub url: Option<String>,
+    pub writable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactSummary {
+    pub id: String,
+    pub book_id: String,
+    pub full_name: String,
+    pub org: Option<String>,
+    pub emails: Vec<ContactField>,
+    pub phones: Vec<ContactField>,
+    pub photo: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactDetail {
+    #[serde(flatten)]
+    pub summary: ContactSummary,
+    pub title: Option<String>,
+    pub note: Option<String>,
+    pub birthday: Option<String>,
+    pub writable: bool,
+}
+
+// ── DAV sync (store ↔ net) ──────────────────────────────────────────────────
+
+/// A collection as the server lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteCollection {
+    pub href: String,
+    pub kind: CollectionKind,
+    pub name: String,
+    pub color: Option<String>,
+    pub writable: bool,
+}
+
+/// What the store knows about one collection's server copy.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DavCursor {
+    pub href: String,
+    /// RFC 6578 sync token, when the server supports `sync-collection`.
+    pub sync_token: Option<String>,
+    /// href → etag of every synced resource.
+    pub etags: std::collections::HashMap<String, String>,
+}
+
+/// A local change waiting to reach the server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DavChange {
+    pub item_id: String,
+    pub href: String,
+    /// The etag the change was made against; `None` for a new resource.
+    pub etag: Option<String>,
+    /// New body, or `None` to delete.
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DavOutcome {
+    /// Stored; the server's new etag, when it returned one.
+    Saved(Option<String>),
+    Deleted,
+    /// The server copy changed (412) or vanished (404) first: the server wins.
+    Conflict,
+}
+
+/// One pass of server changes for a collection.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DavBatch {
+    pub sync_token: Option<String>,
+    /// (href, etag, body) for new and changed resources.
+    pub upserts: Vec<(String, String, String)>,
+    pub removed: Vec<String>,
 }

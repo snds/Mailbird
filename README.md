@@ -42,7 +42,7 @@ cargo test -p pim-core      # Rust core
 pnpm tauri dev              # desktop shell (needs the Tauri prerequisites for your OS)
 ```
 
-**Web vs. desktop.** In a browser the app runs on sample mail, so you can try every flow. Connecting real accounts needs the desktop app: iCloud, Fastmail (JMAP), or any IMAP/SMTP or JMAP server. Gmail and Outlook need OAuth, which is Phase 4.
+**Web vs. desktop.** In a browser the app runs on sample mail, so you can try every flow. Connecting real accounts needs the desktop app: iCloud, Fastmail (JMAP), or any IMAP/SMTP or JMAP server, with calendars and contacts over CalDAV/CardDAV. Gmail and Outlook need OAuth, which is Phase 4.
 
 **Mail integration tests (Linux).** These run real round trips against IMAP + SMTP and against JMAP:
 
@@ -76,7 +76,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **1 · Mail MVP** ✅ | IMAP/SMTP adapters, local store + FTS5 search, unified inbox lanes, composer, undo send, snooze, archive, tracker-safe HTML, keychain ([ADR-0007](docs/decisions/0007-mail-engine.md)) |
 | **1b · Mail depth** ✅ | Conversations, attachments, IMAP IDLE push, progressive backfill, JMAP sync + send, swipe gestures ([ADR-0008](docs/decisions/0008-mail-depth.md)) |
 | **1c · Mail polish** ✅ | JMAP push, Sent/Archive sync-back, rich-text composer, attachment previews ([ADR-0009](docs/decisions/0009-mail-polish.md)) |
-| **2 · Calendar + Contacts** | CalDAV/CardDAV, agenda/day/week views, natural-language quick add, contact merge |
+| **2 · Calendar + Contacts** ✅ | CalDAV/CardDAV sync, agenda/day/week views, natural-language quick add, event and contact editors, duplicate merge, recipient autocomplete ([ADR-0010](docs/decisions/0010-calendar-contacts.md)) |
 | **3 · Notes** | Tiptap editor, Markdown storage, Yjs sync relay, Apple Notes and Keep import |
 | **4 · Big providers** | Gmail API + Google verification, Microsoft Graph |
 | **5 · Mobile** | Tauri mobile spike → iOS/Android builds (Capacitor fallback) |
