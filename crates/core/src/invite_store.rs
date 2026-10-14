@@ -14,6 +14,9 @@ use rusqlite::{OptionalExtension, params};
 use crate::store::Store;
 use crate::{Address, Attendee, CalendarPart, Collection, Draft, Error, Invite, InviteResponse, Result, ical, itip, mime};
 
+/// Settings key prefix: how you answered a counter-proposal, by message.
+pub(crate) const COUNTER_ANSWER: &str = "counter_answer:";
+
 fn same(a: &str, b: &str) -> bool {
     a.trim().eq_ignore_ascii_case(b.trim())
 }
@@ -35,21 +38,21 @@ impl InviteResponse {
     }
 }
 
-struct Received {
-    account_id: String,
-    me: Address,
-    ics: String,
-    meta: itip::InviteMeta,
+pub(crate) struct Received {
+    pub(crate) account_id: String,
+    pub(crate) me: Address,
+    pub(crate) ics: String,
+    pub(crate) meta: itip::InviteMeta,
 }
 
 impl Store {
-    fn me(&self, account_id: &str) -> Result<Address> {
+    pub(crate) fn me(&self, account_id: &str) -> Result<Address> {
         let a = self.account(account_id)?;
         Ok(Address { name: Some(a.config.display_name.clone()).filter(|n| !n.trim().is_empty()), email: a.config.address })
     }
 
     /// The invitation a message carries, if any, as raw parts.
-    fn received(&self, message_id: &str) -> Result<Option<Received>> {
+    pub(crate) fn received(&self, message_id: &str) -> Result<Option<Received>> {
         let (account_id, raw): (String, Option<Vec<u8>>) =
             self.db.query_row("SELECT account_id, raw FROM messages WHERE id = ?1", [message_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
         let Some(raw) = raw else { return Ok(None) };
@@ -63,7 +66,7 @@ impl Store {
     }
 
     /// Our calendar copy of an event, by UID: (id, calendar, ics).
-    fn event_by_uid(&self, uid: &str) -> Result<Option<(String, String, String)>> {
+    pub(crate) fn event_by_uid(&self, uid: &str) -> Result<Option<(String, String, String)>> {
         Ok(self
             .db
             .query_row(
@@ -90,8 +93,15 @@ impl Store {
             }
             None => (my_status(&rx.meta.attendees), false),
         };
-        // A REPLY tells the organizer (you) one guest's answer.
-        let from = (rx.meta.method == "REPLY").then(|| rx.meta.attendees.first().cloned()).flatten();
+        // A REPLY tells the organizer (you) one guest's answer; a COUNTER, who proposed.
+        let from = matches!(rx.meta.method.as_str(), "REPLY" | "COUNTER").then(|| rx.meta.attendees.first().cloned()).flatten();
+        let counter = rx.meta.method == "COUNTER";
+        let ours = copy.as_ref().and_then(|(_, _, ics)| ical::occurrences(ics, &tz, i64::MIN / 2, i64::MAX / 2).ok()).and_then(|o| o.into_iter().next());
+        // What else is on your calendar then: for an invitation, or a proposed new time.
+        let conflicts = match (&first, rx.meta.method.as_str()) {
+            (Some(o), "REQUEST" | "COUNTER") if !ev.as_ref().is_some_and(|e| e.all_day) => self.conflicts(o.start, o.end, copy.as_ref().map(|(id, _, _)| id.as_str()))?,
+            _ => vec![],
+        };
         Ok(Some(Invite {
             method: rx.meta.method.to_ascii_lowercase(),
             uid: rx.meta.uid.clone(),
@@ -107,6 +117,12 @@ impl Store {
             event_id: copy.map(|(id, _, _)| id),
             outdated,
             from,
+            conflicts,
+            current_start: ours.as_ref().filter(|_| counter).map(|o| o.start),
+            current_end: ours.as_ref().filter(|_| counter).map(|o| o.end),
+            comment: rx.meta.comment.clone(),
+            answered: if counter { self.setting(&format!("{COUNTER_ANSWER}{message_id}"))? } else { None },
+            proposed: if rx.meta.method == "REQUEST" { self.proposed_time(message_id)? } else { None },
         }))
     }
 
@@ -179,7 +195,7 @@ impl Store {
         self.message_invite(message_id)?.ok_or_else(|| Error::NotFound("this message has no invitation".into()))
     }
 
-    fn queue_itip(&self, account_id: &str, to: &[Address], subject: &str, body: &str, method: &str, ics: String) -> Result<()> {
+    pub(crate) fn queue_itip(&self, account_id: &str, to: &[Address], subject: &str, body: &str, method: &str, ics: String) -> Result<()> {
         let draft = Draft {
             account_id: account_id.to_string(),
             to: to.to_vec(),
@@ -266,11 +282,11 @@ impl Store {
 
 /// `read_event` and expansion don't care about METHOD, but CalDAV objects
 /// must not carry it; strip it when reading an invitation as an event.
-fn ics_without_method(ics: &str) -> String {
+pub(crate) fn ics_without_method(ics: &str) -> String {
     itip::strip_method(ics).unwrap_or_else(|_| ics.to_string())
 }
 
-fn itip_title(ics: &str) -> String {
+pub(crate) fn itip_title(ics: &str) -> String {
     ical::read_event(&ics_without_method(ics), "UTC").map(|e| e.title).ok().filter(|t| !t.is_empty()).unwrap_or_else(|| "(no title)".into())
 }
 

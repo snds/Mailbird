@@ -13,6 +13,7 @@ import type { EventInput, Repeat } from "@/core/types"
 import { formatRecipients, parseRecipients } from "../mail/format"
 import { RecipientInput } from "../mail/recipient-input"
 import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dates"
+import { FindATime } from "./find-a-time"
 import { REMINDER_PRESETS, reminderLabel } from "./reminders"
 
 const REPEAT_LABELS: [Repeat, string][] = [
@@ -176,6 +177,18 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
             {!allDay && <input type="time" aria-label="End time" className={picker} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} />}
           </div>
         </div>
+        {!allDay && !guestOf && (
+          <FindATime
+            date={startDate}
+            minutes={Math.round((fromInputs(endDate, endTime).getTime() - fromInputs(startDate, startTime).getTime()) / 60_000) || 60}
+            onPick={(s, e) => {
+              setStartDate(dateInput(s))
+              setStartTime(timeInput(s))
+              setEndDate(dateInput(e))
+              setEndTime(timeInput(e))
+            }}
+          />
+        )}
         <div className={single ? "hidden" : row}>
           <label htmlFor="event-repeat" className={label}>
             Repeat

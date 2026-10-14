@@ -387,8 +387,42 @@ export interface Invite {
   eventId: string | null
   /** Your calendar already has a newer version. */
   outdated: boolean
-  /** For a reply: the guest and their answer. */
+  /** For a reply: the guest and their answer. For a counter-proposal: who proposed. */
   from: Attendee | null
+  /** Events in your calendars at the same time (invitations and counter-proposals). */
+  conflicts?: Occurrence[]
+  /** For a counter-proposal: your event's time now. */
+  currentStart?: number | null
+  currentEnd?: number | null
+  /** The guest's note on a reply or counter-proposal. */
+  comment?: string | null
+  /** For a counter-proposal you've answered. */
+  answered?: "accepted" | "declined" | null
+  /** For an invitation: the new time you proposed. */
+  proposed?: TimeSlot | null
+}
+
+/** A free stretch of time, from "find a time". */
+export interface TimeSlot {
+  start: number
+  end: number
+}
+
+/** A saved set of visible calendars. */
+export interface CalendarSet {
+  id: string
+  name: string
+  calendarIds: string[]
+}
+
+export interface FindTimes {
+  from: number
+  minutes: number
+  /** Minutes after local midnight. */
+  dayStart: number
+  dayEnd: number
+  weekdaysOnly: boolean
+  limit?: number
 }
 
 export interface ContactField {

@@ -233,3 +233,32 @@ async fn contacts_depth_commands() {
     assert_eq!(back["labels"], json!(["Clay club"]));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn planning_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-planning-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let app = AppHandle::new(TestHost::default());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+    call("set_time_zone", json!({ "tz": "Europe/Lisbon" })).await.unwrap();
+    let cals = call("list_collections", json!({ "kind": "calendar" })).await.unwrap();
+    let cal = cals[0]["id"].as_str().unwrap().to_owned();
+    let input = json!({ "calendarId": cal, "title": "Standup", "start": "2030-06-04T09:00", "end": "2030-06-04T10:00", "timeZone": "Europe/Lisbon" });
+    call("create_event", json!({ "input": input })).await.unwrap();
+
+    // Tue 4 Jun 2030, from midnight UTC: the first free hour after standup.
+    let slots = call("find_times", json!({ "from": 1_906_761_600i64, "minutes": 60, "dayStart": 540, "dayEnd": 1020, "weekdaysOnly": true, "limit": 1 })).await.unwrap();
+    assert_eq!(slots, json!([{ "start": 1_906_794_000i64, "end": 1_906_797_600i64 }]), "10:00–11:00 Lisbon");
+    assert!(call("find_times", json!({ "from": 0, "minutes": 0, "dayStart": 540, "dayEnd": 1020, "weekdaysOnly": true })).await.unwrap_err().contains("doesn't fit"));
+
+    let sets = call("save_calendar_set", json!({ "name": "Everything" })).await.unwrap();
+    let id = sets[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(call("calendar_sets", Value::Null).await.unwrap()[0]["name"], "Everything");
+    call("apply_calendar_set", json!({ "id": id })).await.unwrap();
+    assert_eq!(call("delete_calendar_set", json!({ "id": id })).await.unwrap(), json!([]));
+    let _ = std::fs::remove_dir_all(dir);
+}
