@@ -37,6 +37,10 @@ import type {
   MessageSummary,
   OutboxItem,
   Provider,
+  ScreenerStatus,
+  Sender,
+  SenderDecision,
+  Category,
   Signature,
   Template,
   TemplateInput,
@@ -103,6 +107,14 @@ export interface CoreClient {
   listSignatures(): Promise<Signature[]>
   /** An empty signature removes it. */
   setSignature(accountId: string, html: string): Promise<void>
+  // The Screener and senders (ADR-0018)
+  screenerStatus(): Promise<ScreenerStatus>
+  setScreener(enabled: boolean): Promise<ScreenerStatus>
+  /** null forgets the decision. */
+  decideSender(email: string, decision: SenderDecision | null): Promise<void>
+  /** null goes back to what the headers say. */
+  setSenderCategory(email: string, category: Category | null): Promise<void>
+  listSenders(): Promise<Sender[]>
   // Calendars and contacts
   setTimeZone(tz: string): Promise<void>
   listCollections(kind: CollectionKind): Promise<Collection[]>
@@ -197,6 +209,11 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     deleteTemplate: (id) => call("delete_template", { id }),
     listSignatures: () => call("list_signatures"),
     setSignature: (accountId, html) => call("set_signature", { accountId, html }),
+    screenerStatus: () => call("screener_status"),
+    setScreener: (enabled) => call("set_screener", { enabled }),
+    decideSender: (email, decision) => call("decide_sender", { email, decision }),
+    setSenderCategory: (email, category) => call("set_sender_category", { email, category }),
+    listSenders: () => call("list_senders"),
     setTimeZone: (tz) => call("set_time_zone", { tz }),
     listCollections: (kind) => call("list_collections", { kind }),
     setCollectionHidden: (id, hidden) => call("set_collection_hidden", { id, hidden }),

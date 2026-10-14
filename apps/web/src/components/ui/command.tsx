@@ -57,6 +57,8 @@ function CommandDialog({
           className
         )}
         showCloseButton={showCloseButton}
+        // Straight to the search field, so typing right after ⌘K isn't lost.
+        initialFocus={() => document.querySelector<HTMLElement>("[cmdk-input]") ?? true}
       >
         {/* Inside the popup, so the dialog takes its accessible name from it. */}
         <DialogHeader className="sr-only">

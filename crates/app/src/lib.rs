@@ -9,6 +9,7 @@
 
 pub mod commands;
 pub mod compose_commands;
+pub mod sender_commands;
 pub mod dispatch;
 pub mod host;
 pub mod notes_commands;

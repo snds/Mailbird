@@ -17,6 +17,7 @@ import { longTime } from "@/lib/time"
 
 import { OAuthSignIn } from "./oauth-sign-in"
 import { PushSettingsSection } from "./push-settings"
+import { ScreenerSettingsSection } from "./screener-settings"
 
 interface Preset {
   id: string
@@ -218,6 +219,8 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
           <Icon name="chevron_right" className="size-5 text-muted-foreground" />
         </button>
       )}
+
+      {accounts.length > 0 && <ScreenerSettingsSection />}
 
       {accounts.length > 0 && !core?.remote && <PushSettingsSection />}
       {core?.remote && (

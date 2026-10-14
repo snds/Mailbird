@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-import type { ContactInput, Draft, EditScope, EventInput, MessageSummary } from "@/core/types"
+import type { Category, ContactInput, Draft, EditScope, EventInput, MessageSummary } from "@/core/types"
 
 import type { MailTab } from "@/features/mail/lanes"
 
@@ -74,6 +74,9 @@ interface UiState {
   /** The mail search box. Cleared when you leave Mail. */
   mailSearch: string
   setMailSearch: (search: string) => void
+  /** People, Updates, or Newsletters in the inbox; null for all. */
+  mailCategory: Category | null
+  setMailCategory: (category: Category | null) => void
 }
 
 /** A draft for the composer; `sendAt` reopens a scheduled message with its time. */
@@ -81,7 +84,7 @@ export type ComposerDraft = Partial<Draft> & { sendAt?: number | null }
 
 export const useUi = create<UiState>((set, get) => ({
   vertical: "mail",
-  setVertical: (vertical) => set({ vertical, jump: null, openNote: null, mailTab: "inbox", mailSearch: "" }),
+  setVertical: (vertical) => set({ vertical, jump: null, openNote: null, mailTab: "inbox", mailSearch: "", mailCategory: null }),
   jump: null,
   jumpTo: (jump) =>
     jump.kind === "note"
@@ -112,7 +115,9 @@ export const useUi = create<UiState>((set, get) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   mailTab: "inbox",
   setMailTab: (mailTab) => set({ mailTab }),
-  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, jump: null, openNote: null }),
+  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, mailCategory: null, jump: null, openNote: null }),
+  mailCategory: null,
+  setMailCategory: (mailCategory) => set({ mailCategory }),
   mailSearch: "",
   setMailSearch: (mailSearch) => set({ mailSearch }),
 }))

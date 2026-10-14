@@ -18,6 +18,8 @@ pub mod itip;
 pub mod mime;
 pub mod model;
 mod pim_store;
+mod sender_store;
+pub mod triage;
 mod invite_store;
 mod notes_import;
 mod notes_store;

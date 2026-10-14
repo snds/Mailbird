@@ -138,6 +138,92 @@ pub enum Lane {
     Archive,
     /// Sent mail with a follow-up reminder that hasn't come due.
     Waiting,
+    /// Mail from first-time senders, held until you say yes or no.
+    Screener,
+}
+
+/// What kind of mail a message is, from its headers (see `triage`), unless
+/// you've moved its sender to another category.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Category {
+    #[default]
+    People,
+    Updates,
+    Newsletters,
+}
+
+impl Category {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Category::People => "people",
+            Category::Updates => "updates",
+            Category::Newsletters => "newsletters",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "people" => Some(Category::People),
+            "updates" => Some(Category::Updates),
+            "newsletters" => Some(Category::Newsletters),
+            _ => None,
+        }
+    }
+}
+
+/// What you decided about a sender.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SenderDecision {
+    /// Their mail goes to the inbox.
+    Allowed,
+    /// Their mail skips the inbox: it's archived as it arrives.
+    ScreenedOut,
+    /// Screened out, and marked read too.
+    Blocked,
+}
+
+impl SenderDecision {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SenderDecision::Allowed => "allowed",
+            SenderDecision::ScreenedOut => "screened_out",
+            SenderDecision::Blocked => "blocked",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "allowed" => Some(SenderDecision::Allowed),
+            "screened_out" => Some(SenderDecision::ScreenedOut),
+            "blocked" => Some(SenderDecision::Blocked),
+            _ => None,
+        }
+    }
+}
+
+/// A sender you've decided about, or moved to a category.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sender {
+    pub email: String,
+    /// The name on their newest message, if any.
+    pub name: Option<String>,
+    pub decision: Option<SenderDecision>,
+    pub category: Option<Category>,
+    /// Messages from them on this device.
+    pub messages: u32,
+}
+
+/// Whether the Screener is on, and how many senders wait in it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenerStatus {
+    pub enabled: bool,
+    /// Mail from new senders that arrived before this isn't screened.
+    pub since: Option<i64>,
+    pub waiting: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -151,6 +237,9 @@ pub struct MessageQuery {
     /// Rows to skip, for paging through a long list.
     #[serde(default)]
     pub offset: Option<u32>,
+    /// Only this kind of mail (People, Updates, Newsletters).
+    #[serde(default)]
+    pub category: Option<Category>,
 }
 
 /// A row in a message list. Lists are grouped by conversation: each row is
@@ -187,6 +276,10 @@ pub struct MessageSummary {
     /// so a list row can say "To Jo" instead of "Me".
     #[serde(default)]
     pub sent_to: Option<String>,
+    /// People, Updates, or Newsletters: the sender's category if you set
+    /// one, otherwise what the headers say.
+    #[serde(default)]
+    pub category: Category,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

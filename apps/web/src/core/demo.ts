@@ -1,7 +1,7 @@
 import type { CoreClient, CoreEvent } from "./client"
 import type {
   Account, AttachmentInfo, Capabilities, Draft, Lane, MessageDetail, MessageQuery, MessageSummary, OAuthClientInfo, OAuthIssuer, OutboxItem, Provider, PushSettings,
-  Signature, Template,
+  Signature, Template, Category, Sender, SenderDecision,
 } from "./types"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
@@ -140,6 +140,10 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
         }),
       msg("work", { name: "Sam Okafor", email: "sam@example.com" }, "Density modes proposal",
         "Attached the comfortable / compact spec. The list row drops to 56px in compact.", 4 * 24 * HOUR, { seen: true, archived: true }),
+      // `?screener`: a first-time sender, waiting in the Screener (it's on).
+      ...(new URLSearchParams(globalThis.location?.search ?? "").has("screener")
+        ? [msg("personal", { name: "Riley Growth", email: "hi@growth.example" }, "Quick question about your studio", "Saw your work online. Do you have 15 minutes this week?", 0.5 * HOUR)]
+        : []),
       // Sent with a follow-up reminder that hasn't come due (the Waiting lane).
       msg("personal", me("personal"), "Quote for the kitchen shelves", "Hi Jo, could you send a quote for the oak shelves we talked about?", 22 * HOUR, {
         threadId: "t-quote", seen: true, mailbox: SENT, to: [{ name: "Jo Tanaka", email: "jo@joinery.example" }], messageId: "quote@demo.example",
@@ -181,6 +185,20 @@ export function createDemoClient(): CoreClient {
     { id: "tpl-thanks", name: "Thanks, will reply soon", subject: "", html: "<p>Thanks for this — I'll get back to you by the end of the week.</p>", updated: now() },
   ]
   const signatures: Signature[] = []
+  // The Screener and senders (ADR-0018), keyed by lowercased address.
+  const senders = new Map<string, { decision: SenderDecision | null; category: Category | null; at: number }>()
+  const screener = { since: new URLSearchParams(globalThis.location?.search ?? "").has("screener") ? now() - 0.75 * HOUR : (null as number | null) }
+  const MACHINE = /^(no-?reply|do-?not-?reply|notifications?|notify|alerts?|receipts?|billing|orders|mailer-daemon|postmaster|bounces?)([+.].*)?$/
+  const headerCategory = (m: MessageDetail): Category =>
+    MACHINE.test(m.from.email.split("@")[0]!.toLowerCase()) ? "updates" : m.unsubscribe ? "newsletters" : "people"
+  const key = (email: string) => email.trim().toLowerCase()
+  const categoryOf = (m: MessageDetail): Category => (m.mailbox === SENT ? "people" : (senders.get(key(m.from.email))?.category ?? headerCategory(m)))
+  const decisionOf = (m: MessageDetail) => senders.get(key(m.from.email))?.decision ?? null
+  /** People you've written to are known, like the native core's `allowed` on send. */
+  const wroteTo = (email: string) => state.messages.some((x) => x.mailbox === SENT && [...x.to, ...x.cc].some((a) => key(a.email) === key(email)))
+  const screened = (m: MessageDetail) =>
+    screener.since !== null && m.mailbox !== SENT && m.date >= screener.since && decisionOf(m) === null && !wroteTo(m.from.email)
+  const kept = (m: MessageDetail) => decisionOf(m) !== "screened_out" && decisionOf(m) !== "blocked" && !screened(m)
   const followUpAt = (m: MessageDetail) => (m.mailbox === SENT && m.messageId ? (followUps.get(m.messageId) ?? null) : null)
   const listeners = new Map<CoreEvent, Set<(p?: unknown) => void>>()
   const emit = (e: CoreEvent, p?: unknown) => listeners.get(e)?.forEach((h) => h(p))
@@ -197,9 +215,10 @@ export function createDemoClient(): CoreClient {
     const r = m.mailbox !== SENT
     const due = followUpAt(m)
     switch (lane) {
-      case "inbox": return (r && !m.archived && awake(m, t)) || (due !== null && due <= t)
+      case "inbox": return (r && !m.archived && awake(m, t) && kept(m)) || (due !== null && due <= t)
+      case "screener": return !m.archived && screened(m)
       case "waiting": return due !== null && due > t
-      case "unread": return r && !m.archived && !m.seen && awake(m, t)
+      case "unread": return r && !m.archived && !m.seen && awake(m, t) && kept(m)
       case "starred": return m.flagged
       case "snoozed": return r && m.snoozedUntil !== null && m.snoozedUntil > t
       case "archive": return r && m.archived
@@ -369,6 +388,7 @@ export function createDemoClient(): CoreClient {
       const matching = state.messages.filter((m) => {
         if (q.accountId && m.accountId !== q.accountId) return false
         if (needle && ![m.subject, m.from.name ?? "", m.from.email, m.bodyText].some((f) => f.toLowerCase().includes(needle))) return false
+        if (q.category && categoryOf(m) !== q.category) return false
         return inLane(m, q.lane, t)
       })
       // Group by conversation: newest matching message, rolled-up state.
@@ -383,6 +403,7 @@ export function createDemoClient(): CoreClient {
         rows.set(m.threadId, {
           ...summary(m),
           followUpAt: followUpAt(m),
+          category: categoryOf(m),
           sentTo: m.mailbox === SENT ? (m.to[0]?.name ?? m.to[0]?.email ?? null) : null,
           threadCount: all.length,
           hasAttachments: all.some((x) => x.hasAttachments),
@@ -458,6 +479,44 @@ export function createDemoClient(): CoreClient {
       emit("compose:changed")
     },
     listSignatures: () => later(signatures),
+    screenerStatus: async () => {
+      const waiting = new Set(state.messages.filter((m) => !m.archived && screened(m)).map((m) => key(m.from.email))).size
+      return later({ enabled: screener.since !== null, since: screener.since, waiting })
+    },
+    setScreener: async (enabled) => {
+      screener.since = enabled ? (screener.since ?? now()) : null
+      done()
+      const waiting = new Set(state.messages.filter((m) => !m.archived && screened(m)).map((m) => key(m.from.email))).size
+      return later({ enabled, since: screener.since, waiting })
+    },
+    decideSender: async (email, decision) => {
+      if (!email.includes("@")) throw new Error(`“${email}” isn't an email address`)
+      const prev = senders.get(key(email))
+      senders.set(key(email), { decision, category: prev?.category ?? null, at: now() })
+      if (decision === "screened_out" || decision === "blocked") {
+        for (const m of state.messages) {
+          if (key(m.from.email) !== key(email) || m.mailbox === SENT) continue
+          m.archived = true
+          if (decision === "blocked") m.seen = true
+        }
+      }
+      done()
+    },
+    setSenderCategory: async (email, category) => {
+      const prev = senders.get(key(email))
+      senders.set(key(email), { decision: prev?.decision ?? null, category, at: now() })
+      done()
+    },
+    listSenders: async () => {
+      const list: Sender[] = [...senders.entries()]
+        .filter(([, v]) => v.decision === "screened_out" || v.decision === "blocked" || v.category !== null)
+        .sort((a, b) => b[1].at - a[1].at)
+        .map(([email, v]) => {
+          const theirs = state.messages.filter((m) => key(m.from.email) === email && m.mailbox !== SENT).sort((a, b) => b.date - a.date)
+          return { email, name: theirs[0]?.from.name ?? null, decision: v.decision, category: v.category, messages: theirs.length }
+        })
+      return later(list)
+    },
     setSignature: async (accountId, html) => {
       if (!state.accounts.some((a) => a.id === accountId)) throw new Error("that account is no longer here")
       const i = signatures.findIndex((s) => s.accountId === accountId)

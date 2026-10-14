@@ -4,7 +4,28 @@
 export type Provider = "google" | "microsoft" | "i_cloud" | "jmap" | "generic" | "local"
 export type Security = "tls" | "start_tls" | "plain"
 /** `waiting`: mail you sent, with a follow-up reminder not yet due. */
-export type Lane = "inbox" | "unread" | "starred" | "snoozed" | "archive" | "waiting"
+export type Lane = "inbox" | "unread" | "starred" | "snoozed" | "archive" | "waiting" | "screener"
+
+/** What kind of mail: from the headers, unless you moved the sender (ADR-0018). */
+export type Category = "people" | "updates" | "newsletters"
+
+/** `screened_out`: their mail skips the inbox. `blocked`: and is marked read. */
+export type SenderDecision = "allowed" | "screened_out" | "blocked"
+
+export interface Sender {
+  email: string
+  name: string | null
+  decision: SenderDecision | null
+  category: Category | null
+  messages: number
+}
+
+export interface ScreenerStatus {
+  enabled: boolean
+  since: number | null
+  /** Senders waiting for a yes or no. */
+  waiting: number
+}
 export type OutboxState = "queued" | "sending" | "sent" | "failed" | "cancelled"
 
 export interface Capabilities {
@@ -132,6 +153,8 @@ export interface MessageQuery {
   limit?: number | null
   /** Rows to skip, for paging through a long list. */
   offset?: number | null
+  /** Only People, Updates, or Newsletters. */
+  category?: Category | null
 }
 
 /** A list row is a conversation: its newest matching message plus thread totals. */
@@ -160,6 +183,7 @@ export interface MessageSummary {
   followUpAt?: number | null
   /** On sent mail: the first recipient's name or address. */
   sentTo?: string | null
+  category?: Category
 }
 
 export interface AttachmentInfo {

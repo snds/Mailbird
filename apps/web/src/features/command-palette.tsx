@@ -5,10 +5,12 @@ import { useUi } from "@/app/ui-store"
 import { VERTICALS } from "@/app/verticals"
 import { Icon, type IconName } from "@/components/icon"
 import { Command, CommandDialog, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command"
+import { useScreener } from "@/core/queries"
 import { LANES } from "@/features/mail/lanes"
 
 const LANE_ICONS: Record<string, IconName> = {
   inbox: "inbox",
+  screener: "how_to_reg",
   unread: "mark_email_unread",
   starred: "star",
   snoozed: "snooze",
@@ -28,6 +30,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
   const setOpen = useUi((s) => s.setPaletteOpen)
   const [query, setQuery] = useState("")
   const { resolvedTheme, setTheme } = useTheme()
+  const { data: screener } = useScreener()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -52,7 +55,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
   return (
     <CommandDialog open={open} onOpenChange={(o) => (setOpen(o), !o && setQuery(""))} title="Command menu" description="Type to find an action, a place, or a setting">
       <Command>
-        <CommandInput placeholder="Type a command or search…" value={query} onValueChange={setQuery} />
+        <CommandInput autoFocus placeholder="Type a command or search…" value={query} onValueChange={setQuery} />
         <CommandList>
           {/* No empty state: while you type, "Search mail" is always there. */}
           <CommandGroup heading="Create">
@@ -76,7 +79,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
           </CommandGroup>
           <CommandSeparator />
           <CommandGroup heading="Mail">
-            {LANES.map((l) => (
+            {LANES.filter((l) => l.id !== "screener" || screener?.enabled).map((l) => (
               <CommandItem key={l.id} value={`mail ${l.label}`} onSelect={run(() => ui().showMailTab(l.id))}>
                 <Icon name={LANE_ICONS[l.id] ?? "inbox"} />
                 {l.label}
