@@ -1,0 +1,19 @@
+# Mailbird web gateway on a personal server. See README.md.
+#   cp .env.example .env   # fill in GATEWAY_PASSWORD and GATEWAY_KEY
+#   docker compose up -d
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: apps/gateway/Dockerfile
+    image: mailbird-gateway
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - gateway-data:/data
+    # Listen on this machine only; put Caddy, nginx, or a tunnel in front for https.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  gateway-data:

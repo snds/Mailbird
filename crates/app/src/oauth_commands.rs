@@ -8,8 +8,7 @@
 
 use pim_core::{Account, AccountConfig, OAuthAccount, OAuthIssuer, Provider, Security, ServerConfig, net, net::oauth};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
-use tauri_plugin_opener::OpenerExt;
+use crate::host::AppHandle;
 
 use crate::commands::{Res, with_store};
 use crate::{Shared, events, secrets, workers};
@@ -47,20 +46,18 @@ pub struct ClientInfo {
     built_in: bool,
 }
 
-#[tauri::command]
-pub fn get_oauth_client(state: State<'_, Shared>, issuer: OAuthIssuer) -> Option<ClientInfo> {
-    let custom = with_store(&state, |s| s.setting(setting_key(issuer))).ok().flatten().is_some();
-    client(&state, issuer).map(|c| ClientInfo { has_secret: c.client_secret.is_some(), client_id: c.client_id, built_in: !custom })
+pub fn get_oauth_client(state: &Shared, issuer: OAuthIssuer) -> Option<ClientInfo> {
+    let custom = with_store(state, |s| s.setting(setting_key(issuer))).ok().flatten().is_some();
+    client(state, issuer).map(|c| ClientInfo { has_secret: c.client_secret.is_some(), client_id: c.client_id, built_in: !custom })
 }
 
 /// Sets (or, with `None`, clears) this app's own OAuth client for a provider.
-#[tauri::command]
-pub fn set_oauth_client(state: State<'_, Shared>, issuer: OAuthIssuer, client: Option<oauth::Client>) -> Res<()> {
+pub fn set_oauth_client(state: &Shared, issuer: OAuthIssuer, client: Option<oauth::Client>) -> Res<()> {
     let value = client
         .map(|c| oauth::Client { client_id: c.client_id.trim().into(), client_secret: c.client_secret.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()) })
         .filter(|c| !c.client_id.is_empty())
         .map(|c| serde_json::to_string(&c).expect("client serializes"));
-    with_store(&state, |s| s.set_setting(setting_key(issuer), value.as_deref()))
+    with_store(state, |s| s.set_setting(setting_key(issuer), value.as_deref()))
 }
 
 /// Runs one browser sign-in: opens the provider's page in the system
@@ -69,7 +66,7 @@ pub fn set_oauth_client(state: State<'_, Shared>, issuer: OAuthIssuer, client: O
 async fn sign_in(app: &AppHandle, state: &Shared, issuer: OAuthIssuer, login_hint: Option<&str>) -> Res<(oauth::Client, oauth::TokenSet, oauth::Identity)> {
     let client = client(state, issuer).ok_or("set up an OAuth client for this provider first")?;
     let flow = oauth::Flow::start(issuer, oauth::endpoints(issuer), client.clone(), login_hint).await.map_err(|e| e.to_string())?;
-    app.opener().open_url(&flow.url, None::<&str>).map_err(|e| format!("couldn't open the browser: {e}"))?;
+    app.open_url(&flow.url).map_err(|e| format!("couldn't open the browser: {e}"))?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     if let Some(old) = state.oauth_cancel.lock().ok().and_then(|mut slot| slot.replace(tx)) {
         let _ = old.send(());
@@ -82,8 +79,7 @@ async fn sign_in(app: &AppHandle, state: &Shared, issuer: OAuthIssuer, login_hin
     Ok((client, tokens, identity))
 }
 
-#[tauri::command]
-pub fn cancel_oauth_sign_in(state: State<'_, Shared>) {
+pub fn cancel_oauth_sign_in(state: &Shared) {
     if let Some(tx) = state.oauth_cancel.lock().ok().and_then(|mut s| s.take()) {
         let _ = tx.send(());
     }
@@ -137,15 +133,14 @@ async fn verify(issuer: OAuthIssuer, config: &AccountConfig, token: &str) -> Res
 }
 
 /// Adds an account by signing in with the provider in the browser.
-#[tauri::command]
-pub async fn add_oauth_account(app: AppHandle, state: State<'_, Shared>, issuer: OAuthIssuer, login_hint: Option<String>) -> Res<Account> {
-    let (client, tokens, who) = sign_in(&app, state.inner(), issuer, login_hint.as_deref()).await?;
+pub async fn add_oauth_account(app: AppHandle, state: &Shared, issuer: OAuthIssuer, login_hint: Option<String>) -> Res<Account> {
+    let (client, tokens, who) = sign_in(&app, state, issuer, login_hint.as_deref()).await?;
     let make = |address: &str, name: Option<&str>| match issuer {
         OAuthIssuer::Google => google_config(address, name, &client.client_id),
         OAuthIssuer::Microsoft => microsoft_config(address, name, &client.client_id),
     };
     let address = verify(issuer, &make(who.email.as_deref().unwrap_or_default(), None), &tokens.access_token).await?;
-    if with_store(&state, |s| s.accounts())?.iter().any(|a| a.config.address.eq_ignore_ascii_case(&address)) {
+    if with_store(state, |s| s.accounts())?.iter().any(|a| a.config.address.eq_ignore_ascii_case(&address)) {
         return Err(format!("{address} is already added"));
     }
     let name = match (issuer, &who.name) {
@@ -154,15 +149,15 @@ pub async fn add_oauth_account(app: AppHandle, state: State<'_, Shared>, issuer:
         _ => who.name.clone(),
     };
     let config = make(&address, name.as_deref());
-    let account = with_store(&state, |s| s.add_account(&config))?;
+    let account = with_store(state, |s| s.add_account(&config))?;
     if let Err(e) = secrets::set_tokens(&account.id, &tokens) {
-        let _ = with_store(&state, |s| s.remove_account(&account.id));
+        let _ = with_store(state, |s| s.remove_account(&account.id));
         return Err(e);
     }
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
-    crate::push::accounts_changed(state.inner());
-    let (app2, state2) = (app.clone(), state.inner().clone());
-    tauri::async_runtime::spawn(async move {
+    crate::push::accounts_changed(state);
+    let (app2, state2) = (app.clone(), state.clone());
+    tokio::spawn(async move {
         workers::sync_all(&app2, &state2).await;
         workers::sync_dav_all(&app2, &state2).await;
     });
@@ -170,11 +165,10 @@ pub async fn add_oauth_account(app: AppHandle, state: State<'_, Shared>, issuer:
 }
 
 /// Signs an OAuth account in again (its refresh token was revoked or expired).
-#[tauri::command]
-pub async fn reauth_oauth_account(app: AppHandle, state: State<'_, Shared>, id: String) -> Res<Account> {
-    let account = with_store(&state, |s| s.account(&id))?;
+pub async fn reauth_oauth_account(app: AppHandle, state: &Shared, id: String) -> Res<Account> {
+    let account = with_store(state, |s| s.account(&id))?;
     let o = account.config.oauth.clone().ok_or("this account signs in with a password")?;
-    let (client, tokens, _) = sign_in(&app, state.inner(), o.issuer, Some(&account.config.address)).await?;
+    let (client, tokens, _) = sign_in(&app, state, o.issuer, Some(&account.config.address)).await?;
     let mut config = account.config.clone();
     config.oauth = Some(OAuthAccount { client_id: client.client_id.clone(), ..o });
     let address = verify(o.issuer, &config, &tokens.access_token).await?;
@@ -182,10 +176,10 @@ pub async fn reauth_oauth_account(app: AppHandle, state: State<'_, Shared>, id: 
         return Err(format!("that was {address}; sign in as {} to reconnect this account", account.config.address));
     }
     secrets::set_tokens(&id, &tokens)?;
-    let account = with_store(&state, |s| s.update_account_config(&id, &config))?;
-    with_store(&state, |s| s.record_sync_result(&id, None))?;
+    let account = with_store(state, |s| s.update_account_config(&id, &config))?;
+    with_store(state, |s| s.record_sync_result(&id, None))?;
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
-    workers::sync_soon(&app, state.inner());
-    workers::dav_sync_soon(&app, state.inner());
+    workers::sync_soon(&app, state);
+    workers::dav_sync_soon(&app, state);
     Ok(account)
 }

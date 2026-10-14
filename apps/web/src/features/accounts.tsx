@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { getCoreClient } from "@/core/client"
+import { getCoreClient, signOutOfGateway } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
 import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
@@ -124,7 +124,9 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
     <>
       <DialogHeader>
         <DialogTitle>Accounts</DialogTitle>
-        <DialogDescription>Mail stays on this device. Passwords are kept in your system keychain.</DialogDescription>
+        <DialogDescription>
+          {core?.remote ? "Mail is kept on your gateway. Passwords are sealed there with its key." : "Mail stays on this device. Passwords are kept in your system keychain."}
+        </DialogDescription>
       </DialogHeader>
 
       {core?.kind === "demo" && (
@@ -181,28 +183,45 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
       <div className="flex flex-col gap-1.5">
         <h3 className="text-sm font-medium">Add an account</h3>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              disabled={!!p.unavailable || (core?.kind === "demo" && !p.oauth)}
-              onClick={() => onAdd(p)}
-              className="flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
-            >
-              <Icon name={p.icon} className="mt-0.5 size-5 text-muted-foreground" />
-              <span className="flex flex-col gap-0.5">
-                <span className="font-medium">{p.label}</span>
-                {p.unavailable && <span className="text-xs text-muted-foreground">{p.unavailable}</span>}
-              </span>
-            </button>
-          ))}
+          {PRESETS.map((preset) => {
+            const p = core?.remote && preset.oauth && !SAME_COMPUTER ? { ...preset, unavailable: OAUTH_REMOTE } : preset
+            return (
+              <button
+                key={p.id}
+                type="button"
+                disabled={!!p.unavailable || (core?.kind === "demo" && !p.oauth)}
+                onClick={() => onAdd(p)}
+                className="flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+              >
+                <Icon name={p.icon} className="mt-0.5 size-5 text-muted-foreground" />
+                <span className="flex flex-col gap-0.5">
+                  <span className="font-medium">{p.label}</span>
+                  {p.unavailable && <span className="text-xs text-muted-foreground">{p.unavailable}</span>}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {accounts.length > 0 && <PushSettingsSection />}
+      {accounts.length > 0 && !core?.remote && <PushSettingsSection />}
+      {core?.remote && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => void signOutOfGateway().then(() => location.reload())}>
+            <Icon name="logout" data-icon="inline-start" /> Sign out of this gateway
+          </Button>
+        </div>
+      )}
     </>
   )
 }
+
+/**
+ * Provider sign-in returns to a page on the computer running the app. Behind
+ * a gateway that's the server, so it only works when the browser is there too.
+ */
+const SAME_COMPUTER = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
+const OAUTH_REMOTE = "Sign in from the desktop app, or open the gateway on its own computer"
 
 /** JMAP accounts carry no IMAP/SMTP settings. */
 const UNUSED: ServerConfig = { host: "", port: 0, security: "tls" }

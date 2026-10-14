@@ -1,0 +1,75 @@
+//! The app itself, on top of `pim-core`: every command the UI calls, the
+//! background workers (undo-send outbox, snooze wake-ups, sync, push), and
+//! one [`dispatch`] that routes a command by name. The Tauri shell (desktop
+//! and phones) and the web gateway are thin hosts around it (ADR-0016).
+//!
+//! Locking rule: the store mutex is never held across a network await.
+//! Workers read what they need, release the lock, talk to the server, then
+//! lock again to write the result.
+
+pub mod commands;
+pub mod dispatch;
+pub mod host;
+pub mod notes_commands;
+pub mod oauth_commands;
+pub mod pim_commands;
+pub mod push;
+pub mod secrets;
+pub mod workers;
+
+use std::{
+    collections::HashSet,
+    path::Path,
+    sync::{Arc, Mutex, atomic::AtomicBool},
+};
+
+pub use dispatch::{Output, dispatch};
+pub use host::{AppHandle, Host};
+use pim_core::Store;
+
+pub struct AppState {
+    pub store: Mutex<Store>,
+    /// One sync at a time, so two passes never race on the same cursor.
+    pub sync_lock: tokio::sync::Mutex<()>,
+    /// Accounts with a live IDLE (push) connection.
+    pub idling: Mutex<HashSet<String>>,
+    /// Some account still has older mail on the server to backfill.
+    pub backfill_pending: AtomicBool,
+    /// One calendar/contacts sync at a time.
+    pub dav_lock: tokio::sync::Mutex<()>,
+    /// Ends the browser sign-in that's waiting, if any.
+    pub oauth_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+}
+
+pub type Shared = Arc<AppState>;
+
+impl AppState {
+    /// Opens (or creates) the database in `dir`.
+    pub fn open(dir: &Path) -> pim_core::Result<Shared> {
+        std::fs::create_dir_all(dir).map_err(|e| pim_core::Error::Invalid(format!("can't create {}: {e}", dir.display())))?;
+        let store = Store::open(dir.join("mail.db"))?;
+        // Somewhere to save events and contacts even with no account.
+        store.ensure_local_collections()?;
+        Ok(Arc::new(AppState {
+            store: Mutex::new(store),
+            sync_lock: tokio::sync::Mutex::new(()),
+            idling: Mutex::new(HashSet::new()),
+            backfill_pending: AtomicBool::new(false),
+            dav_lock: tokio::sync::Mutex::new(()),
+            oauth_cancel: Mutex::new(None),
+        }))
+    }
+}
+
+/// Events the UI listens for to refresh its queries.
+pub mod events {
+    pub const MAIL_CHANGED: &str = "mail:changed";
+    pub const OUTBOX_CHANGED: &str = "outbox:changed";
+    pub const ACCOUNTS_CHANGED: &str = "accounts:changed";
+    /// Calendars, events, or contacts changed (sync or local edit).
+    pub const PIM_CHANGED: &str = "pim:changed";
+    /// A reminder is due (payload: `DueReminder`); the UI shows it in-app too.
+    pub const REMINDER: &str = "reminder";
+    /// Notes changed (local edit, import, or sync).
+    pub const NOTES_CHANGED: &str = "notes:changed";
+}

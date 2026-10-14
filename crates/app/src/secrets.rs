@@ -1,28 +1,38 @@
-//! Account passwords live in the OS keychain, keyed by account id. They never
-//! touch SQLite, logs, or the web layer after sign-in.
+//! Account passwords and tokens live in a [`SecretStore`] chosen by the
+//! host: the OS keychain in the desktop and phone apps, a sealed file in the
+//! web gateway. They never touch SQLite, logs, or the web layer after sign-in.
 
-const SERVICE: &str = "design.snds.mailbird";
+use std::sync::OnceLock;
 
-fn entry(account_id: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, account_id).map_err(|e| format!("keychain unavailable: {e}"))
+/// Where secrets are kept. `get` says in plain words when one is missing.
+pub trait SecretStore: Send + Sync {
+    fn get(&self, key: &str) -> Result<Option<String>, String>;
+    fn set(&self, key: &str, value: &str) -> Result<(), String>;
+    fn delete(&self, key: &str);
 }
 
-pub fn set(account_id: &str, password: &str) -> Result<(), String> {
-    entry(account_id)?
-        .set_password(password)
-        .map_err(|e| format!("couldn't save the password to the keychain: {e}"))
+static STORE: OnceLock<Box<dyn SecretStore>> = OnceLock::new();
+
+/// Sets the store once, at startup.
+pub fn install(store: Box<dyn SecretStore>) {
+    let _ = STORE.set(store);
 }
 
-pub fn get(account_id: &str) -> Result<String, String> {
-    entry(account_id)?.get_password().map_err(|e| match e {
-        keyring::Error::NoEntry => "the saved password is missing — sign in to this account again".into(),
-        e => format!("couldn't read the password from the keychain: {e}"),
-    })
+fn store() -> Result<&'static dyn SecretStore, String> {
+    STORE.get().map(|s| s.as_ref()).ok_or_else(|| "no secret store is set up".to_string())
 }
 
-pub fn delete(account_id: &str) {
-    if let Ok(e) = entry(account_id) {
-        let _ = e.delete_credential();
+pub fn set(key: &str, value: &str) -> Result<(), String> {
+    store()?.set(key, value)
+}
+
+pub fn get(key: &str) -> Result<String, String> {
+    store()?.get(key)?.ok_or_else(|| "the saved password is missing — sign in to this account again".into())
+}
+
+pub fn delete(key: &str) {
+    if let Ok(s) = store() {
+        s.delete(key);
     }
 }
 

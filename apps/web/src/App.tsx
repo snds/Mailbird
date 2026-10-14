@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { queryClient, useCoreEvents } from "@/core/queries"
 import { AccountsDialog } from "@/features/accounts"
+import { GatewayGate } from "@/features/gateway-sign-in"
 import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
 import { EventEditor } from "@/features/calendar/event-editor"
@@ -69,7 +70,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <TooltipProvider>
-          <Root />
+          <GatewayGate>
+            <Root />
+          </GatewayGate>
           <Toaster position="top-center" />
         </TooltipProvider>
       </ThemeProvider>

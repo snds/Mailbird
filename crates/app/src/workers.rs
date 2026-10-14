@@ -7,7 +7,7 @@ use pim_core::{
     net, now,
     store::{ARCHIVE, INBOX, SENT},
 };
-use tauri::{AppHandle, Emitter};
+use crate::host::AppHandle;
 
 use crate::{Shared, events, secrets};
 
@@ -33,7 +33,7 @@ pub fn start(app: AppHandle, state: Shared) {
     // Outbox + snooze: cheap local checks, once a second, so undo-send timing
     // and snooze wake-ups feel exact.
     let (a, s) = (app.clone(), state.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let mut tick = tokio::time::interval(TICK);
         loop {
             tick.tick().await;
@@ -43,7 +43,7 @@ pub fn start(app: AppHandle, state: Shared) {
     });
 
     let (a, s) = (app.clone(), state.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let mut tick = tokio::time::interval(SYNC_EVERY);
         loop {
             tick.tick().await; // first tick fires immediately: sync on launch
@@ -53,7 +53,7 @@ pub fn start(app: AppHandle, state: Shared) {
 
     // Backfill: while any account has older mail left, take another chunk.
     let (a, s) = (app.clone(), state.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         loop {
             tokio::time::sleep(BACKFILL_PAUSE).await;
             if s.backfill_pending.swap(false, Ordering::Relaxed) && sync_pass(&a, &s).await {
@@ -64,7 +64,7 @@ pub fn start(app: AppHandle, state: Shared) {
 
     // Calendars and contacts: CalDAV/CardDAV has no push we can rely on, so poll.
     let (a, s) = (app.clone(), state.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let mut tick = tokio::time::interval(net::dav::POLL);
         loop {
             tick.tick().await;
@@ -76,7 +76,7 @@ pub fn start(app: AppHandle, state: Shared) {
     // minute back, so one that fired while the app launched isn't lost, but
     // never replays hours of reminders missed while it was closed.
     let (a, s) = (app.clone(), state.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let mut checked = now() - 60;
         let mut tick = tokio::time::interval(REMINDER_TICK);
         loop {
@@ -92,7 +92,7 @@ pub fn start(app: AppHandle, state: Shared) {
 
     // Push relay: keep Outlook's Graph subscriptions alive (ADR-0015).
     let s = state.clone();
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let mut tick = tokio::time::interval(RENEW_EVERY);
         loop {
             tick.tick().await;
@@ -101,7 +101,7 @@ pub fn start(app: AppHandle, state: Shared) {
     });
 
     // Push: keep one IDLE connection per account.
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let mut tick = tokio::time::interval(IDLE_SUPERVISE_EVERY);
         loop {
             tick.tick().await;
@@ -110,7 +110,7 @@ pub fn start(app: AppHandle, state: Shared) {
                 let fresh = state.idling.lock().map(|mut set| set.insert(account.id.clone())).unwrap_or(false);
                 if fresh {
                     let (app, state) = (app.clone(), state.clone());
-                    tauri::async_runtime::spawn(async move { idle_loop(app, state, account.id).await });
+                    tokio::spawn(async move { idle_loop(app, state, account.id).await });
                 }
             }
         }
@@ -218,7 +218,7 @@ async fn send_due(app: &AppHandle, state: &Shared) {
 /// Sync shortly, off the caller's path (after a local change).
 pub fn sync_soon(app: &AppHandle, state: &Shared) {
     let (app, state) = (app.clone(), state.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(2)).await;
         sync_all(&app, &state).await;
     });
@@ -309,7 +309,7 @@ async fn sync_remote(state: &Shared, account: &pim_core::Account, password: &str
 /// Sync calendars and contacts shortly, after a local edit.
 pub fn dav_sync_soon(app: &AppHandle, state: &Shared) {
     let (app, state) = (app.clone(), state.clone());
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(1)).await;
         sync_dav_all(&app, &state).await;
     });
@@ -414,9 +414,7 @@ pub struct BackgroundOutcome {
 /// background refresh, Android WorkManager, or a push from the relay
 /// (ADR-0015). Syncs mail, renews Outlook subscriptions, and notifies about
 /// mail that's new since the last pass, within the platform's time budget.
-#[tauri::command]
-pub async fn background_pass(app: AppHandle, state: tauri::State<'_, Shared>) -> Result<BackgroundOutcome, String> {
-    let state = state.inner();
+pub async fn background_pass(app: AppHandle, state: &Shared) -> Result<BackgroundOutcome, String> {
     let unread = |s: &Shared| -> Vec<pim_core::MessageSummary> {
         s.store
             .lock()
@@ -434,19 +432,17 @@ pub async fn background_pass(app: AppHandle, state: tauri::State<'_, Shared>) ->
     let fresh: Vec<_> = unread(state).into_iter().filter(|m| !before.contains(&m.id)).collect();
     // The notification is written here, on the device: the relay never saw the mail.
     if !fresh.is_empty() {
-        use tauri_plugin_notification::NotificationExt;
         let (title, body) = match fresh.as_slice() {
             [one] => (one.from.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| one.from.email.clone()), one.subject.clone()),
             many => (format!("{} new messages", many.len()), many.iter().take(3).map(|m| m.subject.as_str()).collect::<Vec<_>>().join(" · ")),
         };
-        let _ = app.notification().builder().title(title).body(body).show();
+        let _ = app.notify(&title, &body);
     }
     Ok(BackgroundOutcome { new_mail: fresh.len(), finished })
 }
 
 /// Shows a reminder as an OS notification and tells the UI.
 fn notify(app: &AppHandle, r: &pim_core::DueReminder) {
-    use tauri_plugin_notification::NotificationExt;
     let minutes = (r.start - r.fire_at) / 60;
     let when = match minutes {
         m if m <= 0 => "Now".to_string(),
@@ -458,7 +454,7 @@ fn notify(app: &AppHandle, r: &pim_core::DueReminder) {
         Some(l) => format!("{when} · {l}"),
         None => when,
     };
-    if let Err(e) = app.notification().builder().title(&r.title).body(&body).show() {
+    if let Err(e) = app.notify(&r.title, &body) {
         log::info!("couldn't show a notification: {e}");
     }
     let _ = app.emit(events::REMINDER, r);
