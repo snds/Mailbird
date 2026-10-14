@@ -18,6 +18,8 @@ pub mod mime;
 pub mod model;
 mod pim_store;
 mod invite_store;
+mod notes_import;
+mod notes_store;
 pub mod store;
 pub mod vcard;
 

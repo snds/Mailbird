@@ -642,3 +642,156 @@ pub struct DavBatch {
     pub upserts: Vec<(String, String, String)>,
     pub removed: Vec<String>,
 }
+
+// ── Notes ───────────────────────────────────────────────────────────────────
+
+/// What a note can be linked to. Links use keys that are the same on every
+/// device, so they survive sync: an event's iCalendar `UID`, a contact's
+/// vCard `UID`, and a conversation's first `Message-ID`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NoteLinkKind {
+    Event,
+    Contact,
+    Thread,
+}
+
+impl NoteLinkKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Event => "event",
+            Self::Contact => "contact",
+            Self::Thread => "thread",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteLink {
+    pub kind: NoteLinkKind,
+    /// The stable key (see [`NoteLinkKind`]).
+    pub key: String,
+    /// What to show when the target isn't on this device (yet).
+    pub label: String,
+    /// The target's id in this device's store, when it's here. Ignored on input.
+    #[serde(default)]
+    pub target: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteSummary {
+    pub id: String,
+    /// The first line of the note, without Markdown marks.
+    pub title: String,
+    /// The next bit of text after the title, for lists.
+    pub snippet: String,
+    pub pinned: bool,
+    pub archived: bool,
+    pub tags: Vec<String>,
+    pub links: Vec<NoteLink>,
+    pub created: i64,
+    pub updated: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteDetail {
+    #[serde(flatten)]
+    pub summary: NoteSummary,
+    /// The note itself, as Markdown. This is what export and search read.
+    pub markdown: String,
+    /// The note's Yjs document (a base64 state update), once an editor has
+    /// opened it. Sync merges this; Markdown is derived from it.
+    pub ydoc: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteInput {
+    pub markdown: String,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub links: Vec<NoteLink>,
+}
+
+/// Everything about a note except its text. `None` leaves a field as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteMeta {
+    pub pinned: Option<bool>,
+    pub archived: Option<bool>,
+    pub tags: Option<Vec<String>>,
+    pub links: Option<Vec<NoteLink>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteQuery {
+    pub search: Option<String>,
+    pub tag: Option<String>,
+    #[serde(default)]
+    pub archived: bool,
+    /// Only notes linked to this target.
+    pub linked: Option<NoteTarget>,
+}
+
+/// An event, contact, or conversation by its id on this device.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteTarget {
+    pub kind: NoteLinkKind,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagCount {
+    pub tag: String,
+    pub count: u32,
+}
+
+/// One file handed to the importer: its path inside the folder that was
+/// picked (folders become tags) and its text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportFile {
+    pub path: String,
+    pub contents: String,
+    /// The file's modified time (Unix seconds), when the picker knows it.
+    #[serde(default)]
+    pub modified: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pub imported: u32,
+    /// Already imported before (same file), so left alone.
+    pub duplicates: u32,
+    /// In the source app's trash.
+    pub trashed: u32,
+    /// Images, audio, and drawings that weren't brought over.
+    pub attachments_dropped: u32,
+    /// Files that weren't notes we could read.
+    pub skipped: Vec<String>,
+}
+
+/// A note's sync record: everything but the text, which syncs separately as
+/// its own Yjs document. The newest `updated` wins.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteRecord {
+    pub id: String,
+    pub pinned: bool,
+    pub archived: bool,
+    pub deleted: bool,
+    pub tags: Vec<String>,
+    pub links: Vec<NoteLink>,
+    pub created: i64,
+    pub updated: i64,
+}

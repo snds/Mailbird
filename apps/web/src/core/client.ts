@@ -13,8 +13,20 @@ import type {
   Draft,
   EventDetail,
   EventInput,
+  ImportFile,
+  ImportReport,
   Invite,
   InviteResponse,
+  NoteDetail,
+  NoteInput,
+  NoteLink,
+  NoteMeta,
+  NoteQuery,
+  NoteRecord,
+  NoteSummary,
+  NoteTarget,
+  RelayConfig,
+  TagCount,
   Occurrence,
   MessageDetail,
   MessageQuery,
@@ -81,11 +93,29 @@ export interface CoreClient {
   mergeContacts(primary: string, others: string[]): Promise<ContactDetail>
   suggestRecipients(prefix: string): Promise<Address[]>
   syncPimNow(): Promise<void>
+  // Notes
+  listNotes(query: NoteQuery): Promise<NoteSummary[]>
+  getNote(id: string): Promise<NoteDetail>
+  createNote(input: NoteInput): Promise<NoteDetail>
+  /** Markdown plus the editor's Yjs state. `touch: false` stores another device's text without marking it edited. */
+  saveNoteBody(id: string, markdown: string, ydoc: string | null, touch: boolean): Promise<void>
+  setNoteMeta(id: string, meta: NoteMeta): Promise<NoteSummary>
+  deleteNote(id: string): Promise<void>
+  restoreNote(id: string): Promise<void>
+  noteTags(): Promise<TagCount[]>
+  /** The link to put on a note for something on this device. */
+  noteLinkFor(target: NoteTarget): Promise<NoteLink | null>
+  importNotes(files: ImportFile[]): Promise<ImportReport>
+  noteRecords(): Promise<NoteRecord[]>
+  /** Applies newer records from other devices; returns the ids that changed. */
+  applyNoteRecords(records: NoteRecord[]): Promise<string[]>
+  getNotesRelay(): Promise<RelayConfig | null>
+  setNotesRelay(relay: RelayConfig | null): Promise<void>
   /** Subscribe to core change events; returns an unsubscribe function. */
   on(event: CoreEvent, handler: (payload?: unknown) => void): () => void
 }
 
-export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "reminder"
+export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "reminder"
 
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
@@ -133,6 +163,20 @@ async function createTauriClient(): Promise<CoreClient> {
     mergeContacts: (primary, others) => invoke("merge_contacts", { primary, others }),
     suggestRecipients: (prefix) => invoke("suggest_recipients", { prefix }),
     syncPimNow: () => invoke("sync_pim_now"),
+    listNotes: (query) => invoke("list_notes", { query }),
+    getNote: (id) => invoke("get_note", { id }),
+    createNote: (input) => invoke("create_note", { input }),
+    saveNoteBody: (id, markdown, ydoc, touch) => invoke("save_note_body", { id, markdown, ydoc, touch }),
+    setNoteMeta: (id, meta) => invoke("set_note_meta", { id, meta }),
+    deleteNote: (id) => invoke("delete_note", { id }),
+    restoreNote: (id) => invoke("restore_note", { id }),
+    noteTags: () => invoke("note_tags"),
+    noteLinkFor: (target) => invoke("note_link_for", { target }),
+    importNotes: (files) => invoke("import_notes", { files }),
+    noteRecords: () => invoke("note_records"),
+    applyNoteRecords: (records) => invoke("apply_note_records", { records }),
+    getNotesRelay: () => invoke("get_notes_relay"),
+    setNotesRelay: (relay) => invoke("set_notes_relay", { relay }),
     on(event, handler) {
       let off: (() => void) | undefined
       let cancelled = false

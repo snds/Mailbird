@@ -20,3 +20,5 @@ There is no consumer Keep API and no Apple Notes API. Owning the format is the o
 ## Cross-vertical hooks
 
 Notes can attach to an event (meeting notes), a thread, or a contact. The links are stored by the core, not inside the Markdown.
+
+_Built in Phase 3. See [ADR-0012](0012-notes.md)._

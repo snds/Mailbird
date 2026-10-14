@@ -1,0 +1,20 @@
+{
+  "name": "notes-relay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A small, self-hostable Hocuspocus relay for Mailbird notes sync",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "4.7.0",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "@hocuspocus/provider": "4.7.0"
+  }
+}

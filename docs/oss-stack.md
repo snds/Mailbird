@@ -25,8 +25,11 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | @tanstack/react-query | Server-state cache | 5.104 | MIT | ✅ | Wraps calls to the core. |
 | @tanstack/react-virtual | Long lists | 3.14 | MIT | 🟦 | Message lists with 100k+ rows. |
 | zustand | UI state | 5.0 | MIT | ✅ | — |
-| @tiptap/react, pm, starter-kit, extensions | Composer editor (notes next) | 3.31.3 (pinned) | MIT | ✅ | **Avoid Tiptap Pro** (paid). Collaboration uses Yjs + Hocuspocus (MIT). |
-| yjs | CRDT for notes sync | 13.6 | MIT | 🟦 | — |
+| @tiptap/react, pm, core, starter-kit, extensions, extension-list | Composer and notes editor | 3.31.3 (pinned) | MIT | ✅ | **Avoid Tiptap Pro** (paid). Transitive menu packages are pinned to the same release in `pnpm-workspace.yaml`. |
+| @tiptap/markdown | Notes ↔ Markdown | 3.31.3 (pinned) | MIT | ✅ | Uses `marked` (MIT). Also runs headless for sync. |
+| @tiptap/extension-collaboration, @tiptap/y-tiptap | Editor ↔ Yjs binding | 3.31.3 / 3.0.9 (pinned) | MIT | ✅ | — |
+| yjs, y-protocols | CRDT for notes sync | 13.6.33 / 1.0.7 (pinned) | MIT | ✅ | See [ADR-0012](decisions/0012-notes.md). |
+| @hocuspocus/provider, @hocuspocus/server | Notes sync client and relay | 4.7.0 (pinned) | MIT | ✅ | The relay is `tools/notes-relay`. Hocuspocus Cloud and Tiptap Collab are paid hosted options; not needed. |
 | @schedule-x/calendar | Calendar views | 4.9 | MIT core | ⚪ | Not used: Phase 2 built its own agenda/day/week views on our tokens ([ADR-0010](decisions/0010-calendar-contacts.md)). |
 | ical.js | iCal / vCard parsing (web) | 2.2 | MPL-2.0 | ⚪ | Not needed: the Rust core parses everything and the UI gets typed rows. |
 | chrono-node | Natural-language dates (quick add) | 2.10.1 (pinned) | MIT | ✅ | “Lunch with Ana tomorrow 1pm”. |

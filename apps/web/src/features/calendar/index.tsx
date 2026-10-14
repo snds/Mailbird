@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
-import { useUi } from "@/app/ui-store"
+import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon } from "@/components/icon"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -120,10 +120,13 @@ function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
 export function CalendarView() {
   const tabletUp = useIsTabletUp()
   const [view, setView] = useState<View>(() => (window.matchMedia("(min-width: 768px)").matches ? "week" : "agenda"))
-  const [focus, setFocus] = useState(() => startOfDay(new Date()))
+  // Opened from a note's link: show that event, on its day.
+  const [jumped] = useState(() => pendingJump("event"))
+  useEffect(() => void useUi.getState().takeJump("event"), [])
+  const [focus, setFocus] = useState(() => startOfDay(jumped?.start ? new Date(jumped.start * 1000) : new Date()))
   const [month, setMonth] = useState(focus)
   const [agendaDays, setAgendaDays] = useState(30)
-  const [selected, setSelected] = useState<Selected | null>(null)
+  const [selected, setSelected] = useState<Selected | null>(jumped?.start != null ? { eventId: jumped.id, start: jumped.start } : null)
   const [listOpen, setListOpen] = useState(false)
   const openEditor = useUi((s) => s.openEventEditor)
   const calendars = useCalendars()

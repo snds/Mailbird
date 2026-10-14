@@ -1,3 +1,10 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "tools/notes-relay"
+
+# Tiptap packages move in lockstep; keep transitive ones (menus) on the same
+# release as the direct ones, and off releases younger than two weeks.
+overrides:
+  "@tiptap/extension-bubble-menu": 3.31.3
+  "@tiptap/extension-floating-menu": 3.31.3

@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useRef, useState } from "react"
 
-import { useUi } from "@/app/ui-store"
+import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon } from "@/components/icon"
 import { ListRow } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
@@ -35,7 +35,8 @@ export function MailView() {
   const [search, setSearch] = useState("")
   // Selection is a conversation. The row is remembered so the reader stays
   // open when the row leaves the current lane (e.g. read mail in "Unread").
-  const [selected, setSelected] = useState<MessageSummary | null>(null)
+  const [selected, setSelected] = useState<MessageSummary | null>(() => pendingJump("thread")?.row ?? null)
+  useEffect(() => void useUi.getState().takeJump("thread"), [])
   const selectedId = selected?.threadId ?? null
   const searchRef = useRef<HTMLInputElement>(null)
   const deferredSearch = useDeferredValue(search.trim())

@@ -18,6 +18,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm build # tsc -b + vite build
+      # Notes relay: two clients merge, refusals, persistence across restart.
+      - run: pnpm --filter notes-relay test
 
   core:
     runs-on: ubuntu-latest
