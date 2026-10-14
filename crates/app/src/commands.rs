@@ -5,26 +5,23 @@ use pim_core::{
     Account, AccountConfig, Capabilities, Draft, MessageDetail, MessageQuery, MessageSummary,
     OutboxItem, Provider, net,
 };
-use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_opener::OpenerExt;
+use crate::host::AppHandle;
 
 use crate::{Shared, events, secrets, workers};
 
-pub(crate) type Res<T> = Result<T, String>;
+pub type Res<T> = Result<T, String>;
 
-pub(crate) fn with_store<T>(state: &Shared, f: impl FnOnce(&pim_core::Store) -> pim_core::Result<T>) -> Res<T> {
+pub fn with_store<T>(state: &Shared, f: impl FnOnce(&pim_core::Store) -> pim_core::Result<T>) -> Res<T> {
     let store = state.store.lock().map_err(|_| "the mail database is unavailable".to_string())?;
     f(&store).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
 pub fn provider_capabilities(provider: Provider) -> Capabilities {
     provider.capabilities()
 }
 
-#[tauri::command]
-pub fn list_accounts(state: State<'_, Shared>) -> Res<Vec<Account>> {
-    with_store(&state, |s| s.accounts())
+pub fn list_accounts(state: &Shared) -> Res<Vec<Account>> {
+    with_store(state, |s| s.accounts())
 }
 
 /// Checks calendar and contacts sign-in before anything is saved.
@@ -42,10 +39,9 @@ async fn verify_dav(config: &AccountConfig, secret: &str) -> Res<()> {
 /// Verify the credentials against every server before saving anything.
 /// `dav_password` is only for providers whose CalDAV needs its own app
 /// password (`DavConfig::separate_secret`).
-#[tauri::command]
 pub async fn add_account(
     app: AppHandle,
-    state: State<'_, Shared>,
+    state: &Shared,
     config: AccountConfig,
     password: String,
     dav_password: Option<String>,
@@ -61,17 +57,17 @@ pub async fn add_account(
     let separate = config.dav.as_ref().is_some_and(|d| d.separate_secret);
     let dav_secret = if separate { dav_password.clone().filter(|p| !p.is_empty()).ok_or("enter the calendar app password")? } else { password.clone() };
     verify_dav(&config, &dav_secret).await?;
-    let account = with_store(&state, |s| s.add_account(&config))?;
+    let account = with_store(state, |s| s.add_account(&config))?;
     let saved = secrets::set(&account.id, &password).and_then(|_| if separate { secrets::set(&secrets::dav_key(&account.id), &dav_secret) } else { Ok(()) });
     if let Err(e) = saved {
-        let _ = with_store(&state, |s| s.remove_account(&account.id));
+        let _ = with_store(state, |s| s.remove_account(&account.id));
         secrets::delete(&account.id);
         return Err(e);
     }
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
-    crate::push::accounts_changed(state.inner());
-    let (app2, state2) = (app.clone(), state.inner().clone());
-    tauri::async_runtime::spawn(async move {
+    crate::push::accounts_changed(state);
+    let (app2, state2) = (app.clone(), state.clone());
+    tokio::spawn(async move {
         workers::sync_all(&app2, &state2).await;
         workers::sync_dav_all(&app2, &state2).await;
     });
@@ -80,9 +76,8 @@ pub async fn add_account(
 
 /// Connects calendars and contacts to an existing account (or disconnects
 /// them with `dav: None`). The password is required when DAV has its own.
-#[tauri::command]
-pub async fn set_account_dav(app: AppHandle, state: State<'_, Shared>, id: String, dav: Option<pim_core::DavConfig>, password: Option<String>) -> Res<Account> {
-    let mut account = with_store(&state, |s| s.account(&id))?;
+pub async fn set_account_dav(app: AppHandle, state: &Shared, id: String, dav: Option<pim_core::DavConfig>, password: Option<String>) -> Res<Account> {
+    let mut account = with_store(state, |s| s.account(&id))?;
     account.config.dav = dav.clone();
     if let Some(d) = &dav {
         let secret = match password.filter(|p| !p.is_empty()) {
@@ -97,43 +92,39 @@ pub async fn set_account_dav(app: AppHandle, state: State<'_, Shared>, id: Strin
     } else {
         secrets::delete(&secrets::dav_key(&id));
     }
-    let account = with_store(&state, |s| s.set_account_dav(&id, dav.as_ref()))?;
+    let account = with_store(state, |s| s.set_account_dav(&id, dav.as_ref()))?;
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
     let _ = app.emit(events::PIM_CHANGED, ());
-    workers::dav_sync_soon(&app, state.inner());
+    workers::dav_sync_soon(&app, state);
     Ok(account)
 }
 
 /// Removes the account and its mail. An OAuth sign-in is revoked with the provider too.
-#[tauri::command]
-pub async fn remove_account(app: AppHandle, state: State<'_, Shared>, id: String) -> Res<()> {
-    let account = with_store(&state, |s| s.account(&id))?;
-    crate::push::account_removing(state.inner(), &account).await;
+pub async fn remove_account(app: AppHandle, state: &Shared, id: String) -> Res<()> {
+    let account = with_store(state, |s| s.account(&id))?;
+    crate::push::account_removing(state, &account).await;
     secrets::revoke(&account).await;
-    with_store(&state, |s| s.remove_account(&id))?;
+    with_store(state, |s| s.remove_account(&id))?;
     secrets::delete(&id);
     secrets::delete(&secrets::dav_key(&id));
     let _ = app.emit(events::ACCOUNTS_CHANGED, ());
     let _ = app.emit(events::PIM_CHANGED, ());
     let _ = app.emit(events::MAIL_CHANGED, ());
-    crate::push::accounts_changed(state.inner());
+    crate::push::accounts_changed(state);
     Ok(())
 }
 
-#[tauri::command]
-pub async fn sync_now(app: AppHandle, state: State<'_, Shared>) -> Res<()> {
-    workers::sync_all(&app, state.inner()).await;
+pub async fn sync_now(app: AppHandle, state: &Shared) -> Res<()> {
+    workers::sync_all(&app, state).await;
     Ok(())
 }
 
-#[tauri::command]
-pub fn list_messages(state: State<'_, Shared>, query: MessageQuery) -> Res<Vec<MessageSummary>> {
-    with_store(&state, |s| s.messages(&query))
+pub fn list_messages(state: &Shared, query: MessageQuery) -> Res<Vec<MessageSummary>> {
+    with_store(state, |s| s.messages(&query))
 }
 
-#[tauri::command]
-pub fn get_thread(state: State<'_, Shared>, thread_id: String) -> Res<Vec<MessageDetail>> {
-    with_store(&state, |s| s.thread(&thread_id))
+pub fn get_thread(state: &Shared, thread_id: String) -> Res<Vec<MessageDetail>> {
+    with_store(state, |s| s.thread(&thread_id))
 }
 
 /// Local changes apply instantly; the next sync pushes them up.
@@ -142,60 +133,51 @@ fn changed(app: &AppHandle, state: &Shared) {
     workers::sync_soon(app, state);
 }
 
-#[tauri::command]
-pub fn set_thread_seen(app: AppHandle, state: State<'_, Shared>, thread_id: String, seen: bool) -> Res<()> {
-    with_store(&state, |s| s.set_thread_seen(&thread_id, seen))?;
-    changed(&app, &state);
+pub fn set_thread_seen(app: AppHandle, state: &Shared, thread_id: String, seen: bool) -> Res<()> {
+    with_store(state, |s| s.set_thread_seen(&thread_id, seen))?;
+    changed(&app, state);
     Ok(())
 }
 
-#[tauri::command]
-pub fn set_thread_flagged(app: AppHandle, state: State<'_, Shared>, thread_id: String, flagged: bool) -> Res<()> {
-    with_store(&state, |s| s.set_thread_flagged(&thread_id, flagged))?;
-    changed(&app, &state);
+pub fn set_thread_flagged(app: AppHandle, state: &Shared, thread_id: String, flagged: bool) -> Res<()> {
+    with_store(state, |s| s.set_thread_flagged(&thread_id, flagged))?;
+    changed(&app, state);
     Ok(())
 }
 
-#[tauri::command]
-pub fn set_thread_archived(app: AppHandle, state: State<'_, Shared>, thread_id: String, archived: bool) -> Res<()> {
-    with_store(&state, |s| s.set_thread_archived(&thread_id, archived))?;
-    changed(&app, &state);
+pub fn set_thread_archived(app: AppHandle, state: &Shared, thread_id: String, archived: bool) -> Res<()> {
+    with_store(state, |s| s.set_thread_archived(&thread_id, archived))?;
+    changed(&app, state);
     Ok(())
 }
 
-#[tauri::command]
-pub fn snooze_thread(app: AppHandle, state: State<'_, Shared>, thread_id: String, until: i64) -> Res<()> {
-    with_store(&state, |s| s.snooze_thread(&thread_id, until))?;
+pub fn snooze_thread(app: AppHandle, state: &Shared, thread_id: String, until: i64) -> Res<()> {
+    with_store(state, |s| s.snooze_thread(&thread_id, until))?;
     let _ = app.emit(events::MAIL_CHANGED, ());
     Ok(())
 }
 
-#[tauri::command]
-pub fn unsnooze_thread(app: AppHandle, state: State<'_, Shared>, thread_id: String) -> Res<()> {
-    with_store(&state, |s| s.unsnooze_thread(&thread_id))?;
+pub fn unsnooze_thread(app: AppHandle, state: &Shared, thread_id: String) -> Res<()> {
+    with_store(state, |s| s.unsnooze_thread(&thread_id))?;
     let _ = app.emit(events::MAIL_CHANGED, ());
     Ok(())
 }
 
 /// An attachment's bytes for in-app preview. Sent as a raw IPC response
 /// (an ArrayBuffer in the UI), not JSON, so a 10 MB PDF isn't a 13 MB string.
-#[tauri::command]
-pub fn attachment_data(state: State<'_, Shared>, id: String) -> Res<tauri::ipc::Response> {
-    let (_, bytes) = with_store(&state, |s| s.attachment(&id))?;
-    Ok(tauri::ipc::Response::new(bytes))
+pub fn attachment_data(state: &Shared, id: String) -> Res<Vec<u8>> {
+    let (_, bytes) = with_store(state, |s| s.attachment(&id))?;
+    Ok(bytes)
 }
 
 /// Save an attachment to Downloads and open it with the default app.
 /// Returns the saved path so the UI can say where it went.
-#[tauri::command]
-pub fn open_attachment(app: AppHandle, state: State<'_, Shared>, id: String) -> Res<String> {
-    let (info, bytes) = with_store(&state, |s| s.attachment(&id))?;
-    let dir = app.path().download_dir().map_err(|e| format!("no Downloads folder: {e}"))?;
+pub fn open_attachment(app: AppHandle, state: &Shared, id: String) -> Res<String> {
+    let (info, bytes) = with_store(state, |s| s.attachment(&id))?;
+    let dir = app.download_dir()?;
     let path = unique_path(&dir, &safe_filename(&info.filename));
     std::fs::write(&path, bytes).map_err(|e| format!("couldn't save {}: {e}", info.filename))?;
-    app.opener()
-        .open_path(path.to_string_lossy(), None::<&str>)
-        .map_err(|e| format!("saved to {}, but couldn't open it: {e}", path.display()))?;
+    app.open_path(&path).map_err(|e| format!("saved to {}, but couldn't open it: {e}", path.display()))?;
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -225,6 +207,22 @@ fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
         .expect("some numbered name is free")
 }
 
+pub fn queue_send(app: AppHandle, state: &Shared, draft: Draft, undo_secs: i64) -> Res<OutboxItem> {
+    let item = with_store(state, |s| s.queue_send(&draft, undo_secs))?;
+    let _ = app.emit(events::OUTBOX_CHANGED, ());
+    Ok(item)
+}
+
+pub fn cancel_send(app: AppHandle, state: &Shared, id: String) -> Res<Draft> {
+    let draft = with_store(state, |s| s.cancel_send(&id))?;
+    let _ = app.emit(events::OUTBOX_CHANGED, ());
+    Ok(draft)
+}
+
+pub fn list_outbox(state: &Shared) -> Res<Vec<OutboxItem>> {
+    with_store(state, |s| s.outbox())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,23 +243,4 @@ mod tests {
         assert_eq!(unique_path(&dir, "a.pdf"), dir.join("a (1).pdf"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
-}
-
-#[tauri::command]
-pub fn queue_send(app: AppHandle, state: State<'_, Shared>, draft: Draft, undo_secs: i64) -> Res<OutboxItem> {
-    let item = with_store(&state, |s| s.queue_send(&draft, undo_secs))?;
-    let _ = app.emit(events::OUTBOX_CHANGED, ());
-    Ok(item)
-}
-
-#[tauri::command]
-pub fn cancel_send(app: AppHandle, state: State<'_, Shared>, id: String) -> Res<Draft> {
-    let draft = with_store(&state, |s| s.cancel_send(&id))?;
-    let _ = app.emit(events::OUTBOX_CHANGED, ());
-    Ok(draft)
-}
-
-#[tauri::command]
-pub fn list_outbox(state: State<'_, Shared>) -> Res<Vec<OutboxItem>> {
-    with_store(&state, |s| s.outbox())
 }

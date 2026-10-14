@@ -31,6 +31,23 @@ jobs:
       # Push relay: API, JMAP watching, Outlook webhook, signed APNs/FCM pushes.
       - run: cargo test -p mailbird-push-relay
       - run: cargo clippy -p mailbird-push-relay --all-targets -- -D warnings
+      # App commands (shared by the desktop shell and the gateway) and the gateway's HTTP surface.
+      - run: cargo test -p pim-app -p mailbird-gateway
+      - run: cargo clippy -p pim-app -p mailbird-gateway --all-targets -- -D warnings
+
+  # The self-hosted images build from a clean checkout (no push).
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f tools/push-relay/Dockerfile -t mailbird-push-relay .
+      - run: docker build -f apps/gateway/Dockerfile -t mailbird-gateway .
+      - name: Gateway image starts and serves the app
+        run: |
+          docker run -d --name gw -p 127.0.0.1:8080:8080 -e GATEWAY_PASSWORD=ci-password-0123456789 -e GATEWAY_KEY="$(openssl rand -base64 32)" mailbird-gateway
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8080/api/session && break; sleep 1; done
+          curl -fs http://127.0.0.1:8080/ | grep -q '<div id="root">'
+          docker logs gw
 
   # Real IMAP (Dovecot) + SMTP (aiosmtpd) round trip: sync, flag push, archive
   # move, send, and the Sent copy. See tools/test-mail-servers/.

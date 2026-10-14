@@ -1,0 +1,89 @@
+//! The dispatcher both hosts call: every command routes, arguments arrive
+//! by their UI names, and results and events come back.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use pim_app::secrets::SecretStore;
+use pim_app::{AppHandle, AppState, Host, Output, dispatch, dispatch::COMMANDS};
+use serde_json::{Value, json};
+
+#[derive(Default, Clone)]
+struct TestHost {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl Host for TestHost {
+    fn emit(&self, event: &str, _payload: Value) {
+        self.events.lock().unwrap().push(event.to_owned());
+    }
+    fn notify(&self, _: &str, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn open_url(&self, _: &str) -> Result<(), String> {
+        Err("no browser in tests".into())
+    }
+    fn download_dir(&self) -> Result<PathBuf, String> {
+        Ok(std::env::temp_dir())
+    }
+    fn open_path(&self, _: &Path) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct Memory(Mutex<HashMap<String, String>>);
+
+impl SecretStore for Memory {
+    fn get(&self, key: &str) -> Result<Option<String>, String> {
+        Ok(self.0.lock().unwrap().get(key).cloned())
+    }
+    fn set(&self, key: &str, value: &str) -> Result<(), String> {
+        self.0.lock().unwrap().insert(key.into(), value.into());
+        Ok(())
+    }
+    fn delete(&self, key: &str) {
+        self.0.lock().unwrap().remove(key);
+    }
+}
+
+fn json_of(o: Output) -> Value {
+    match o {
+        Output::Json(v) => v,
+        Output::Bytes(_) => panic!("expected JSON"),
+    }
+}
+
+#[tokio::test]
+async fn every_command_routes_and_works() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let host = TestHost::default();
+    let app = AppHandle::new(host.clone());
+
+    // Every listed command is routed: with no arguments it runs, or asks for them.
+    for name in COMMANDS {
+        if let Err(e) = dispatch(&app, &state, name, Value::Null).await {
+            assert!(!e.starts_with("unknown command"), "{name} isn't routed");
+        }
+    }
+    assert!(dispatch(&app, &state, "drop_tables", Value::Null).await.err().unwrap().starts_with("unknown command"));
+    assert!(dispatch(&app, &state, "get_thread", json!({ "thread_id": "x" })).await.err().unwrap().contains("bad arguments"), "arguments go by their camelCase names");
+
+    // Real work through the dispatcher.
+    assert_eq!(json_of(dispatch(&app, &state, "list_accounts", Value::Null).await.unwrap()), json!([]));
+    dispatch(&app, &state, "set_time_zone", json!({ "tz": "Europe/Lisbon" })).await.unwrap();
+    let cals = json_of(dispatch(&app, &state, "list_collections", json!({ "kind": "calendar" })).await.unwrap());
+    let cal = cals[0]["id"].as_str().unwrap().to_owned();
+    let input = json!({ "calendarId": cal, "title": "Gateway check", "start": "2026-10-20T10:00", "end": "2026-10-20T11:00", "timeZone": "Europe/Lisbon" });
+    dispatch(&app, &state, "create_event", json!({ "input": input })).await.unwrap();
+    let occ = json_of(dispatch(&app, &state, "list_occurrences", json!({ "from": 1_792_000_000i64, "to": 1_793_000_000i64 })).await.unwrap());
+    assert_eq!(occ[0]["title"], "Gateway check");
+    let note = json_of(dispatch(&app, &state, "create_note", json!({ "input": { "markdown": "# Hello\nfrom the dispatcher" } })).await.unwrap());
+    assert_eq!(note["title"], "Hello");
+    let events = host.events.lock().unwrap().clone();
+    assert!(events.contains(&"pim:changed".to_string()) && events.contains(&"notes:changed".to_string()), "{events:?}");
+    let _ = std::fs::remove_dir_all(dir);
+}

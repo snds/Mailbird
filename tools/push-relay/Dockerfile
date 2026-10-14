@@ -5,11 +5,14 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY tools/push-relay ./tools/push-relay
-# The workspace lists the desktop shell too; a stub keeps Cargo happy without its WebView libraries.
-RUN mkdir -p apps/web/src-tauri/src \
- && printf '[package]\nname = "mailbird-shell"\nversion = "0.1.0"\nedition = "2024"\n[lib]\npath = "src/lib.rs"\n' > apps/web/src-tauri/Cargo.toml \
- && touch apps/web/src-tauri/src/lib.rs \
- && cargo build --release --locked -p mailbird-push-relay
+# The workspace lists the desktop shell and the gateway too; stubs keep Cargo happy without them.
+# Stubs drop their packages from Cargo.lock, so no --locked: every remaining version still comes from it.
+RUN for m in web/src-tauri:mailbird-shell gateway:mailbird-gateway; do \
+      d=apps/${m%%:*}; mkdir -p $d/src \
+      && printf '[package]\nname = "%s"\nversion = "0.1.0"\nedition = "2024"\n[lib]\npath = "src/lib.rs"\n' ${m#*:} > $d/Cargo.toml \
+      && touch $d/src/lib.rs; \
+    done \
+ && cargo build --release -p mailbird-push-relay
 
 FROM debian:bookworm-slim
 RUN useradd --system --uid 10001 --home /data relay && mkdir -p /data && chown relay /data

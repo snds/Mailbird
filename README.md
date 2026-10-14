@@ -42,7 +42,7 @@ cargo test -p pim-core      # Rust core
 pnpm tauri dev              # desktop shell (needs the Tauri prerequisites for your OS)
 ```
 
-**Web vs. desktop.** In a browser the app runs on sample mail, so you can try every flow. Connecting real accounts needs the desktop app: iCloud, Fastmail (JMAP), or any IMAP/SMTP or JMAP server, with calendars and contacts over CalDAV/CardDAV. Gmail and Outlook need OAuth, which is Phase 4.
+**Web vs. desktop.** On its own, the web app runs on sample mail, so you can try every flow. For real accounts in a browser, run the [web gateway](apps/gateway/README.md) on a machine you own: it syncs your accounts with the same code as the desktop app and serves the web app (`docker compose up -d` in `apps/gateway`).
 
 **Mail integration tests (Linux).** These run real round trips against IMAP + SMTP and against JMAP:
 
@@ -83,6 +83,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **4b · Microsoft** ✅ | Outlook and Microsoft 365 sign-in, Graph mail sync and send, Outlook calendars and contacts translated to iCalendar and vCard ([ADR-0014](docs/decisions/0014-microsoft.md), [guide](docs/microsoft-setup.md)) |
 | **5 · Mobile groundwork** ✅ | New mail on phones (periodic checks, or a self-hosted push relay in Docker), background pass and push seams, 10k-row virtualized list, keyboard-safe composer ([ADR-0015](docs/decisions/0015-mobile-groundwork.md), [relay](tools/push-relay/README.md)) |
 | **5b · Device spike** | iOS and Android builds against ADR-0002's exit criteria ([checklist](docs/mobile-spike.md)), Capacitor fallback |
+| **6 · Web gateway** ✅ | Real accounts in the browser through a self-hosted server (Docker): one command layer shared with the desktop app, password sign-in, live events, sealed secrets ([ADR-0016](docs/decisions/0016-web-gateway.md), [guide](apps/gateway/README.md)) |
 
 ## License
 

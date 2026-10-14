@@ -42,11 +42,14 @@ import type {
 /**
  * The one API the UI uses to reach the core, whatever the shell.
  * - Tauri (desktop now, mobile next): IPC into the Rust core in-process.
- * - Browser: an in-memory demo until the self-hosted gateway exists (ADR-0002).
+ * - Browser on a web gateway: the same commands over HTTPS (ADR-0016).
+ * - Browser anywhere else: an in-memory demo on sample mail.
  */
 export interface CoreClient {
   /** "native" can connect real accounts; "demo" runs on sample data. */
   readonly kind: "native" | "demo"
+  /** Talking to a web gateway over HTTPS rather than an in-process core (ADR-0016). */
+  readonly remote: boolean
   providerCapabilities(provider: Provider): Promise<Capabilities>
   listAccounts(): Promise<Account[]>
   /** `davPassword` only when CalDAV needs its own app password. */
@@ -135,73 +138,85 @@ export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" |
 
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
+/** Calls one core command by name (Rust's snake_case) with camelCase arguments. */
+type Call = <T>(name: string, args?: Record<string, unknown>) => Promise<T>
+
+/** Every command, over whichever transport `call` uses (ADR-0016). */
+function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
+  return {
+    providerCapabilities: (provider) => call("provider_capabilities", { provider }),
+    listAccounts: () => call("list_accounts"),
+    addAccount: (config, password, davPassword) => call("add_account", { config, password, davPassword: davPassword ?? null }),
+    setAccountDav: (id, dav, password) => call("set_account_dav", { id, dav, password: password ?? null }),
+    removeAccount: (id) => call("remove_account", { id }),
+    getOAuthClient: (issuer) => call("get_oauth_client", { issuer }),
+    setOAuthClient: (issuer, client) => call("set_oauth_client", { issuer, client }),
+    addOAuthAccount: (issuer, loginHint) => call("add_oauth_account", { issuer, loginHint: loginHint ?? null }),
+    reauthOAuthAccount: (id) => call("reauth_oauth_account", { id }),
+    cancelOAuthSignIn: () => call("cancel_oauth_sign_in"),
+    getPushSettings: () => call("get_push_settings"),
+    setPushSettings: (input) =>
+      call("set_push_settings", { mode: input.mode, relayUrl: input.relayUrl ?? null, relayToken: input.relayToken ?? null, unifiedPushEndpoint: input.unifiedPushEndpoint ?? null }),
+    sendTestPush: () => call("send_test_push"),
+    syncNow: () => call("sync_now"),
+    listMessages: (query) => call("list_messages", { query }),
+    getThread: (threadId) => call("get_thread", { threadId }),
+    setThreadSeen: (threadId, seen) => call("set_thread_seen", { threadId, seen }),
+    setThreadFlagged: (threadId, flagged) => call("set_thread_flagged", { threadId, flagged }),
+    setThreadArchived: (threadId, archived) => call("set_thread_archived", { threadId, archived }),
+    snoozeThread: (threadId, until) => call("snooze_thread", { threadId, until }),
+    unsnoozeThread: (threadId) => call("unsnooze_thread", { threadId }),
+    openAttachment: (id) => call("open_attachment", { id }),
+    attachmentData: (id) => call<ArrayBuffer>("attachment_data", { id }),
+    queueSend: (draft, undoSecs) => call("queue_send", { draft, undoSecs }),
+    cancelSend: (id) => call("cancel_send", { id }),
+    listOutbox: () => call("list_outbox"),
+    setTimeZone: (tz) => call("set_time_zone", { tz }),
+    listCollections: (kind) => call("list_collections", { kind }),
+    setCollectionHidden: (id, hidden) => call("set_collection_hidden", { id, hidden }),
+    listOccurrences: (from, to) => call("list_occurrences", { from, to }),
+    getEvent: (id, start) => call("get_event", { id, start: start ?? null }),
+    createEvent: (input) => call("create_event", { input }),
+    updateEvent: (id, input, scope, occurrence) => call("update_event", { id, input, scope: scope ?? null, occurrence: occurrence ?? null }),
+    deleteEvent: (id, occurrence, scope) => call("delete_event", { id, occurrence: occurrence ?? null, scope: scope ?? null }),
+    eventGuests: (id) => call("event_guests", { id }),
+    respondToInvite: (messageId, response, calendarId) => call("respond_to_invite", { messageId, response, calendarId: calendarId ?? null }),
+    applyInviteUpdate: (messageId) => call("apply_invite_update", { messageId }),
+    listContacts: (search) => call("list_contacts", { search: search ?? null }),
+    getContact: (id) => call("get_contact", { id }),
+    createContact: (input) => call("create_contact", { input }),
+    updateContact: (id, input) => call("update_contact", { id, input }),
+    deleteContact: (id) => call("delete_contact", { id }),
+    duplicateContacts: () => call("duplicate_contacts"),
+    mergeContacts: (primary, others) => call("merge_contacts", { primary, others }),
+    suggestRecipients: (prefix) => call("suggest_recipients", { prefix }),
+    syncPimNow: () => call("sync_pim_now"),
+    listNotes: (query) => call("list_notes", { query }),
+    getNote: (id) => call("get_note", { id }),
+    createNote: (input) => call("create_note", { input }),
+    saveNoteBody: (id, markdown, ydoc, touch) => call("save_note_body", { id, markdown, ydoc, touch }),
+    setNoteMeta: (id, meta) => call("set_note_meta", { id, meta }),
+    deleteNote: (id) => call("delete_note", { id }),
+    restoreNote: (id) => call("restore_note", { id }),
+    noteTags: () => call("note_tags"),
+    noteLinkFor: (target) => call("note_link_for", { target }),
+    importNotes: (files) => call("import_notes", { files }),
+    noteRecords: () => call("note_records"),
+    applyNoteRecords: (records) => call("apply_note_records", { records }),
+    getNotesRelay: () => call("get_notes_relay"),
+    setNotesRelay: (relay) => call("set_notes_relay", { relay }),
+  }
+}
+
 async function createTauriClient(): Promise<CoreClient> {
   const { invoke } = await import("@tauri-apps/api/core")
   const { listen } = await import("@tauri-apps/api/event")
-  // Tauri maps camelCase argument names to the Rust commands' snake_case.
+  // One IPC command routes everything to the shared dispatcher in pim-app.
+  const call: Call = (name, args) => invoke("core", { name, args: args ?? {} })
   return {
     kind: "native",
-    providerCapabilities: (provider) => invoke("provider_capabilities", { provider }),
-    listAccounts: () => invoke("list_accounts"),
-    addAccount: (config, password, davPassword) => invoke("add_account", { config, password, davPassword: davPassword ?? null }),
-    setAccountDav: (id, dav, password) => invoke("set_account_dav", { id, dav, password: password ?? null }),
-    removeAccount: (id) => invoke("remove_account", { id }),
-    getOAuthClient: (issuer) => invoke("get_oauth_client", { issuer }),
-    setOAuthClient: (issuer, client) => invoke("set_oauth_client", { issuer, client }),
-    addOAuthAccount: (issuer, loginHint) => invoke("add_oauth_account", { issuer, loginHint: loginHint ?? null }),
-    reauthOAuthAccount: (id) => invoke("reauth_oauth_account", { id }),
-    cancelOAuthSignIn: () => invoke("cancel_oauth_sign_in"),
-    getPushSettings: () => invoke("get_push_settings"),
-    setPushSettings: (input) =>
-      invoke("set_push_settings", { mode: input.mode, relayUrl: input.relayUrl ?? null, relayToken: input.relayToken ?? null, unifiedPushEndpoint: input.unifiedPushEndpoint ?? null }),
-    sendTestPush: () => invoke("send_test_push"),
-    syncNow: () => invoke("sync_now"),
-    listMessages: (query) => invoke("list_messages", { query }),
-    getThread: (threadId) => invoke("get_thread", { threadId }),
-    setThreadSeen: (threadId, seen) => invoke("set_thread_seen", { threadId, seen }),
-    setThreadFlagged: (threadId, flagged) => invoke("set_thread_flagged", { threadId, flagged }),
-    setThreadArchived: (threadId, archived) => invoke("set_thread_archived", { threadId, archived }),
-    snoozeThread: (threadId, until) => invoke("snooze_thread", { threadId, until }),
-    unsnoozeThread: (threadId) => invoke("unsnooze_thread", { threadId }),
-    openAttachment: (id) => invoke("open_attachment", { id }),
-    attachmentData: (id) => invoke<ArrayBuffer>("attachment_data", { id }),
-    queueSend: (draft, undoSecs) => invoke("queue_send", { draft, undoSecs }),
-    cancelSend: (id) => invoke("cancel_send", { id }),
-    listOutbox: () => invoke("list_outbox"),
-    setTimeZone: (tz) => invoke("set_time_zone", { tz }),
-    listCollections: (kind) => invoke("list_collections", { kind }),
-    setCollectionHidden: (id, hidden) => invoke("set_collection_hidden", { id, hidden }),
-    listOccurrences: (from, to) => invoke("list_occurrences", { from, to }),
-    getEvent: (id, start) => invoke("get_event", { id, start: start ?? null }),
-    createEvent: (input) => invoke("create_event", { input }),
-    updateEvent: (id, input, scope, occurrence) => invoke("update_event", { id, input, scope: scope ?? null, occurrence: occurrence ?? null }),
-    deleteEvent: (id, occurrence, scope) => invoke("delete_event", { id, occurrence: occurrence ?? null, scope: scope ?? null }),
-    eventGuests: (id) => invoke("event_guests", { id }),
-    respondToInvite: (messageId, response, calendarId) => invoke("respond_to_invite", { messageId, response, calendarId: calendarId ?? null }),
-    applyInviteUpdate: (messageId) => invoke("apply_invite_update", { messageId }),
-    listContacts: (search) => invoke("list_contacts", { search: search ?? null }),
-    getContact: (id) => invoke("get_contact", { id }),
-    createContact: (input) => invoke("create_contact", { input }),
-    updateContact: (id, input) => invoke("update_contact", { id, input }),
-    deleteContact: (id) => invoke("delete_contact", { id }),
-    duplicateContacts: () => invoke("duplicate_contacts"),
-    mergeContacts: (primary, others) => invoke("merge_contacts", { primary, others }),
-    suggestRecipients: (prefix) => invoke("suggest_recipients", { prefix }),
-    syncPimNow: () => invoke("sync_pim_now"),
-    listNotes: (query) => invoke("list_notes", { query }),
-    getNote: (id) => invoke("get_note", { id }),
-    createNote: (input) => invoke("create_note", { input }),
-    saveNoteBody: (id, markdown, ydoc, touch) => invoke("save_note_body", { id, markdown, ydoc, touch }),
-    setNoteMeta: (id, meta) => invoke("set_note_meta", { id, meta }),
-    deleteNote: (id) => invoke("delete_note", { id }),
-    restoreNote: (id) => invoke("restore_note", { id }),
-    noteTags: () => invoke("note_tags"),
-    noteLinkFor: (target) => invoke("note_link_for", { target }),
-    importNotes: (files) => invoke("import_notes", { files }),
-    noteRecords: () => invoke("note_records"),
-    applyNoteRecords: (records) => invoke("apply_note_records", { records }),
-    getNotesRelay: () => invoke("get_notes_relay"),
-    setNotesRelay: (relay) => invoke("set_notes_relay", { relay }),
+    remote: false,
+    ...commands(call),
     on(event, handler) {
       let off: (() => void) | undefined
       let cancelled = false
@@ -217,11 +232,98 @@ async function createTauriClient(): Promise<CoreClient> {
   }
 }
 
+// ── Web gateway (ADR-0016) ───────────────────────────────────────────────────
+
+export interface GatewaySession {
+  gateway: true
+  signedIn: boolean
+}
+
+/** Every write carries this header, so another site can't post as you (CSRF). */
+const CSRF = { "X-Mailbird": "1" }
+
+/** The gateway's session, or `null` when this page isn't served by a gateway. */
+export async function gatewaySession(): Promise<GatewaySession | null> {
+  // The gateway marks the page it serves; anywhere else there's nothing to ask.
+  if (!document.querySelector('meta[name="mailbird-gateway"]')) return null
+  try {
+    const r = await fetch("/api/session", { credentials: "same-origin", headers: { Accept: "application/json" } })
+    if (!r.ok || !r.headers.get("content-type")?.includes("application/json")) return null
+    const v = (await r.json()) as Partial<GatewaySession> | null
+    return v?.gateway ? (v as GatewaySession) : null
+  } catch {
+    return null
+  }
+}
+
+async function gatewayError(r: Response): Promise<Error> {
+  const v = (await r.json().catch(() => null)) as { error?: string } | null
+  return new Error(v?.error ?? `the gateway answered ${r.status}`)
+}
+
+export async function signInToGateway(password: string): Promise<void> {
+  const r = await fetch("/api/session", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", ...CSRF }, body: JSON.stringify({ password }) })
+  if (!r.ok) throw await gatewayError(r)
+}
+
+export async function signOutOfGateway(): Promise<void> {
+  await fetch("/api/session", { method: "DELETE", credentials: "same-origin", headers: CSRF })
+}
+
+/** Fired when the gateway says the session ended, so the app shows sign-in. */
+export const SIGNED_OUT = "mailbird:signed-out"
+
+function createGatewayClient(): CoreClient {
+  const call: Call = async <T,>(name: string, args?: Record<string, unknown>) => {
+    const r = await fetch(`/api/core/${name}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", ...CSRF }, body: JSON.stringify(args ?? {}) })
+    if (r.status === 401) {
+      window.dispatchEvent(new Event(SIGNED_OUT))
+      throw new Error("Your session ended. Sign in again.")
+    }
+    if (!r.ok) throw await gatewayError(r)
+    if (r.headers.get("content-type")?.startsWith("application/octet-stream")) return (await r.arrayBuffer()) as T
+    return (await r.json()) as T
+  }
+  // One event stream for the whole page; handlers subscribe by name.
+  const handlers = new Map<string, Set<(payload?: unknown) => void>>()
+  const stream = new EventSource("/api/events", { withCredentials: true })
+  const names: (CoreEvent | "open-url")[] = ["mail:changed", "outbox:changed", "accounts:changed", "pim:changed", "notes:changed", "reminder", "open-url"]
+  for (const name of names) {
+    stream.addEventListener(name, (e) => {
+      const data = (e as MessageEvent<string>).data
+      const payload: unknown = data ? JSON.parse(data) : undefined
+      handlers.get(name)?.forEach((h) => h(payload))
+    })
+  }
+  // OAuth sign-in: the gateway asks the browser to open the provider's page.
+  handlers.set("open-url", new Set([(p) => void window.open(String(p), "_blank", "noopener")]))
+  return {
+    kind: "native",
+    remote: true,
+    ...commands(call),
+    // Files download through the browser: there's no "open with" on a server.
+    openAttachment: async (id) => {
+      const a = document.createElement("a")
+      a.href = `/api/attachments/${encodeURIComponent(id)}`
+      a.download = ""
+      a.click()
+      return "your browser's downloads"
+    },
+    on(event, handler) {
+      const set = handlers.get(event) ?? new Set()
+      set.add(handler)
+      handlers.set(event, set)
+      return () => set.delete(handler)
+    },
+  }
+}
+
 let clientPromise: Promise<CoreClient> | null = null
 
+/** The desktop or phone app's own core, a web gateway's, or the sample-mail demo. */
 export function getCoreClient(): Promise<CoreClient> {
   clientPromise ??= isTauri()
     ? createTauriClient()
-    : import("./demo").then((m) => m.createDemoClient())
+    : gatewaySession().then((s) => (s ? createGatewayClient() : import("./demo").then((m) => m.createDemoClient())))
   return clientPromise
 }

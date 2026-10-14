@@ -16,7 +16,6 @@ use pim_core::net::{
     push_relay::{PushTarget, RelayClient, WatchStatus, account_key},
 };
 use serde::{Deserialize, Serialize};
-use tauri::State;
 
 use crate::commands::{Res, with_store};
 use crate::{Shared, secrets, workers};
@@ -104,9 +103,8 @@ fn periodic_only(account: &pim_core::Account) -> Option<String> {
     }
 }
 
-#[tauri::command]
-pub async fn get_push_settings(state: State<'_, Shared>) -> Res<PushSettings> {
-    settings(state.inner()).await
+pub async fn get_push_settings(state: &Shared) -> Res<PushSettings> {
+    settings(state).await
 }
 
 async fn settings(state: &Shared) -> Res<PushSettings> {
@@ -153,17 +151,16 @@ async fn settings(state: &Shared) -> Res<PushSettings> {
 }
 
 /// The iOS or Android layer reports where this device receives pushes.
-#[tauri::command]
-pub async fn set_push_target(state: State<'_, Shared>, target: PushTarget) -> Res<()> {
-    set(state.inner(), PLATFORM_TARGET, Some(&target))?;
+pub async fn set_push_target(state: &Shared, target: PushTarget) -> Res<()> {
+    set(state, PLATFORM_TARGET, Some(&target))?;
     // A new token (they rotate) has to reach the relay.
-    if mode(state.inner()) == PushMode::Relay
-        && let Some((c, mut r)) = client(state.inner())
+    if mode(state) == PushMode::Relay
+        && let Some((c, mut r)) = client(state)
         && !matches!(r.target, PushTarget::UnifiedPush { .. })
     {
         c.register(&r.device_id, &target).await.map_err(|e| e.to_string())?;
         r.target = target;
-        set(state.inner(), RELAY, Some(&r))?;
+        set(state, RELAY, Some(&r))?;
     }
     Ok(())
 }
@@ -171,9 +168,7 @@ pub async fn set_push_target(state: State<'_, Shared>, target: PushTarget) -> Re
 /// Switches between periodic checks and the relay. For the relay: its
 /// address and token (the token can be left out to keep the saved one),
 /// and a UnifiedPush endpoint when the platform has no push service of its own.
-#[tauri::command]
-pub async fn set_push_settings(state: State<'_, Shared>, mode: PushMode, relay_url: Option<String>, relay_token: Option<String>, unified_push_endpoint: Option<String>) -> Res<PushSettings> {
-    let state = state.inner();
+pub async fn set_push_settings(state: &Shared, mode: PushMode, relay_url: Option<String>, relay_token: Option<String>, unified_push_endpoint: Option<String>) -> Res<PushSettings> {
     match mode {
         PushMode::Periodic => {
             stop_relay(state).await;
@@ -211,9 +206,8 @@ pub async fn set_push_settings(state: State<'_, Shared>, mode: PushMode, relay_u
     settings(state).await
 }
 
-#[tauri::command]
-pub async fn send_test_push(state: State<'_, Shared>) -> Res<()> {
-    let (c, r) = client(state.inner()).ok_or("set up the relay first")?;
+pub async fn send_test_push(state: &Shared) -> Res<()> {
+    let (c, r) = client(state).ok_or("set up the relay first")?;
     c.test(&r.device_id).await.map_err(|e| e.to_string())
 }
 
@@ -313,7 +307,7 @@ pub fn accounts_changed(state: &Shared) {
         return;
     }
     let state = state.clone();
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         if let Err(e) = sync_watches(&state).await {
             log::info!("couldn't update the push relay: {e}");
         }

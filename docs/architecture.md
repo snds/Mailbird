@@ -12,10 +12,12 @@
         ▼                       ▼                             ▼
   Tauri 2 (desktop)      Tauri 2 mobile*               Web / PWA
   Win · macOS · Linux    iOS · iPadOS · Android        any browser
-  IPC → core in-process  IPC → core in-process         HTTPS → gateway → core
+  IPC → core in-process  IPC → core in-process         HTTPS → apps/gateway
         │                       │                             │
         └───────────────┬───────┴─────────────────────────────┘
                         ▼
+           crates/app (pim-app): commands, workers, one dispatcher
+                        │
            crates/core (pim-core, Rust)
   accounts · capability matrix · sync engine · SQLite + FTS5 search
   adapters: IMAP/SMTP · Gmail API · Microsoft Graph · JMAP · CalDAV/CardDAV
@@ -28,7 +30,7 @@
 | Constraint | Consequence |
 |---|---|
 | Browsers can't open raw TCP sockets, so they can't speak IMAP or SMTP. | Protocols live in Rust. The web build talks to a small gateway that runs the same core. |
-| Google's CASA security assessment applies when restricted Gmail data touches *our servers*. | Native shells keep mail on the device. The gateway is self-hostable and stateless where possible. |
+| Google's CASA security assessment applies when restricted Gmail data touches *our servers*. | Native shells keep mail on the device. The gateway is self-hosted only: it's the user's own server, and we run none. |
 | Providers differ: labels vs. folders, notes availability, contact groups. | The core publishes a **capability matrix** per account (`Provider::capabilities()`). The UI designs honest states from it. |
 | One design system across six platforms. | One React tree with three layout postures, all driven by tokens. |
 
@@ -91,3 +93,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0013](decisions/0013-google.md) | Google: OAuth for installed apps, Gmail API on the JMAP contract, CalDAV/CardDAV with bearer tokens |
 | [0014](decisions/0014-microsoft.md) | Microsoft: localhost sign-in, Graph mail per-folder delta with immutable ids, Graph calendars and contacts behind the DAV contract |
 | [0015](decisions/0015-mobile-groundwork.md) | Mobile groundwork: periodic checks or a self-hosted push relay, platform seams, virtualized paging list, keyboard inset |
+| [0016](decisions/0016-web-gateway.md) | Web gateway: one command layer (`crates/app`) for every shell, a single-person self-hosted server, SSE events, sealed secrets |

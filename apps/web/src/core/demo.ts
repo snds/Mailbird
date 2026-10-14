@@ -276,6 +276,7 @@ export function createDemoClient(): CoreClient {
 
   return {
     kind: "demo",
+    remote: false,
     providerCapabilities: async (p) => CAPABILITIES[p],
     listAccounts: () => later(state.accounts),
     addAccount: async () => {
