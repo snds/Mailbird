@@ -242,9 +242,10 @@ impl Store {
             return Ok(vec![]);
         }
         let mut due = self.due_reminders(from, until)?;
-        due.retain(|r| r.start + STILL_RELEVANT > until);
+        // A note's reminder stays worth showing; an event's, only until it's long started.
+        due.retain(|r| r.note_id.is_some() || r.start + STILL_RELEVANT > until);
         // One per occurrence: an event with two reminders is one thing you missed.
-        due.dedup_by(|a, b| a.event_id == b.event_id && a.start == b.start);
+        due.dedup_by(|a, b| a.event_id == b.event_id && a.note_id == b.note_id && a.start == b.start);
         Ok(due)
     }
 }

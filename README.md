@@ -106,6 +106,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **26 · Who's writing** ✅ | A sender profile beside every conversation (a sheet on narrow screens): their card or their name, email/call/message, how long you've heard from them, meetings and other mail together, and their notes ([ADR-0036](docs/decisions/0036-sender-profile.md)) |
 | **27 · Quick Note** ✅ | Jot a note from anywhere (⌥N, ⌘K, or a Notes section) without leaving what you're doing, already linked to the conversation, event, or person that's open; it saves when you close it ([ADR-0037](docs/decisions/0037-quick-note.md)) |
 | **28 · Note cards** ✅ | Notes as Keep-style cards that fill the window (one tap between cards and rows), ten colors that sync, import from Keep, and export with the note, tinting the open note in light and dark ([ADR-0038](docs/decisions/0038-note-cards.md)) |
+| **29 · Note reminders** ✅ | "Remind me" on any note (Later today, Tomorrow, or any time): a notification when it's due, even if Mailbird was closed, and the note waits at the top of Notes until you mark it done ([ADR-0039](docs/decisions/0039-note-reminders.md)) |
 
 ## License
 

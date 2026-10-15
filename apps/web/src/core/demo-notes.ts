@@ -119,12 +119,12 @@ function cleanColor(c: string | null | undefined): NoteColor | null {
 /** Keep's Takeout names: two blues fold into ours, DEFAULT is none. */
 const keepColor = (c: unknown) => (c === "CERULEAN" ? "blue" : typeof c === "string" ? cleanColor(c) : null)
 
-export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) => Promise<T>, links: DemoLinks) {
+export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void, later: <T>(v: T) => Promise<T>, links: DemoLinks) {
   const t = now()
   const DAY = 86_400
   let n = 0
   const note = (markdown: string, ago: number, extra: Partial<DemoNote> = {}): DemoNote => ({
-    id: `note-${++n}`, markdown, ydoc: null, pinned: false, archived: false, deleted: false, color: null, tags: [], links: [],
+    id: `note-${++n}`, markdown, ydoc: null, pinned: false, archived: false, deleted: false, color: null, remindAt: null, tags: [], links: [],
     created: t - ago - DAY, updated: t - ago, source: null, ...extra,
   })
   const event = (title: string) => links.byName("event", title)
@@ -151,6 +151,18 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
   }
 
   const changed = () => emit("notes:changed")
+
+  // Note reminders (ADR-0039) come through the same "reminder" event as the
+  // calendar's, checked on the same beat; each fires once.
+  let checked = now()
+  setInterval(() => {
+    const until = now()
+    notes
+      .filter((x) => !x.deleted && !x.archived && x.remindAt && x.remindAt > checked && x.remindAt <= until)
+      .sort((a, b) => a.remindAt! - b.remindAt!)
+      .forEach((x) => emit("reminder", { eventId: "", noteId: x.id, title: titleAndSnippet(x.markdown)[0], location: null, start: x.remindAt!, fireAt: x.remindAt! }))
+    checked = until
+  }, 5000)
   const find = (id: string) => {
     const x = notes.find((k) => k.id === id && !k.deleted)
     if (!x) throw new Error("that note is gone")
@@ -159,7 +171,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
   const summary = (x: DemoNote): NoteSummary => {
     const [title, snippet] = titleAndSnippet(x.markdown)
     return {
-      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, tags: [...x.tags],
+      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, tags: [...x.tags],
       links: x.links.map((l) => ({ ...l, target: links.resolve(l) })), created: x.created, updated: x.updated,
     }
   }
@@ -246,6 +258,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
       if (meta.pinned !== undefined) x.pinned = meta.pinned
       if (meta.archived !== undefined) x.archived = meta.archived
       if (meta.color !== undefined) x.color = cleanColor(meta.color)
+      if (meta.remindAt !== undefined) x.remindAt = meta.remindAt > 0 ? meta.remindAt : null
       if (meta.tags) x.tags = cleanTags(meta.tags)
       if (meta.links) x.links = cleanLinks(meta.links)
       bump(x)
@@ -322,7 +335,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
       const ids: string[] = []
       for (const r of records) {
         const x = notes.find((k) => k.id === r.id)
-        const clean = { ...structuredClone(r), color: cleanColor(r.color), tags: cleanTags(r.tags), links: cleanLinks(r.links) }
+        const clean = { ...structuredClone(r), color: cleanColor(r.color), remindAt: r.remindAt && r.remindAt > 0 ? r.remindAt : null, tags: cleanTags(r.tags), links: cleanLinks(r.links) }
         if (!x) notes.push({ ...clean, markdown: "", ydoc: null, source: null })
         else if (x.updated < r.updated) Object.assign(x, clean)
         else continue

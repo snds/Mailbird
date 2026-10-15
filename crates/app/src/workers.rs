@@ -505,13 +505,16 @@ fn catch_up_reminders(app: &AppHandle, state: &Shared, until: i64) -> bool {
     };
     match missed.as_slice() {
         [] => {}
+        [one] if one.note_id.is_some() => {
+            let _ = app.notify(&format!("Missed reminder: {}", note_title(one)), "From your notes");
+        }
         [one] => {
             let minutes = (one.start - now()) / 60;
             let when = if minutes > 0 { format!("Starts in {minutes} min") } else { format!("Started {} min ago", -minutes) };
             let _ = app.notify(&format!("Missed reminder: {}", one.title), &when);
         }
         many => {
-            let titles = many.iter().take(3).map(|r| r.title.as_str()).collect::<Vec<_>>().join(" · ");
+            let titles = many.iter().take(3).map(note_title).collect::<Vec<_>>().join(" · ");
             let _ = app.notify(&format!("{} reminders while Mailbird was closed", many.len()), &titles);
         }
     }
@@ -524,7 +527,20 @@ fn catch_up_reminders(app: &AppHandle, state: &Shared, until: i64) -> bool {
     had_checked
 }
 
+/// What a reminder is called: an untitled note still needs a name.
+fn note_title(r: &pim_core::DueReminder) -> &str {
+    if r.title.is_empty() && r.note_id.is_some() { "New note" } else { &r.title }
+}
+
 fn notify(app: &AppHandle, r: &pim_core::DueReminder) {
+    // A note coming back (ADR-0039): no start time to count down to.
+    if r.note_id.is_some() {
+        if let Err(e) = app.notify(note_title(r), "From your notes") {
+            log::info!("couldn't show a notification: {e}");
+        }
+        let _ = app.emit(events::REMINDER, r);
+        return;
+    }
     let minutes = (r.start - r.fire_at) / 60;
     let when = match minutes {
         m if m <= 0 => "Now".to_string(),

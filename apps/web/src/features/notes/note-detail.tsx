@@ -12,13 +12,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { getCoreClient } from "@/core/client"
 import { useNote, useNoteAction, useNoteBacklinks, useNoteTags } from "@/core/queries"
 import type { NoteLink, NoteLinkKind, NoteMeta } from "@/core/types"
-import { longTime } from "@/lib/time"
+import { useNowSecs } from "@/hooks/use-now"
+import { longTime, reminderLabel } from "@/lib/time"
 
 import { titleAndSnippet } from "@/core/demo-notes"
 
 import { LinkPicker } from "./link-picker"
 import { noteFill } from "./note-color"
 import { NoteColorMenu } from "./note-color-menu"
+import { RemindMenu } from "./remind-menu"
 import { NoteEditor } from "./note-editor"
 import { renameLinks } from "./rename-links"
 
@@ -99,8 +101,9 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   if (error || !note) return <p className="p-6 text-sm text-muted-foreground">{error instanceof Error ? error.message : "That note is gone."}</p>
 
   const current = { pinned: note.pinned, archived: note.archived, tags: note.tags, links: note.links, ...meta }
-  // Local changes say "" for none; the note says null.
+  // Local changes say "" (or 0) for none; the note says null.
   const color = (meta?.color ?? note.color) || null
+  const remindAt = (meta?.remindAt ?? note.remindAt) || null
   const update = async (change: NoteMeta) => {
     setLocal({ ...meta, ...change })
     try {
@@ -164,7 +167,11 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             </TooltipTrigger>
             <TooltipContent>{current.pinned ? "Unpin" : "Pin to the top"}</TooltipContent>
           </Tooltip>
-          <NoteColorMenu value={color} onChange={(c) => void update({ color: c ?? "" })} />
+          <RemindMenu
+          value={remindAt}
+          onPick={(at) => void update({ remindAt: at ?? 0 }).then(() => toast.success(at ? `Reminder set for ${reminderLabel(at)}` : "Reminder removed", { duration: 2500 }))}
+        />
+        <NoteColorMenu value={color} onChange={(c) => void update({ color: c ?? "" })} />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Note actions" />}>
               <Icon name="more_horiz" className="size-5" />
@@ -185,6 +192,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pt-1 md:px-8">
+          {remindAt && <ReminderChip at={remindAt} onDone={() => void update({ remindAt: 0 })} />}
           {current.links.map((l) => (
             <LinkChip key={`${l.kind}:${l.key}`} link={l} onOpen={(target) => void open(l.kind, target)} onRemove={() => void update({ links: current.links.filter((x) => x !== l) })} />
           ))}
@@ -325,5 +333,33 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (tags: string
         </>
       )}
     </>
+  )
+}
+
+/** The note's reminder: when it comes back, or, once that's passed, that it's
+ * due, with Done to put it away (ADR-0039). */
+function ReminderChip({ at, onDone }: { at: number; onDone: () => void }) {
+  const now = useNowSecs(30_000)
+  const due = at <= now
+  return (
+    <span
+      data-slot="note-reminder"
+      data-due={due || undefined}
+      className="inline-flex h-7 items-center overflow-hidden rounded-full border bg-muted/50 text-xs data-due:border-vertical-notes data-due:bg-vertical-notes/15"
+    >
+      <span className="inline-flex items-center gap-1 pr-1 pl-2.5">
+        <Icon name={due ? "notifications_active" : "schedule"} fill={due} className="size-3.5" />
+        {due ? `Due · ${reminderLabel(at)}` : reminderLabel(at)}
+      </span>
+      <button
+        type="button"
+        className="inline-flex h-full items-center gap-1 px-2 hover:bg-muted"
+        aria-label={due ? "Done with this reminder" : "Remove reminder"}
+        onClick={onDone}
+      >
+        <Icon name={due ? "check" : "close"} className="size-3.5" />
+        {due && "Done"}
+      </button>
+    </span>
   )
 }

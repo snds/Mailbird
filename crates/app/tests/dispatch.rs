@@ -103,6 +103,11 @@ async fn every_command_routes_and_works() {
     assert_eq!(cleared["color"], Value::Null);
     let prefs = json_of(dispatch(&app, &state, "set_notes_prefs", json!({ "prefs": { "sortChecked": true, "grid": true } })).await.unwrap());
     assert_eq!(prefs["grid"], true);
+    // Note reminders (ADR-0039): set, then 0 clears.
+    let reminded = json_of(dispatch(&app, &state, "set_note_meta", json!({ "id": note["id"], "meta": { "remindAt": 4_000_000_000_i64 } })).await.unwrap());
+    assert_eq!(reminded["remindAt"], 4_000_000_000_i64);
+    let cleared = json_of(dispatch(&app, &state, "set_note_meta", json!({ "id": note["id"], "meta": { "remindAt": 0 } })).await.unwrap());
+    assert_eq!(cleared["remindAt"], Value::Null);
     // Older clients send prefs without the grid; that means the list.
     let prefs = json_of(dispatch(&app, &state, "set_notes_prefs", json!({ "prefs": { "sortChecked": false } })).await.unwrap());
     assert_eq!(prefs["grid"], false);
@@ -224,7 +229,7 @@ async fn connected_commands() {
     assert_eq!(call("contact_activity", json!({ "id": ana })).await.unwrap(), json!({ "threads": [], "upcoming": [], "past": [] }));
 
     // Missed reminders are handed over once.
-    let missed = pim_core::DueReminder { event_id: "e1".into(), title: "Standup".into(), location: None, start: 100, fire_at: 40, leave: false };
+    let missed = pim_core::DueReminder { event_id: "e1".into(), title: "Standup".into(), location: None, start: 100, fire_at: 40, leave: false, note_id: None };
     *state.missed_reminders.lock().unwrap() = vec![missed];
     assert_eq!(call("take_missed_reminders", Value::Null).await.unwrap()[0]["title"], "Standup");
     assert_eq!(call("take_missed_reminders", Value::Null).await.unwrap(), json!([]));

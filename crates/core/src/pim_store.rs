@@ -553,18 +553,19 @@ impl Store {
                 for lead in &leads {
                     let fire_at = o.start - lead * 60;
                     if fire_at > after && fire_at <= until {
-                        out.push(crate::DueReminder { event_id: id.clone(), title: o.title.clone(), location: o.location.clone(), start: o.start, fire_at, leave: false });
+                        out.push(crate::DueReminder { event_id: id.clone(), title: o.title.clone(), location: o.location.clone(), start: o.start, fire_at, leave: false, note_id: None });
                     }
                 }
                 // Time to leave, unless a reminder already fires right then.
                 if let Some(t) = o.travel.filter(|t| !leads.contains(t)) {
                     let fire_at = o.start - t * 60;
                     if fire_at > after && fire_at <= until {
-                        out.push(crate::DueReminder { event_id: id.clone(), title: o.title.clone(), location: o.location.clone(), start: o.start, fire_at, leave: true });
+                        out.push(crate::DueReminder { event_id: id.clone(), title: o.title.clone(), location: o.location.clone(), start: o.start, fire_at, leave: true, note_id: None });
                     }
                 }
             }
         }
+        out.extend(self.due_note_reminders(after, until)?);
         out.sort_by_key(|r| r.fire_at);
         Ok(out)
     }

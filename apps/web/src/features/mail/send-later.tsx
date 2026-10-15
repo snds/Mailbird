@@ -123,7 +123,7 @@ export function FollowUpAtMenu({ trigger, children, onPick }: { trigger: ReactEl
   )
 }
 
-function PickTimeDialog({
+export function PickTimeDialog({
   open,
   onOpenChange,
   title,

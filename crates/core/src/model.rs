@@ -926,6 +926,10 @@ pub struct DueReminder {
     /// "Time to leave": fires when its travel time begins (ADR-0029).
     #[serde(default)]
     pub leave: bool,
+    /// A note's own reminder (ADR-0039) rather than an event's: `event_id`
+    /// is empty, `title` is the note's, and `start` is the reminder time.
+    #[serde(default)]
+    pub note_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1059,6 +1063,9 @@ pub struct NoteSummary {
     pub archived: bool,
     /// One of [`NOTE_COLORS`](crate::NOTE_COLORS), or `None` for the plain card.
     pub color: Option<String>,
+    /// When to bring the note back (Unix seconds). It stays set after it
+    /// fires, so the note shows as due until it's marked done.
+    pub remind_at: Option<i64>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,
@@ -1097,6 +1104,8 @@ pub struct NoteMeta {
     pub archived: Option<bool>,
     /// A color name, or `""` for none.
     pub color: Option<String>,
+    /// A reminder time, or `0` for none.
+    pub remind_at: Option<i64>,
     pub tags: Option<Vec<String>>,
     pub links: Option<Vec<NoteLink>>,
 }
@@ -1165,6 +1174,9 @@ pub struct NoteRecord {
     /// Devices from before colors (ADR-0038) leave it out.
     #[serde(default)]
     pub color: Option<String>,
+    /// Devices from before note reminders (ADR-0039) leave it out.
+    #[serde(default)]
+    pub remind_at: Option<i64>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,
