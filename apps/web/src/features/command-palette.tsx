@@ -33,6 +33,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
   const { resolvedTheme, setTheme } = useTheme()
   const { data: screener } = useScreener()
   const { data: keys } = useKeyBindings()
+  const quickLabel = useUi((s) => s.quickContext?.label)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -73,6 +74,11 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
             <CommandItem onSelect={run(onCreate.contacts)} keywords={["person", "people"]}>
               <Icon name="person_add" />
               New contact
+            </CommandItem>
+            <CommandItem onSelect={run(() => ui().openQuickNote())} keywords={["jot", "scratch", "quick", "note"]}>
+              <Icon name="edit_note" />
+              Quick note{quickLabel ? ` about ${quickLabel}` : ""}
+              <CommandShortcut>⌥N</CommandShortcut>
             </CommandItem>
             <CommandItem onSelect={run(onCreate.notes)}>
               <Icon name="note_add" />

@@ -37,6 +37,13 @@ export interface Jump {
 
 const VERTICAL_OF: Record<Jump["kind"], VerticalId> = { thread: "mail", event: "calendar", contact: "contacts", note: "notes" }
 
+/** Something a note can link to, with the name to show for it. */
+export interface QuickContext {
+  kind: "event" | "contact" | "thread"
+  id: string
+  label: string
+}
+
 /** App-level UI state that crosses views (composer, editors, settings). */
 interface UiState {
   vertical: VerticalId
@@ -69,6 +76,13 @@ interface UiState {
   /** The ⌘K command menu. */
   paletteOpen: boolean
   setPaletteOpen: (open: boolean) => void
+  /** What's open on screen that a Quick Note would link to (ADR-0037). */
+  quickContext: QuickContext | null
+  setQuickContext: (c: QuickContext | null) => void
+  /** The Quick Note sheet: open, and for what (defaults to quickContext). */
+  quickNote: { target: QuickContext | null } | null
+  openQuickNote: (target?: QuickContext | null) => void
+  closeQuickNote: () => void
   /** The mail tab: a lane, or "scheduled". Back to the inbox when you leave Mail. */
   mailTab: MailTab
   setMailTab: (tab: MailTab) => void
@@ -124,6 +138,11 @@ export const useUi = create<UiState>((set, get) => ({
   setGrammarOpen: (grammarOpen) => set({ grammarOpen }),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  quickContext: null,
+  setQuickContext: (quickContext) => set({ quickContext }),
+  quickNote: null,
+  openQuickNote: (target) => set((s) => ({ quickNote: { target: target === undefined ? s.quickContext : target }, paletteOpen: false })),
+  closeQuickNote: () => set({ quickNote: null }),
   mailTab: "inbox",
   setMailTab: (mailTab) => set({ mailTab }),
   showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),

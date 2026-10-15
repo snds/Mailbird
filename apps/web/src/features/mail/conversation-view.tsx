@@ -22,6 +22,7 @@ import { HtmlBody } from "./html-body"
 import { LinkedNotes } from "../notes/linked-notes"
 import { InviteCard } from "./invite-card"
 import { FollowUpAtMenu } from "./send-later"
+import { useQuickContext } from "../notes/use-quick-context"
 import { SenderProfile } from "./sender-profile"
 import { SignatureSuggestion } from "./signature-suggestion"
 import { SnoozeMenu } from "./snooze-menu"
@@ -223,6 +224,8 @@ export function ConversationView({
   }
   const setFollowUp = useMailAction<{ threadId: string; at: number }>((c, a) => c.setFollowUp(a.threadId, a.at))
   const cancelFollowUp = useMailAction<string>((c, threadId) => c.cancelFollowUp(threadId))
+  // Quick Note links to the conversation that's open (ADR-0037).
+  useQuickContext(row ? { kind: "thread", id: row.threadId, label: row.subject || "(no subject)" } : null)
   const remind = (threadId: string, at: number, label: string) =>
     setFollowUp.mutate({ threadId, at }, { onSuccess: () => toast.success(`If nobody replies, this comes back ${label}`), onError: (e) => toast.error(e.message) })
 

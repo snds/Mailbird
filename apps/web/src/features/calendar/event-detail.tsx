@@ -13,6 +13,7 @@ import type { Collection, EditScope, EventDetail as Detail, Repeat } from "@/cor
 
 import { displayName, initials } from "../mail/format"
 import { LinkedNotes } from "../notes/linked-notes"
+import { useQuickContext } from "../notes/use-quick-context"
 import { calendarColor } from "./colors"
 import { dayLabel, fmt, fromSecs, rangeLabel } from "./dates"
 import { JoinButton } from "./join-button"
@@ -54,6 +55,8 @@ const safeUrl = (u: string | null) => (u && /^https?:\/\//i.test(u) ? u : null)
 
 export function EventDetailPane({ eventId, start, calendars, onDeleted }: { eventId: string; start: number; calendars: Map<string, Collection>; onDeleted: () => void }) {
   const { data: e, error, isPending } = useEvent(eventId, start)
+  // Quick Note links to the event that's open (ADR-0037); holidays aren't linkable.
+  useQuickContext(e && !eventId.startsWith("special:") ? { kind: "event", id: eventId, label: e.title } : null)
   const { data: accounts = [] } = useAccounts()
   const openEditor = useUi((s) => s.openEventEditor)
   const remove = usePimAction((c, { occurrence, scope }: { occurrence: number | null; scope: EditScope }) => c.deleteEvent(eventId, occurrence, scope))
