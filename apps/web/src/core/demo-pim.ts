@@ -31,6 +31,11 @@ import type {
   CalendarSet,
   FindTimes,
   InterestingCalendar,
+  Booked,
+  BookingLink,
+  BookingLinkInput,
+  BookingRequest,
+  PublicBooking,
   TimeSlot,
   ContactSuggestion,
   SignatureCard,
@@ -319,6 +324,47 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
           : `A public holiday in ${country}. Regional holidays aren't included. From ${col.name}.`
     return { ...o, notes, repeat: "none", timeZone: null, organizer: null, attendees: [], url: null, writable: false, reminders: [] }
   }
+  // Scheduling links (ADR-0026), on the device clock: free half hours inside
+  // the link's hours, two hours out through its days ahead.
+  let links: BookingLink[] = []
+  const busyBetween = (from: number, to: number) =>
+    events.filter((e) => visible(e.calendarId) && !e.allDay).flatMap((e) => expand(e, from, to)).map((o) => [o.start, o.end] as const)
+  const freeSlots = (l: BookingLink) => {
+    const GRID = 1800, len = l.minutes * 60
+    const nowS = Math.floor(Date.now() / 1000)
+    const from = Math.floor((nowS + 7200) / GRID) * GRID + GRID
+    const until = from + l.daysAhead * 86_400
+    const busy = busyBetween(from - 86_400, until + 86_400)
+    const out: { start: number; end: number }[] = []
+    for (let d = 0; d <= l.daysAhead; d++) {
+      const day = new Date(from * 1000)
+      day.setHours(0, 0, 0, 0)
+      day.setDate(day.getDate() + d)
+      if (l.weekdaysOnly && (day.getDay() === 0 || day.getDay() === 6)) continue
+      const open = day.getTime() / 1000 + l.dayStart * 60
+      const close = day.getTime() / 1000 + l.dayEnd * 60
+      for (let at = Math.ceil(Math.max(open, from) / GRID) * GRID; at + len <= close && at < until; at += GRID) {
+        if (!busy.some(([s, e]) => s < at + len && e > at)) out.push({ start: at, end: at + len })
+      }
+    }
+    return out
+  }
+  const checkLink = (i: BookingLinkInput): BookingLinkInput => {
+    const title = i.title.trim()
+    if (!title) throw new Error("give the link a title, like “Intro call”")
+    if (i.minutes < 10 || i.minutes > 240) throw new Error("meetings can be 10 minutes to 4 hours")
+    if (i.dayEnd <= i.dayStart || i.dayEnd > 1440 || i.dayEnd - i.dayStart < i.minutes) throw new Error("the hours you offer need to fit one meeting")
+    if (i.daysAhead < 1 || i.daysAhead > 14) throw new Error("people can book 1 to 14 days ahead")
+    const c = collections.find((x) => x.id === i.calendarId)
+    if (!c || !c.writable) throw new Error("pick a calendar you can add events to")
+    return { ...i, title, note: i.note?.trim() || null }
+  }
+  const byToken = (token: string) => {
+    const l = links.find((x) => x.token === token)
+    if (!l) throw new Error("this booking link isn't active")
+    return l
+  }
+  const HOST = "Me"
   const birthdayDetail = (id: string, start?: number | null): EventDetail => {
     const from = start != null ? start - 1 : Math.floor(Date.now() / 1000)
     const o = birthdays(from, from + 367 * 86_400).find((b) => b.eventId === id)
@@ -631,6 +677,36 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     getEvent: async (id: string, start?: number | null) =>
       later(id.startsWith(BIRTHDAY) ? birthdayDetail(id, start) : id.startsWith(SPECIAL) ? specialDetail(id) : detail(event(id), start)),
     interestingCalendars: async () => later(catalog()),
+    bookingLinks: async () => later(links),
+    saveBookingLink: async (id: string | null, input: BookingLinkInput) => {
+      const i = checkLink(input)
+      if (id && !links.some((l) => l.id === id)) throw new Error("that booking link was deleted")
+      const hex = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
+      const l: BookingLink = id ? { ...links.find((x) => x.id === id)!, ...i } : { id: `bl-${++c}`, token: hex(), bookedAt: [], ...i }
+      links = id ? links.map((x) => (x.id === id ? l : x)) : [...links, l]
+      return later(l)
+    },
+    deleteBookingLink: async (id: string) => {
+      links = links.filter((l) => l.id !== id)
+    },
+    publicBooking: async (token: string): Promise<PublicBooking> => {
+      const l = byToken(token)
+      return later({ title: l.title, minutes: l.minutes, host: HOST, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, note: l.note, slots: freeSlots(l) })
+    },
+    bookSlot: async (token: string, req: BookingRequest): Promise<Booked> => {
+      const l = byToken(token)
+      const name = req.name.trim(), email = req.email.trim().toLowerCase()
+      if (!name) throw new Error("add your name")
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("that email address doesn't look right")
+      const slot = freeSlots(l).find((t) => t.start === req.start)
+      if (!slot) throw new Error("that time was just taken; pick another")
+      const e = ev(l.calendarId, `${l.title} with ${name}`, slot.start, slot.end)
+      e.notes = `Booked by ${name} <${email}> through “${l.title}”.${req.note?.trim() ? `\n\n${req.note.trim()}` : ""}`
+      events.push(e)
+      l.bookedAt.push(Math.floor(Date.now() / 1000))
+      changed()
+      return later({ start: slot.start, end: slot.end, title: l.title, host: HOST, invited: false })
+    },
     addInterestingCalendar: async (id: string) => {
       const c = catalog().find((x) => x.id === id)
       if (!c) throw new Error("there's no such calendar to add")

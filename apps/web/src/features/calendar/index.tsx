@@ -19,6 +19,7 @@ import { EventDetailPane } from "./event-detail"
 import { MiniMonth } from "./mini-month"
 import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
+import { BookingLinks } from "./booking-links"
 import { InterestingCalendarsButton } from "./interesting"
 import { SecondZonePicker } from "./second-zone"
 import { occurrenceKey } from "./layout"
@@ -121,6 +122,7 @@ function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
       ))}
       <InterestingCalendarsButton />
       <CalendarSets calendars={calendars} />
+      <BookingLinks />
       <SecondZonePicker />
     </div>
   )

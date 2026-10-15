@@ -11,6 +11,7 @@ import { AccountsDialog } from "@/features/accounts"
 import { CommandPalette } from "@/features/command-palette"
 import { WritingDialog } from "@/features/writing-settings"
 import { GatewayGate } from "@/features/gateway-sign-in"
+import { BookingPage } from "@/features/booking/page"
 import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
 import { EventEditor } from "@/features/calendar/event-editor"
@@ -80,14 +81,23 @@ function Root() {
   )
 }
 
+/** A scheduling link's public page: `/book/<token>`, no sign-in (ADR-0026). */
+const bookingToken = /^\/book\/([A-Za-z0-9_-]{8,64})\/?$/.exec(location.pathname)?.[1] ?? null
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <TooltipProvider>
-          <GatewayGate>
-            <Root />
-          </GatewayGate>
+          {bookingToken ? (
+            <div className="min-h-dvh bg-background">
+              <BookingPage token={bookingToken} />
+            </div>
+          ) : (
+            <GatewayGate>
+              <Root />
+            </GatewayGate>
+          )}
           <Toaster position="top-center" />
         </TooltipProvider>
       </ThemeProvider>

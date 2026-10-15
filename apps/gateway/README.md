@@ -26,6 +26,7 @@ The image builds the web app and the gateway together, so there's nothing else t
 
 - **Ports:** the gateway listens on `127.0.0.1:8080` only. Put a proxy that handles TLS in front of it: Caddy, nginx, Tailscale, or Cloudflare Tunnel.
 - **Use https.** Cookies are marked `Secure` unless you set `GATEWAY_INSECURE_COOKIES=1`, which is only for plain http on the same machine.
+- **Public booking pages.** `/book/{token}` and `/api/book/{token}` work without the password, so people can book your free times ([ADR-0026](../../docs/decisions/0026-scheduling-links.md)). They show only free times and take one booking at a time, with limits. Delete a link to turn its page off.
 - **Data:** the container runs as an unprivileged user, and its data lives in the `gateway-data` volume. Back it up, but keep `GATEWAY_KEY` somewhere else.
 
 A minimal Caddy setup:

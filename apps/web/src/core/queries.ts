@@ -218,6 +218,10 @@ export function useSetSwipeActions() {
   })
 }
 
+export function useBookingLinks() {
+  return useQuery({ queryKey: ["pim", "booking-links"], queryFn: () => call((c) => c.bookingLinks()) })
+}
+
 export function useInterestingCalendars() {
   return useQuery({ queryKey: keys.interesting, queryFn: () => call((c) => c.interestingCalendars()) })
 }

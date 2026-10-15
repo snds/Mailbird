@@ -98,6 +98,11 @@ pub const COMMANDS: &[&str] = &[
     "contact_labels",
     "smart_groups",
     "interesting_calendars",
+    "booking_links",
+    "save_booking_link",
+    "delete_booking_link",
+    "public_booking",
+    "book_slot",
     "add_interesting_calendar",
     "remove_interesting_calendar",
     "save_smart_group",
@@ -303,6 +308,23 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         }
         "smart_groups" => Output::json(pim_commands::smart_groups(state)?),
         "interesting_calendars" => Output::json(pim_commands::interesting_calendars(state)?),
+        "booking_links" => Output::json(pim_commands::booking_links(state)?),
+        "save_booking_link" => {
+            args!(args, id: Option<String>, input: pim_core::BookingLinkInput);
+            Output::json(pim_commands::save_booking_link(state, id, input)?)
+        }
+        "delete_booking_link" => {
+            args!(args, id: String);
+            Output::json(pim_commands::delete_booking_link(state, id)?)
+        }
+        "public_booking" => {
+            args!(args, token: String);
+            Output::json(pim_commands::public_booking(state, token)?)
+        }
+        "book_slot" => {
+            args!(args, token: String, request: pim_core::BookingRequest);
+            Output::json(pim_commands::book_slot(app.clone(), state, token, request)?)
+        }
         "add_interesting_calendar" => {
             args!(args, id: String);
             Output::json(pim_commands::add_interesting_calendar(app.clone(), state, id)?)

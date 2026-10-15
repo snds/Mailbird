@@ -46,6 +46,9 @@ const SESSION_IDLE: Duration = Duration::from_secs(30 * 24 * 3600);
 const MAX_FAILURES: u32 = 10;
 const FAILURE_WINDOW: Duration = Duration::from_secs(5 * 60);
 const COOKIE: &str = "mb_session";
+/// Booking attempts from the public pages, across all links, per window.
+const MAX_BOOKINGS: u32 = 30;
+const BOOKING_WINDOW: Duration = Duration::from_secs(10 * 60);
 
 /// Compares secrets without leaking where they differ through timing.
 fn same(a: &str, b: &str) -> bool {
@@ -191,6 +194,8 @@ pub struct Gateway {
     sessions: Mutex<HashMap<String, Instant>>,
     /// (window start, failures in it).
     failures: Mutex<(Instant, u32)>,
+    /// (window start, booking attempts in it) from public pages.
+    bookings: Mutex<(Instant, u32)>,
 }
 
 type Gw = Arc<Gateway>;
@@ -201,7 +206,7 @@ impl Gateway {
         let (events, _) = broadcast::channel(256);
         let app = AppHandle::new(GatewayHost { events: events.clone() });
         pim_app::workers::start(app.clone(), state.clone());
-        Arc::new(Self { app, state, events, config, sessions: Mutex::new(HashMap::new()), failures: Mutex::new((Instant::now(), 0)) })
+        Arc::new(Self { app, state, events, config, sessions: Mutex::new(HashMap::new()), failures: Mutex::new((Instant::now(), 0)), bookings: Mutex::new((Instant::now(), 0)) })
     }
 
     fn session(&self, headers: &HeaderMap) -> bool {
@@ -260,6 +265,8 @@ pub fn router(gw: Gw) -> Router {
         .route("/api/core/{name}", post(core))
         .route("/api/events", get(events))
         .route("/api/attachments/{id}", get(attachment))
+        // Public: a scheduling link's page reads its free times and books one (ADR-0026).
+        .route("/api/book/{token}", get(booking_page).post(booking))
         .route("/api/{*rest}", axum::routing::any(|| async { err(StatusCode::NOT_FOUND, "no such API") }))
         .fallback_service(spa)
         .layer(SetResponseHeaderLayer::overriding(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP)))
@@ -372,6 +379,54 @@ async fn events(State(gw): State<Gw>, headers: HeaderMap) -> Response {
 
 fn sse(stream: impl Stream<Item = Result<Event, Infallible>> + Send + 'static) -> Sse<impl Stream<Item = Result<Event, Infallible>> + Send> {
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(25)))
+}
+
+// ── Scheduling links: the only routes that need no session ─────────────────
+
+/// What a visitor's request returns. Unknown and deleted links look the same.
+fn public_result(r: Result<Output, String>) -> Response {
+    let mut res = match r {
+        Ok(Output::Json(v)) => Json(v).into_response(),
+        Ok(Output::Bytes(_)) => err(StatusCode::INTERNAL_SERVER_ERROR, "unexpected reply"),
+        Err(e) if e.contains("isn't active") => err(StatusCode::NOT_FOUND, e),
+        Err(e) => err(StatusCode::BAD_REQUEST, e),
+    };
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
+}
+
+/// Tokens are 32 hex characters; anything else never reaches the core.
+fn token_ok(t: &str) -> bool {
+    t.len() == 32 && t.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+async fn booking_page(State(gw): State<Gw>, UrlPath(token): UrlPath<String>) -> Response {
+    if !token_ok(&token) {
+        return err(StatusCode::NOT_FOUND, "this booking link isn't active");
+    }
+    public_result(pim_app::dispatch(&gw.app, &gw.state, "public_booking", json!({ "token": token })).await)
+}
+
+async fn booking(State(gw): State<Gw>, UrlPath(token): UrlPath<String>, headers: HeaderMap, body: Bytes) -> Response {
+    // Same rule as the app's writes: another site's form can't book for someone.
+    if !csrf_ok(&headers) {
+        return err(StatusCode::FORBIDDEN, "missing the X-Mailbird header");
+    }
+    if !token_ok(&token) {
+        return err(StatusCode::NOT_FOUND, "this booking link isn't active");
+    }
+    {
+        let mut b = gw.bookings.lock().expect("bookings lock");
+        if b.0.elapsed() >= BOOKING_WINDOW {
+            *b = (Instant::now(), 0);
+        }
+        if b.1 >= MAX_BOOKINGS {
+            return err(StatusCode::TOO_MANY_REQUESTS, "lots of bookings just now — try again in a few minutes");
+        }
+        b.1 += 1;
+    }
+    let Ok(request) = serde_json::from_slice::<Value>(&body) else { return err(StatusCode::BAD_REQUEST, "that booking wasn't readable") };
+    public_result(pim_app::dispatch(&gw.app, &gw.state, "book_slot", json!({ "token": token, "request": request })).await)
 }
 
 /// An attachment as a download, with its own file name.
