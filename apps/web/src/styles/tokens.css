@@ -160,10 +160,11 @@
   --c-note-wikilink-bg: color-mix(in oklab, var(--vertical-notes) 12%, transparent);
 
   /* Adaptive sheet (ADR-0036): a bottom sheet on phones, a side panel above. */
-  --c-sheet-compact-max-height: 85dvh;
+  /* A set height, not just a cap: short content still gets room to breathe. */
+  --c-sheet-compact-height: 75dvh;
   --c-sheet-compact-radius: 1.25rem;
   --c-sheet-handle: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
-  --c-sheet-close-size: 3rem;
+  --c-sheet-close-size: 2.5rem;
   --c-sheet-regular-width: 24rem;
 
   /* Calendar */

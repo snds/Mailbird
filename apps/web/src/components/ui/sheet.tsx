@@ -86,8 +86,9 @@ const DISMISS_PX = 120
 const DISMISS_SHARE = 0.3
 
 /**
- * One sheet, two metaphors: on phones a bottom sheet (full width, short of
- * the top, a grab handle, and a floating close button at thumb height); from
+ * One sheet, two metaphors: on phones a bottom sheet (full width, three
+ * quarters of the screen, a grab handle, and a floating close button in the
+ * bottom-right corner, at thumb height); from
  * `sm` up a panel on the right with its close button at the top.
  *
  * The switch is a viewport media query, not a container query: a sheet is an
@@ -130,7 +131,7 @@ function AdaptiveSheetContent({ className, children, ...props }: SheetPrimitive.
         className={cn(
           "bg-popover text-popover-foreground fixed z-50 flex flex-col overflow-hidden bg-clip-padding text-sm shadow-lg transition duration-200 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0",
           // Compact: anchored to the bottom edge, rounded on top, short of the top.
-          "max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-(--c-sheet-compact-max-height) max-sm:rounded-t-(--c-sheet-compact-radius) max-sm:data-ending-style:translate-y-full max-sm:data-starting-style:translate-y-full",
+          "max-sm:inset-x-0 max-sm:bottom-0 max-sm:h-(--c-sheet-compact-height) max-sm:rounded-t-(--c-sheet-compact-radius) max-sm:data-ending-style:translate-y-full max-sm:data-starting-style:translate-y-full",
           // Regular: a panel on the right.
           "sm:inset-y-0 sm:right-0 sm:h-full sm:w-(--c-sheet-regular-width) sm:border-l sm:data-ending-style:translate-x-[2.5rem] sm:data-starting-style:translate-x-[2.5rem]"
         )}
@@ -150,7 +151,7 @@ function AdaptiveSheetContent({ className, children, ...props }: SheetPrimitive.
           className={cn(
             "min-h-0 flex-1 overflow-y-auto overscroll-contain",
             // Room under the content for the floating close button and the home indicator.
-            "max-sm:pb-[calc(var(--c-sheet-close-size)+2rem+env(safe-area-inset-bottom))]",
+            "max-sm:pb-[calc(var(--c-sheet-close-size)+1.5rem+env(safe-area-inset-bottom))]",
             className
           )}
         >
@@ -165,8 +166,8 @@ function AdaptiveSheetContent({ className, children, ...props }: SheetPrimitive.
               size="icon"
               className={cn(
                 "absolute rounded-full shadow-md",
-                // Compact: floating at the bottom, centered, within thumb reach.
-                "max-sm:bottom-[calc(1rem+env(safe-area-inset-bottom))] max-sm:left-1/2 max-sm:size-(--c-sheet-close-size) max-sm:-translate-x-1/2",
+                // Compact: floating in the bottom-right corner, within thumb reach.
+                "max-sm:right-4 max-sm:bottom-[calc(1rem+env(safe-area-inset-bottom))] max-sm:size-(--c-sheet-close-size)",
                 // Regular: the usual corner.
                 "sm:top-3 sm:right-3 sm:size-8 sm:bg-transparent sm:shadow-none"
               )}

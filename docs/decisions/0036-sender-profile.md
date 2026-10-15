@@ -21,13 +21,13 @@ A side panel suits a laptop. On a phone it wastes the screen and puts its close 
 | | Compact (below `sm`, phones) | Regular (`sm` and up) |
 |---|---|---|
 | Where | Slides up from the bottom, full width | Slides in from the right |
-| Height | Sizes to its content, up to 85% of the screen, so the page behind stays in view | Full height |
+| Height | Three quarters of the screen, whatever the content, so it has room to breathe and the page behind stays in view | Full height |
 | Shape | Rounded top corners, and a grab handle | Square, with a left border |
-| Close | A floating round button at the bottom center, within thumb reach (Apple's newer controls); dragging the handle down past 120 px, or 30% of the sheet's height; tapping outside | A button in the top corner; tapping outside; Esc |
+| Close | A small floating round button (40 px) in the bottom-right corner, within thumb reach (Apple's newer controls); dragging the handle down past 120 px, or 30% of the sheet's height; tapping outside | A button in the top corner; tapping outside; Esc |
 
 - **Why a media query, not a container query:** a sheet is an overlay, so the viewport is its container. The profile *column* still uses a container query, because it lives inside the reader.
 - **The content scrolls inside the sheet.** It leaves room at the bottom for the floating button and the home indicator.
-- **Component tokens** (`--c-sheet-compact-max-height`, `--c-sheet-compact-radius`, `--c-sheet-handle`, `--c-sheet-close-size`, `--c-sheet-regular-width`) hold the sizes, so other sheets can share them.
+- **Component tokens** (`--c-sheet-compact-height`, `--c-sheet-compact-radius`, `--c-sheet-handle`, `--c-sheet-close-size`, `--c-sheet-regular-width`) hold the sizes, so other sheets can share them.
 - **The Calendars sheet** on phones (the calendar list) uses the same component, so the two sheets behave alike.
 
 ### What it shows
@@ -63,7 +63,7 @@ A side panel suits a laptop. On a phone it wastes the screen and puts its close 
   - a contact's card with Email, Call, Message, and Card; how long you've heard from them; other mail but not the open conversation; a row opens in Mail; Card opens the contact;
   - a stranger is marked, and **Add** starts a card with their address;
   - a narrower window folds the column into a sheet, a panel on the right;
-  - on a phone, it's a bottom sheet: full width, on the bottom edge, short of the top, with the close button centered at thumb height. That button closes it, and so does dragging the handle down.
+  - on a phone, it's a bottom sheet: full width, on the bottom edge, three quarters of the screen tall, with a 40 px close button in the bottom-right corner. That button closes it, and so does dragging the handle down.
 
   All earlier demo suites still pass.
 - **Gateway (`gateway-p26`):**
