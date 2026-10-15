@@ -4,7 +4,7 @@
 // sync, newest-record-wins merges, and the same import formats.
 
 import type { CoreEvent } from "./client"
-import type { ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteSummary, NoteTarget, RelayConfig, TagCount } from "./types"
+import type { ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
 
 interface DemoNote extends NoteRecord {
   markdown: string
@@ -19,6 +19,8 @@ export interface DemoLinks {
   resolve(link: NoteLink): string | null
   /** For the sample notes: an event or contact by its title or name. */
   byName(kind: "event" | "contact", name: string): NoteLink | null
+  /** An event by its UID, for tasks planned on the calendar. */
+  eventByUid(uid: string): { id: string; title: string; start: number; end: number } | null
 }
 
 const now = () => Math.floor(Date.now() / 1000)
@@ -44,6 +46,22 @@ export function titleAndSnippet(markdown: string): [string, string] {
   }
   if (snippet.length > SNIPPET) snippet = `${snippet.slice(0, SNIPPET).trimEnd()}…`
   return [title, snippet]
+}
+
+/** A note's checklist items in document order, skipping code blocks (tasks_store.rs). */
+export function tasksIn(markdown: string): [boolean, string][] {
+  const out: [boolean, string][] = []
+  let fenced = false
+  for (const line of markdown.split("\n")) {
+    if (line.trimStart().startsWith("```")) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced) continue
+    const m = /^\s*[-*+] \[([ xX])\](?: (.*))?$/.exec(line)
+    if (m) out.push([m[1] !== " ", plainLine(m[2] ?? "")])
+  }
+  return out
 }
 
 export function cleanTags(tags: string[]): string[] {
@@ -85,6 +103,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
     }),
     note("Old color experiments\n\nOKLCH ramps with a fixed chroma cap.", 40 * DAY, { archived: true, tags: ["design"] }),
   ]
+  let prefs: NotesPrefs = { sortChecked: true }
   let relay: RelayConfig | null = null
   try {
     const saved = localStorage.getItem("mailbird.demo.relay")
@@ -180,6 +199,33 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
         }
       }
       return later([...counts.values()].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)))
+    },
+    noteTasks: async (done = false) => {
+      const out: NoteTask[] = []
+      const at = now()
+      for (const x of notes.filter((k) => !k.deleted && !k.archived).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated - a.updated)) {
+        const items = tasksIn(x.markdown)
+        if (!items.length) continue
+        const events = x.links.filter((l) => l.kind === "event").map((l) => links.eventByUid(l.key)).filter((e) => !!e)
+        items.forEach(([isDone, text], index) => {
+          if (!text || (isDone && !done)) return
+          // Same pick as the core: the next block to come, else the latest.
+          let planned: PlannedTask | null = null
+          for (const e of events.filter((e) => e.title.toLowerCase() === text.toLowerCase())) {
+            const p = { eventId: e.id, start: e.start, end: e.end }
+            const up = (q: PlannedTask) => (q.end ?? q.start) >= at
+            if (!planned || (up(p) && (!up(planned) || p.start < planned.start)) || (!up(p) && !up(planned) && p.start > planned.start)) planned = p
+          }
+          out.push({ noteId: x.id, noteTitle: titleAndSnippet(x.markdown)[0], index, text, done: isDone, planned })
+        })
+      }
+      return later(out)
+    },
+    notesPrefs: async () => later({ ...prefs }),
+    setNotesPrefs: async (p: NotesPrefs) => {
+      prefs = { ...p }
+      changed()
+      return later({ ...prefs })
     },
     noteLinkFor: async (target: NoteTarget) => later(links.linkFor(target)),
     importNotes: async (files: ImportFile[]) => {

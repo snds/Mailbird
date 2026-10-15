@@ -150,6 +150,9 @@ pub const COMMANDS: &[&str] = &[
     "delete_note",
     "restore_note",
     "note_tags",
+    "note_tasks",
+    "notes_prefs",
+    "set_notes_prefs",
     "note_link_for",
     "import_notes",
     "note_records",
@@ -537,6 +540,15 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(notes_commands::restore_note(app.clone(), state, id)?)
         }
         "note_tags" => Output::json(notes_commands::note_tags(state)?),
+        "note_tasks" => {
+            args!(args, done: Option<bool>);
+            Output::json(notes_commands::note_tasks(state, done.unwrap_or(false))?)
+        }
+        "notes_prefs" => Output::json(notes_commands::notes_prefs(state)?),
+        "set_notes_prefs" => {
+            args!(args, prefs: pim_core::NotesPrefs);
+            Output::json(notes_commands::set_notes_prefs(app.clone(), state, prefs)?)
+        }
         "note_link_for" => {
             args!(args, target: NoteTarget);
             Output::json(notes_commands::note_link_for(state, target)?)

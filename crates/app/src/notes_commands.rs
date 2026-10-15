@@ -59,6 +59,21 @@ pub fn note_tags(state: &Shared) -> Res<Vec<TagCount>> {
     with_store(state, |s| s.note_tags())
 }
 
+/// Checklist items across notes (ADR-0028).
+pub fn note_tasks(state: &Shared, done: bool) -> Res<Vec<pim_core::NoteTask>> {
+    with_store(state, |s| s.note_tasks(done))
+}
+
+pub fn notes_prefs(state: &Shared) -> Res<pim_core::NotesPrefs> {
+    with_store(state, |s| s.notes_prefs())
+}
+
+pub fn set_notes_prefs(app: AppHandle, state: &Shared, prefs: pim_core::NotesPrefs) -> Res<pim_core::NotesPrefs> {
+    let out = with_store(state, |s| s.set_notes_prefs(&prefs))?;
+    changed(&app);
+    Ok(out)
+}
+
 pub fn note_link_for(state: &Shared, target: NoteTarget) -> Res<Option<NoteLink>> {
     with_store(state, |s| s.note_link_for(&target))
 }

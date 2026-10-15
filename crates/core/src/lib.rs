@@ -21,6 +21,8 @@ mod people_store;
 pub mod interesting;
 pub mod grammar;
 mod booking_store;
+mod tasks_store;
+pub use tasks_store::{NoteTask, NotesPrefs, PlannedTask};
 pub use booking_store::{Booked, BookingLink, BookingLinkInput, BookingRequest, PublicBooking};
 pub use grammar::{SWIPE_ACTIONS, SwipeActions};
 pub use interesting::{INTERESTING_PREFIX, InterestingCalendar, SPECIAL_PREFIX};

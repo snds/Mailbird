@@ -38,6 +38,9 @@ const keys = {
   notes: (q: NoteQuery) => ["notes", "list", q] as const,
   note: (id: string) => ["notes", "note", id] as const,
   noteTags: ["notes", "tags"] as const,
+  // Tasks read notes and their linked events: they refresh with both.
+  noteTasks: (done: boolean) => ["notes", "tasks", done] as const,
+  notesPrefs: ["notes", "prefs"] as const,
   noteLink: (t: NoteTarget) => ["notes", "link", t.kind, t.id] as const,
   relay: ["notes", "relay"] as const,
   // Templates and signatures refresh together on "compose:changed".
@@ -73,6 +76,7 @@ export function useCoreEvents() {
         // An invitation in a conversation shows your calendar (its clashes, your answer).
         void qc.invalidateQueries({ queryKey: ["thread"] })
         void qc.invalidateQueries({ queryKey: ["notes", "list"] })
+        void qc.invalidateQueries({ queryKey: ["notes", "tasks"] })
       }),
       // The open note's own query stays put: its editor is the live copy.
       core.on("notes:changed", () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" })),
@@ -279,6 +283,15 @@ export function useNote(id: string | null) {
 
 export function useNoteTags() {
   return useQuery({ queryKey: keys.noteTags, queryFn: () => call((c) => c.noteTags()) })
+}
+
+/** Checklist items across notes (ADR-0028). */
+export function useNoteTasks(done = false) {
+  return useQuery({ queryKey: keys.noteTasks(done), queryFn: () => call((c) => c.noteTasks(done)) })
+}
+
+export function useNotesPrefs() {
+  return useQuery({ queryKey: keys.notesPrefs, queryFn: () => call((c) => c.notesPrefs()), staleTime: Infinity })
 }
 
 /** Notes linked to an event, contact, or conversation. */

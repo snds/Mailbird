@@ -6,14 +6,18 @@ import { useEffect, useRef, useState } from "react"
 import type * as Y from "yjs"
 
 import { getCoreClient } from "@/core/client"
-import type { NoteDetail } from "@/core/types"
+import { queryClient, useNotesPrefs } from "@/core/queries"
+import type { NoteDetail, NotesPrefs } from "@/core/types"
 
 import { FormatBar } from "../mail/rich-editor"
+import { SortChecked } from "./checklists"
 import { noteExtensions } from "./extensions"
 import { notesSync, useSyncStatus } from "./sync"
 import { isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
 
 const SAVE_DELAY = 400
+
+const sortsChecked = () => queryClient.getQueryData<NotesPrefs>(["notes", "prefs"])?.sortChecked ?? true
 
 /** Origins that aren't this person typing: loading, seeding, and other devices. */
 const notMine = (origin: unknown) => origin === "load" || origin === "seed" || origin instanceof HocuspocusProvider
@@ -42,11 +46,16 @@ export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; aut
     return () => saver.close()
   }, [note.id, doc, seeded])
 
+  // Loaded here; the editor reads the cached value on each check, so
+  // turning it off applies to the open note too.
+  useNotesPrefs()
+
   const editor = useEditor(
     {
       extensions: [
         ...noteExtensions,
         Collaboration.configure({ document: doc }),
+        SortChecked.configure({ enabled: sortsChecked }),
         Placeholder.configure({ placeholder: ({ pos }) => (pos === 0 ? "Title" : "Write something…") }),
       ],
       immediatelyRender: true,
