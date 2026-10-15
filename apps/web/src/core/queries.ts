@@ -43,6 +43,8 @@ const keys = {
   noteTasks: (done: boolean) => ["notes", "tasks", done] as const,
   notesPrefs: ["notes", "prefs"] as const,
   noteFolders: ["notes", "folders"] as const,
+  notesLock: ["notes", "lock"] as const,
+  lockedNote: (id: string) => ["notes", "locked", id] as const,
   noteLink: (t: NoteTarget) => ["notes", "link", t.kind, t.id] as const,
   relay: ["notes", "relay"] as const,
   // Templates and signatures refresh together on "compose:changed".
@@ -327,6 +329,24 @@ export function useNoteTasks(done = false) {
 
 export function useMeetingPrefs() {
   return useQuery({ queryKey: ["pim", "meeting-prefs"], queryFn: () => call((c) => c.meetingPrefs()), staleTime: Infinity })
+}
+
+/** Whether locked notes have a passphrase and are open now (ADR-0043). */
+export function useNotesLock() {
+  return useQuery({ queryKey: keys.notesLock, queryFn: () => call((c) => c.notesLock()) })
+}
+
+/** A locked note's text while notes are unlocked; null while they're locked. */
+export function useLockedNote(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.lockedNote(id),
+    queryFn: () => call((c) => c.openLockedNote(id)),
+    enabled,
+    // Never kept past the moment it's needed: it's the note's plain text.
+    gcTime: 0,
+    staleTime: Infinity,
+    retry: false,
+  })
 }
 
 /** Smart folders with live counts (ADR-0042); refresh with notes. */

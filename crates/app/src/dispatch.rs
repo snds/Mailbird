@@ -168,6 +168,16 @@ pub const COMMANDS: &[&str] = &[
     "open_meeting",
     "notes_prefs",
     "note_folders",
+    "notes_lock",
+    "set_notes_passphrase",
+    "unlock_notes",
+    "lock_notes_now",
+    "lock_note",
+    "remove_note_lock",
+    "open_locked_note",
+    "save_locked_note",
+    "notes_lock_setting",
+    "apply_notes_lock_setting",
     "save_note_folder",
     "delete_note_folder",
     "set_notes_prefs",
@@ -603,6 +613,37 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         }
         "notes_prefs" => Output::json(notes_commands::notes_prefs(state)?),
         "note_folders" => Output::json(notes_commands::note_folders(state)?),
+        "notes_lock" => Output::json(notes_commands::notes_lock(state)?),
+        "set_notes_passphrase" => {
+            args!(args, passphrase: String, hint: Option<String>);
+            Output::json(notes_commands::set_notes_passphrase(app.clone(), state, passphrase, hint)?)
+        }
+        "unlock_notes" => {
+            args!(args, passphrase: String);
+            Output::json(notes_commands::unlock_notes(state, passphrase)?)
+        }
+        "lock_notes_now" => Output::json(notes_commands::lock_notes_now(app.clone(), state)?),
+        "lock_note" => {
+            args!(args, id: String);
+            Output::json(notes_commands::lock_note(app.clone(), state, id)?)
+        }
+        "remove_note_lock" => {
+            args!(args, id: String);
+            Output::json(notes_commands::remove_note_lock(app.clone(), state, id)?)
+        }
+        "open_locked_note" => {
+            args!(args, id: String);
+            Output::json(notes_commands::open_locked_note(state, id)?)
+        }
+        "save_locked_note" => {
+            args!(args, id: String, markdown: String, touch: bool);
+            Output::json(notes_commands::save_locked_note(app.clone(), state, id, markdown, touch)?)
+        }
+        "notes_lock_setting" => Output::json(notes_commands::notes_lock_setting(state)?),
+        "apply_notes_lock_setting" => {
+            args!(args, setting: pim_core::NotesLockSetting);
+            Output::json(notes_commands::apply_notes_lock_setting(app.clone(), state, setting)?)
+        }
         "save_note_folder" => {
             args!(args, id: Option<String>, input: pim_core::NoteFolderInput);
             Output::json(notes_commands::save_note_folder(app.clone(), state, id, input)?)

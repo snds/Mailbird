@@ -818,6 +818,8 @@ export interface NoteSummary {
   color: NoteColor | null
   /** When the note comes back. Stays set after it fires, so the note shows as due until it's done. */
   remindAt: number | null
+  /** Its text is sealed with the notes passphrase (ADR-0043); only the title shows. */
+  locked: boolean
   tags: string[]
   links: NoteLink[]
   created: number
@@ -913,10 +915,27 @@ export interface NoteRecord {
   color?: NoteColor | null
   /** Left out by devices from before note reminders. */
   remindAt?: number | null
+  /** Locked notes carry their sealed text and title here (ADR-0043). */
+  locked?: boolean
+  sealed?: string | null
+  title?: string | null
   tags: string[]
   links: NoteLink[]
   created: number
   updated: number
+}
+
+/** Locked notes (ADR-0043): whether a passphrase is set, and whether they're open now. */
+export interface NotesLockInfo {
+  set: boolean
+  hint: string | null
+  unlocked: boolean
+}
+
+/** The passphrase's salt and check value, synced through the relay's index. Opaque here. */
+export interface NotesLockSetting {
+  updated: number
+  [k: string]: unknown
 }
 
 export interface RelayConfig {

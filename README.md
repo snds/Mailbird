@@ -110,6 +110,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **30 · Their local time** ✅ | The sender profile shows what time it is for them, live, with how far ahead or behind you they are and a word when it's night or the weekend there, read from the time zone on their own mail (never a newsletter's) ([ADR-0040](docs/decisions/0040-sender-local-time.md)) |
 | **31 · Their time when you write** ✅ | Writing to someone where it's night or the weekend, the composer says so and offers to send at 9:00 AM their time (their next workday); Send later lists their morning too, with your time beside it ([ADR-0041](docs/decisions/0041-their-time.md)) |
 | **32 · Smart folders** ✅ | Saved searches in Notes (tags, words, links, color, a reminder, to-dos left) that fill and empty themselves, with live counts; searching inside one narrows it, and deleting one leaves its notes ([ADR-0042](docs/decisions/0042-smart-folders.md)) |
+| **33 · Locked notes** ✅ | One passphrase (never stored) seals a note's text with AES-256-GCM on the device and in sync, and the relay keeps no readable copy; the title stays visible, search and export skip the text, and notes lock again after 10 idle minutes ([ADR-0043](docs/decisions/0043-locked-notes.md)) |
 
 ## License
 

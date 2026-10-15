@@ -1084,6 +1084,10 @@ pub struct NoteSummary {
     /// When to bring the note back (Unix seconds). It stays set after it
     /// fires, so the note shows as due until it's marked done.
     pub remind_at: Option<i64>,
+    /// Its text is sealed with the notes passphrase (ADR-0043); only the
+    /// title is readable.
+    #[serde(default)]
+    pub locked: bool,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,
@@ -1198,6 +1202,14 @@ pub struct NoteRecord {
     /// Devices from before note reminders (ADR-0039) leave it out.
     #[serde(default)]
     pub remind_at: Option<i64>,
+    /// A locked note (ADR-0043) carries its sealed text and its title here,
+    /// since its Yjs document stays empty.
+    #[serde(default)]
+    pub locked: bool,
+    #[serde(default)]
+    pub sealed: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,

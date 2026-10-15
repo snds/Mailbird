@@ -12,6 +12,10 @@ use crate::{Shared, events, secrets};
 const RELAY_URL: &str = "notes_relay_url";
 const RELAY_SECRET: &str = "notes-relay";
 
+/// Locked notes lock again after this long without being used (ADR-0043).
+const AUTO_LOCK: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+const LOCKED: &str = "Locked notes are locked. Enter your passphrase to open them.";
+
 fn changed(app: &AppHandle) {
     let _ = app.emit(events::NOTES_CHANGED, ());
 }
@@ -179,4 +183,102 @@ pub fn set_notes_relay(state: &Shared, relay: Option<RelayConfig>) -> Res<()> {
             with_store(state, |s| s.set_setting(RELAY_URL, None))
         }
     }
+}
+
+// ── Locked notes (ADR-0043) ─────────────────────────────────────────────────
+
+/// The key, if unlocked and used recently; using it keeps it alive.
+fn key(state: &Shared) -> Res<pim_core::NotesKey> {
+    let mut slot = state.notes_key.lock().map_err(|_| "the app state is unavailable".to_string())?;
+    match slot.as_mut() {
+        Some((k, at)) if at.elapsed() < AUTO_LOCK => {
+            *at = std::time::Instant::now();
+            Ok(k.clone())
+        }
+        _ => {
+            *slot = None;
+            Err(LOCKED.into())
+        }
+    }
+}
+
+fn keep(state: &Shared, key: pim_core::NotesKey) {
+    if let Ok(mut slot) = state.notes_key.lock() {
+        *slot = Some((key, std::time::Instant::now()));
+    }
+}
+
+pub fn notes_lock(state: &Shared) -> Res<pim_core::NotesLockInfo> {
+    let mut info = with_store(state, |s| s.notes_lock())?;
+    info.unlocked = key(state).is_ok();
+    Ok(info)
+}
+
+/// Sets the passphrase, or changes it while unlocked; leaves notes unlocked.
+pub fn set_notes_passphrase(app: AppHandle, state: &Shared, passphrase: String, hint: Option<String>) -> Res<pim_core::NotesLockInfo> {
+    let current = key(state).ok();
+    let k = with_store(state, |s| s.set_notes_passphrase(current.as_ref(), &passphrase, hint.as_deref()))?;
+    keep(state, k);
+    changed(&app);
+    notes_lock(state)
+}
+
+pub fn unlock_notes(state: &Shared, passphrase: String) -> Res<pim_core::NotesLockInfo> {
+    let k = with_store(state, |s| s.unlock_notes(&passphrase))?;
+    keep(state, k);
+    notes_lock(state)
+}
+
+/// Forgets the key now: every locked note closes.
+pub fn lock_notes_now(app: AppHandle, state: &Shared) -> Res<()> {
+    if let Ok(mut slot) = state.notes_key.lock() {
+        *slot = None;
+    }
+    changed(&app);
+    Ok(())
+}
+
+pub fn lock_note(app: AppHandle, state: &Shared, id: String) -> Res<()> {
+    let k = key(state)?;
+    with_store(state, |s| s.lock_note(&id, &k))?;
+    changed(&app);
+    Ok(())
+}
+
+pub fn remove_note_lock(app: AppHandle, state: &Shared, id: String) -> Res<NoteDetail> {
+    let k = key(state)?;
+    let n = with_store(state, |s| s.remove_note_lock(&id, &k))?;
+    changed(&app);
+    Ok(n)
+}
+
+pub fn open_locked_note(state: &Shared, id: String) -> Res<NoteDetail> {
+    let k = key(state)?;
+    with_store(state, |s| s.open_locked_note(&id, &k))
+}
+
+pub fn save_locked_note(app: AppHandle, state: &Shared, id: String, markdown: String, touch: bool) -> Res<()> {
+    let k = key(state)?;
+    with_store(state, |s| s.save_locked_note(&id, &markdown, &k, touch))?;
+    if touch {
+        changed(&app);
+    }
+    Ok(())
+}
+
+/// The passphrase's salt and check, for the relay's index.
+pub fn notes_lock_setting(state: &Shared) -> Res<Option<pim_core::NotesLockSetting>> {
+    with_store(state, |s| s.notes_lock_setting())
+}
+
+pub fn apply_notes_lock_setting(app: AppHandle, state: &Shared, setting: pim_core::NotesLockSetting) -> Res<bool> {
+    let changed_here = with_store(state, |s| s.apply_notes_lock_setting(&setting))?;
+    if changed_here {
+        // A new passphrase elsewhere: the old key here opens nothing now.
+        if let Ok(mut slot) = state.notes_key.lock() {
+            *slot = None;
+        }
+        changed(&app);
+    }
+    Ok(changed_here)
 }

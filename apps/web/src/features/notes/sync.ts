@@ -3,9 +3,9 @@ import * as Y from "yjs"
 import { create } from "zustand"
 
 import type { CoreClient } from "@/core/client"
-import type { NoteRecord, RelayConfig } from "@/core/types"
+import type { NoteRecord, NotesLockSetting, RelayConfig } from "@/core/types"
 
-import { isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
+import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
 
 /**
  * Notes sync through a Hocuspocus-compatible relay (ADR-0012):
@@ -19,7 +19,10 @@ import { isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
  *   changed, then save Markdown plus state to the core.
  *
  * The relay only ever sees Yjs updates. It isn't end-to-end encrypted, so
- * run your own (tools/notes-relay) or one you trust.
+ * run your own (tools/notes-relay) or one you trust. Locked notes are the
+ * exception (ADR-0043): their text travels sealed in the record, their own
+ * document is emptied when they're locked and never synced while they are,
+ * and the passphrase's salt and check ride in the index for other devices.
  */
 
 export type SyncStatus = "off" | "connecting" | "synced" | "error"
@@ -49,6 +52,8 @@ export class NotesSync {
   private socket: HocuspocusProviderWebsocket
   private index = new Y.Doc()
   private records = this.index.getMap<NoteRecord>("notes")
+  /** The locked-notes passphrase setting, one entry: newest `updated` wins. */
+  private lockSetting = this.index.getMap<NotesLockSetting>("lock")
   private indexProvider: HocuspocusProvider
   /** Notes open in an editor, with their live connection. */
   private open = new Map<string, HocuspocusProvider>()
@@ -75,6 +80,11 @@ export class NotesSync {
     this.records.observe((e) => {
       if (e.transaction.local) return
       void this.pull()
+    })
+    this.lockSetting.observe((e) => {
+      if (e.transaction.local) return
+      const remote = this.lockSetting.get("setting")
+      if (remote) void this.core.applyNotesLockSetting(remote)
     })
     this.offCore = core.on("notes:changed", () => this.schedulePush())
   }
@@ -115,7 +125,10 @@ export class NotesSync {
   private async push() {
     if (this.stopped || !this.indexProvider.synced) return
     const local = await this.core.noteRecords()
+    const lock = await this.core.notesLockSetting()
     this.index.transact(() => {
+      const remote = this.lockSetting.get("setting")
+      if (lock && (!remote || remote.updated < lock.updated)) this.lockSetting.set("setting", lock)
       for (const r of local) {
         const remote = this.records.get(r.id)
         if (!remote || remote.updated < r.updated) this.records.set(r.id, { ...r, links: r.links.map(({ target: _t, ...l }) => l) })
@@ -128,6 +141,9 @@ export class NotesSync {
   /** Index records newer than ours come down; their text follows. */
   private async pull() {
     if (this.stopped) return
+    // The passphrase setting first, so a locked note that arrives can be opened.
+    const lock = this.lockSetting.get("setting")
+    if (lock) await this.core.applyNotesLockSetting(lock)
     const changed = await this.core.applyNoteRecords([...this.records.values()])
     for (const id of changed) {
       const r = this.records.get(id)
@@ -158,7 +174,8 @@ export class NotesSync {
   private async syncText(id: string) {
     if (this.open.has(id)) return
     const note = await this.core.getNote(id).catch(() => null)
-    if (!note) return
+    // A locked note's text isn't in its document; its record carries it sealed.
+    if (!note || note.locked) return
     const doc = loadDoc(note.ydoc)
     if (isEmpty(doc)) seed(doc, note.markdown, id)
     const before = stateOf(doc)
@@ -187,6 +204,33 @@ export class NotesSync {
     const after = stateOf(doc)
     if (after !== before || !note.ydoc) await this.core.saveNoteBody(id, markdownOf(doc), after, false)
     this.syncedAt.set(id, (await this.core.getNote(id).catch(() => note)).updated)
+    doc.destroy()
+  }
+
+  /**
+   * Empties a just-locked note's shared document, so the relay keeps no
+   * readable copy (ADR-0043). Yjs drops deleted text from a document's
+   * state, so what the relay stores from then on is an empty note.
+   */
+  async blank(id: string) {
+    this.queue.delete(id)
+    this.background.get(id)?.()
+    const doc = new Y.Doc()
+    await new Promise<void>((resolve) => {
+      let done = false
+      const finish = () => {
+        if (done) return
+        done = true
+        p.destroy()
+        resolve()
+      }
+      const p = this.provider(`note/${id}`, doc, () => {
+        const text = doc.getXmlFragment(FIELD)
+        if (text.length) doc.transact(() => text.delete(0, text.length), "lock")
+        setTimeout(finish, p.hasUnsyncedChanges ? 500 : 0)
+      })
+      setTimeout(finish, SYNC_TIMEOUT)
+    })
     doc.destroy()
   }
 

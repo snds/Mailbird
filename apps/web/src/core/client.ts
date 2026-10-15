@@ -65,6 +65,8 @@ import type {
   MeetingPrefs,
   NotesPrefs,
   NoteFolder,
+  NotesLockInfo,
+  NotesLockSetting,
   NoteFolderInput,
   NoteTarget,
   RelayConfig,
@@ -281,6 +283,17 @@ export interface CoreClient {
   noteFolders(): Promise<NoteFolder[]>
   saveNoteFolder(id: string | null, input: NoteFolderInput): Promise<NoteFolder>
   deleteNoteFolder(id: string): Promise<void>
+  /** Locked notes (ADR-0043). The key lives in the core's memory while unlocked. */
+  notesLock(): Promise<NotesLockInfo>
+  setNotesPassphrase(passphrase: string, hint: string | null): Promise<NotesLockInfo>
+  unlockNotes(passphrase: string): Promise<NotesLockInfo>
+  lockNotesNow(): Promise<void>
+  lockNote(id: string): Promise<void>
+  removeNoteLock(id: string): Promise<NoteDetail>
+  openLockedNote(id: string): Promise<NoteDetail>
+  saveLockedNote(id: string, markdown: string, touch: boolean): Promise<void>
+  notesLockSetting(): Promise<NotesLockSetting | null>
+  applyNotesLockSetting(setting: NotesLockSetting): Promise<boolean>
   setNotesPrefs(prefs: NotesPrefs): Promise<NotesPrefs>
   /** The link to put on a note for something on this device. */
   noteLinkFor(target: NoteTarget): Promise<NoteLink | null>
@@ -436,6 +449,16 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     noteFolders: () => call("note_folders"),
     saveNoteFolder: (id, input) => call("save_note_folder", { id, input }),
     deleteNoteFolder: (id) => call("delete_note_folder", { id }),
+    notesLock: () => call("notes_lock"),
+    setNotesPassphrase: (passphrase, hint) => call("set_notes_passphrase", { passphrase, hint }),
+    unlockNotes: (passphrase) => call("unlock_notes", { passphrase }),
+    lockNotesNow: () => call("lock_notes_now"),
+    lockNote: (id) => call("lock_note", { id }),
+    removeNoteLock: (id) => call("remove_note_lock", { id }),
+    openLockedNote: (id) => call("open_locked_note", { id }),
+    saveLockedNote: (id, markdown, touch) => call("save_locked_note", { id, markdown, touch }),
+    notesLockSetting: () => call("notes_lock_setting"),
+    applyNotesLockSetting: (setting) => call("apply_notes_lock_setting", { setting }),
     setNotesPrefs: (prefs) => call("set_notes_prefs", { prefs }),
     noteLinkFor: (target) => call("note_link_for", { target }),
     importNotes: (files) => call("import_notes", { files }),

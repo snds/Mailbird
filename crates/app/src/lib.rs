@@ -44,6 +44,9 @@ pub struct AppState {
     /// Reminders that came due while the app was closed, kept until the UI
     /// asks: at launch it isn't listening yet, so an event would be lost.
     pub missed_reminders: Mutex<Vec<pim_core::DueReminder>>,
+    /// The key that opens locked notes while they're unlocked, and when it
+    /// was last used (ADR-0043). Only ever in memory.
+    pub notes_key: Mutex<Option<(pim_core::NotesKey, std::time::Instant)>>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -63,6 +66,7 @@ impl AppState {
             dav_lock: tokio::sync::Mutex::new(()),
             oauth_cancel: Mutex::new(None),
             missed_reminders: Mutex::new(Vec::new()),
+            notes_key: Mutex::new(None),
         }))
     }
 }
