@@ -2,7 +2,7 @@ import { QueryClient, keepPreviousData, useInfiniteQuery, useMutation, useQuery,
 import { useEffect } from "react"
 
 import { getCoreClient, type CoreClient } from "./client"
-import type { CollectionKind, MessageQuery, NoteQuery, NoteTarget } from "./types"
+import type { CollectionKind, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -203,6 +203,19 @@ export function useCalendarSets() {
 
 export function useContactLabels() {
   return useQuery({ queryKey: keys.contactLabels, queryFn: () => call((c) => c.contactLabels()) })
+}
+
+/** Your swipe mapping; shared by every browser on the gateway (ADR-0025). */
+export function useSwipeActions() {
+  return useQuery({ queryKey: ["settings", "swipes"], queryFn: () => call((c) => c.swipeActions()), staleTime: Infinity })
+}
+
+export function useSetSwipeActions() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: SwipeActions) => call((c) => c.setSwipeActions(a)),
+    onSuccess: (a) => qc.setQueryData(["settings", "swipes"], a),
+  })
 }
 
 export function useInterestingCalendars() {

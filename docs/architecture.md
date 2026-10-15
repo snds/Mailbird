@@ -102,3 +102,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0022](decisions/0022-inbox-your-way.md) | Splits as saved rules evaluated in SQL over the Inbox lane (nothing moves on the server), exclusive by default; newsletters bundled at two or more; bundle Undo keyed on Message-ID |
 | [0023](decisions/0023-contacts-that-keep-themselves.md) | Smart groups as saved rules evaluated on read; trigger-recorded contact history (30 days) for restore to a point in time with Undo by mark; thread memory by Message-ID so conversations survive server moves |
 | [0024](decisions/0024-interesting-calendars.md) | Holidays (13 countries, observed and substitute days) and moon phases (Meeus) computed in the core as read-only device collections; no feeds fetched |
+| [0025](decisions/0025-one-action-grammar.md) | One mail action vocabulary for swipes, keys, toolbar, and ⌘K; four swipe slots (short/long) stored and validated in the core; Apple Mail defaults |

@@ -220,6 +220,19 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         </button>
       )}
 
+      <button
+        type="button"
+        onClick={() => (useUi.getState().setAccountsOpen(false), useUi.getState().setGrammarOpen(true))}
+        className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
+      >
+        <Icon name="swipe" className="size-5 text-muted-foreground" />
+        <span className="flex flex-1 flex-col gap-0.5">
+          <span className="font-medium">Shortcuts and gestures</span>
+          <span className="text-xs text-muted-foreground">What your swipes do, and the keys for everything.</span>
+        </span>
+        <Icon name="chevron_right" className="size-5 text-muted-foreground" />
+      </button>
+
       {accounts.length > 0 && <ScreenerSettingsSection />}
 
       {accounts.length > 0 && !core?.remote && <PushSettingsSection />}

@@ -92,6 +92,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **12 · Inbox your way** ✅ | Split inboxes from your own rules (senders, domains, subject words), kept out of All or not; newsletters folded into one row with mark-all-read and archive-all ([ADR-0022](docs/decisions/0022-inbox-your-way.md)) |
 | **13 · Contacts that look after themselves** ✅ | Smart groups from rules (labels, company, domain, phone, birthday, in touch lately), restore contacts to a point in time with a preview and Undo, conversations that survive a server move ([ADR-0023](docs/decisions/0023-contacts-that-keep-themselves.md)) |
 | **14 · Interesting calendars** ✅ | National holidays for 13 countries and moon phases, computed on the device (nothing fetched), shown like any read-only calendar ([ADR-0024](docs/decisions/0024-interesting-calendars.md)) |
+| **15 · One action grammar** ✅ | Configurable swipes (short and long, each way) from one shared action vocabulary, saved in the core so every device agrees; a Shortcuts and gestures list on ?, ⌘K, and Settings ([ADR-0025](docs/decisions/0025-one-action-grammar.md)) |
 
 ## License
 

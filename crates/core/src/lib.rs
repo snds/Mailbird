@@ -19,6 +19,8 @@ mod planning_store;
 mod inbox_store;
 mod people_store;
 pub mod interesting;
+pub mod grammar;
+pub use grammar::{SWIPE_ACTIONS, SwipeActions};
 pub use interesting::{INTERESTING_PREFIX, InterestingCalendar, SPECIAL_PREFIX};
 pub mod ical;
 pub mod itip;

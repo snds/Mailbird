@@ -63,6 +63,9 @@ interface UiState {
   /** Signatures and templates. */
   writingOpen: boolean
   setWritingOpen: (open: boolean) => void
+  /** Shortcuts and gestures: the key list and your swipes. */
+  grammarOpen: boolean
+  setGrammarOpen: (open: boolean) => void
   /** The ⌘K command menu. */
   paletteOpen: boolean
   setPaletteOpen: (open: boolean) => void
@@ -117,6 +120,8 @@ export const useUi = create<UiState>((set, get) => ({
   setAccountsOpen: (accountsOpen) => set({ accountsOpen }),
   writingOpen: false,
   setWritingOpen: (writingOpen) => set({ writingOpen }),
+  grammarOpen: false,
+  setGrammarOpen: (grammarOpen) => set({ grammarOpen }),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   mailTab: "inbox",

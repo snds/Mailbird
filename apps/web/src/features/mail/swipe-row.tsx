@@ -11,8 +11,12 @@ interface SwipeAction {
   onCommit: () => void
 }
 
+type Side = SwipeAction | null
+
 /** Fraction of the row width past which releasing commits the action. */
 const COMMIT_AT = 0.35
+/** Past this, a long swipe's action takes over (Spark and Outlook's two stages). */
+const LONG_AT = 0.7
 /** Movement before we decide whether the gesture is a swipe or a scroll. */
 const SLOP = 10
 
@@ -21,14 +25,15 @@ const SLOP = 10
  * keeps normal click and text selection. `touch-action: pan-y` hands vertical
  * movement to the browser, so swiping never fights scrolling. Every swipe
  * action also exists as a button and a shortcut, so nothing is gesture-only.
+ * A side set to null doesn't swipe; a missing long action repeats the short one.
  */
-export function SwipeRow({ start, end, children }: { start: SwipeAction; end: SwipeAction; children: ReactNode }) {
+export function SwipeRow({ start, end, startLong, endLong, children }: { start: Side; end: Side; startLong?: Side; endLong?: Side; children: ReactNode }) {
   const [dx, setDx] = useState(0)
   const [settling, setSettling] = useState(false)
   // Row width, measured when a gesture starts (render must not read refs).
   const [w, setW] = useState(360)
   const ref = useRef<HTMLDivElement>(null)
-  const gesture = useRef<{ x: number; y: number; id: number; swiping: boolean; armed: boolean } | null>(null)
+  const gesture = useRef<{ x: number; y: number; id: number; swiping: boolean; armed: number } | null>(null)
   const swallowClick = useRef(false)
 
   const width = () => ref.current?.offsetWidth ?? w
@@ -36,6 +41,13 @@ export function SwipeRow({ start, end, children }: { start: SwipeAction; end: Sw
     setSettling(true)
     setDx(0)
   }
+  /** What a swipe of `mx` pixels would do on release (null: nothing). */
+  const actionAt = (mx: number, width: number): SwipeAction | null => {
+    const [short, long] = mx > 0 ? [start, startLong] : [end, endLong]
+    if (Math.abs(mx) > width * LONG_AT && long) return long
+    return short
+  }
+  const stage = (mx: number, width: number) => (Math.abs(mx) > width * LONG_AT ? 2 : Math.abs(mx) > width * COMMIT_AT ? 1 : 0)
 
   return (
     <div
@@ -43,7 +55,7 @@ export function SwipeRow({ start, end, children }: { start: SwipeAction; end: Sw
       className="relative touch-pan-y overflow-hidden select-none"
       onPointerDown={(e) => {
         if (e.pointerType === "mouse") return
-        gesture.current = { x: e.clientX, y: e.clientY, id: e.pointerId, swiping: false, armed: false }
+        gesture.current = { x: e.clientX, y: e.clientY, id: e.pointerId, swiping: false, armed: 0 }
         setW(e.currentTarget.offsetWidth || 360)
         setSettling(false)
       }}
@@ -65,10 +77,12 @@ export function SwipeRow({ start, end, children }: { start: SwipeAction; end: Sw
             // Synthetic or already-released pointers can't be captured; the swipe still works.
           }
         }
-        const armed = Math.abs(mx) > width() * COMMIT_AT
+        // A side with nothing to do stays put.
+        if (!(mx > 0 ? start : end)) return
+        const armed = stage(mx, width())
         if (armed !== g.armed) {
           g.armed = armed
-          navigator.vibrate?.(8) // a tick as the action arms or disarms
+          navigator.vibrate?.(8) // a tick as each stage arms or disarms
         }
         setDx(mx)
       }}
@@ -78,8 +92,8 @@ export function SwipeRow({ start, end, children }: { start: SwipeAction; end: Sw
         if (!g?.swiping) return
         swallowClick.current = true
         const mx = e.clientX - g.x
-        const action = mx > 0 ? start : end
-        if (Math.abs(mx) > width() * COMMIT_AT) {
+        const action = actionAt(mx, width())
+        if (action && Math.abs(mx) > width() * COMMIT_AT) {
           setSettling(true)
           setDx(mx > 0 ? width() : -width())
           // Let the row finish sliding out, then act and spring back.
@@ -104,7 +118,7 @@ export function SwipeRow({ start, end, children }: { start: SwipeAction; end: Sw
         }
       }}
     >
-      {dx !== 0 && <Reveal action={dx > 0 ? start : end} side={dx > 0 ? "start" : "end"} armed={Math.abs(dx) > w * COMMIT_AT} />}
+      {dx !== 0 && actionAt(dx, w) && <Reveal action={actionAt(dx, w)!} side={dx > 0 ? "start" : "end"} armed={Math.abs(dx) > w * COMMIT_AT} />}
       <div
         className={cn("relative bg-surface-chrome", settling && "transition-transform duration-150 ease-out motion-reduce:transition-none")}
         style={{ transform: dx ? `translateX(${dx}px)` : undefined }}

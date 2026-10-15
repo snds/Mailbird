@@ -12,7 +12,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAccounts, useCore, useInboxOverview, useMailAction, useMessagePages, useScreener, useThread } from "@/core/queries"
+import { useAccounts, useCore, useInboxOverview, useMailAction, useMessagePages, useScreener, useSwipeActions, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -26,6 +26,7 @@ import { displayName, initials } from "./format"
 import { ScheduledList } from "./scheduled-list"
 import { BundleRow, SplitChips } from "./splits"
 import { SwipeRow } from "./swipe-row"
+import { useMailVerbs } from "./vocabulary"
 import { useMailShortcuts } from "./use-shortcuts"
 
 export function MailView() {
@@ -69,6 +70,8 @@ export function MailView() {
   const setAccountsOpen = useUi((s) => s.setAccountsOpen)
   const sync = useMailAction<void>((c) => c.syncNow())
   const triage = useTriage(() => setSelected(null))
+  const verb = useMailVerbs(triage, senderActions)
+  const { data: swipes = { right: "read", rightLong: "none", left: "archive", leftLong: "none" } } = useSwipeActions()
   const markSeen = triage.markSeen
 
   const list = useMemo(() => pages?.pages.flat() ?? [], [pages])
@@ -237,18 +240,19 @@ export function MailView() {
             label={laneInfo.label}
             render={(m) => (
               <SwipeRow
-                // Apple Mail mapping: swipe left to archive, right to toggle read.
+                // Your mapping (ADR-0025); Apple Mail's until changed: right toggles read, left archives.
                 // In the Screener: right lets the sender in, left screens them out.
-                start={
-                  tab === "screener"
-                    ? { icon: "how_to_reg", label: "Let in", tone: "bg-vertical-mail", onCommit: () => senderActions.decide(m.from, "allowed") }
-                    : { icon: m.seen ? "mark_email_unread" : "drafts", label: m.seen ? "Unread" : "Read", tone: "bg-vertical-mail", onCommit: () => triage.toggleSeen(m) }
-                }
-                end={
-                  tab === "screener"
-                    ? { icon: "block", label: "Screen out", tone: "bg-destructive", onCommit: () => senderActions.decide(m.from, "screened_out") }
-                    : { icon: m.archived ? "unarchive" : "archive", label: m.archived ? "Inbox" : "Archive", tone: "bg-vertical-contacts", onCommit: () => triage.toggleArchive(m) }
-                }
+                {...(tab === "screener"
+                  ? {
+                      start: { icon: "how_to_reg", label: "Let in", tone: "bg-vertical-mail", onCommit: () => senderActions.decide(m.from, "allowed") },
+                      end: { icon: "block", label: "Screen out", tone: "bg-destructive", onCommit: () => senderActions.decide(m.from, "screened_out") },
+                    }
+                  : {
+                      start: verb(swipes.right, m),
+                      startLong: verb(swipes.rightLong, m),
+                      end: verb(swipes.left, m),
+                      endLong: verb(swipes.leftLong, m),
+                    })}
               >
                 <MessageRow
                   message={m}

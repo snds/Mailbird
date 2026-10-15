@@ -104,6 +104,11 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
               <Icon name="edit_note" />
               Signatures and templates
             </CommandItem>
+            <CommandItem onSelect={run(() => ui().setGrammarOpen(true))} keywords={["keyboard", "shortcuts", "swipe", "gestures", "keys"]}>
+              <Icon name="keyboard" />
+              Shortcuts and gestures
+              <CommandShortcut>?</CommandShortcut>
+            </CommandItem>
             <CommandItem onSelect={run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark"))} keywords={["theme", "dark mode", "light mode", "appearance"]}>
               <Icon name={resolvedTheme === "dark" ? "light_mode" : "dark_mode"} />
               {resolvedTheme === "dark" ? "Use light mode" : "Use dark mode"}

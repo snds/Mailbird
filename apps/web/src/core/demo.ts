@@ -4,6 +4,7 @@ import type {
   Signature, Template, Category, Sender, SenderDecision,
   Split,
   SplitInput,
+  SwipeActions,
 } from "./types"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
@@ -351,6 +352,7 @@ export function createDemoClient(): CoreClient {
   const later = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 60))
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
+  let swipes: SwipeActions = { right: "read", rightLong: "none", left: "archive", leftLong: "none" }
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
   const { noteLinks, suggestFor, setMailSource, ...pimApi } = pim
   // Smart groups' "in touch": anyone you've had mail from, or sent mail to.
@@ -559,6 +561,15 @@ export function createDemoClient(): CoreClient {
       splits.splice(Math.min(index, splits.length), 0, s)
       done()
       return later(splits)
+    },
+    // Swipes (ADR-0025): Apple Mail's mapping until changed.
+    swipeActions: async () => later(swipes),
+    setSwipeActions: async (a) => {
+      const ok = ["none", "read", "archive", "star", "snooze-tomorrow", "snooze-next-week", "remind", "newsletters"]
+      const bad = [a.right, a.rightLong, a.left, a.leftLong].find((x) => !ok.includes(x))
+      if (bad) throw new Error(`“${bad}” isn't something a swipe can do`)
+      swipes = { ...a }
+      return later(swipes)
     },
     inboxOverview: async (accountId) => {
       const t = now()

@@ -174,6 +174,15 @@ pub fn bundle_archive(app: AppHandle, state: &Shared, account_id: Option<String>
     Ok(ids)
 }
 
+/// Which mail actions your swipes do (ADR-0025).
+pub fn swipe_actions(state: &Shared) -> Res<pim_core::SwipeActions> {
+    with_store(state, |s| s.swipe_actions())
+}
+
+pub fn set_swipe_actions(state: &Shared, actions: pim_core::SwipeActions) -> Res<pim_core::SwipeActions> {
+    with_store(state, |s| s.set_swipe_actions(&actions))
+}
+
 pub fn unarchive_bundle(app: AppHandle, state: &Shared, keys: Vec<String>) -> Res<()> {
     with_store(state, |s| s.unarchive_bundle(&keys))?;
     changed(&app, state);
