@@ -1,12 +1,7 @@
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName } from "@/components/icon"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Icon, type IconName, Avatar, AvatarFallback, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Skeleton } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useEvent, usePimAction } from "@/core/queries"
 import type { Collection, EditScope, EventDetail as Detail, Repeat } from "@/core/types"

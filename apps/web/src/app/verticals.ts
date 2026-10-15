@@ -1,4 +1,4 @@
-import type { IconName } from "@/components/icon"
+import { type IconName } from "@unicron/ui"
 
 export type VerticalId = "mail" | "calendar" | "contacts" | "notes"
 

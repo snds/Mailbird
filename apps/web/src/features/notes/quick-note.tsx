@@ -3,10 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { type QuickContext, useUi } from "@/app/ui-store"
-import { Icon, type IconName } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Kbd } from "@/components/ui/kbd"
-import { AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle } from "@/components/ui/sheet"
+import { Icon, type IconName, Button, Kbd, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLinkedNotes } from "@/core/queries"
 

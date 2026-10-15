@@ -1,8 +1,7 @@
 import DOMPurify from "dompurify"
 import { useMemo, useRef, useState } from "react"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
+import { Icon, Button } from "@unicron/ui"
 
 /**
  * Renders untrusted email HTML.

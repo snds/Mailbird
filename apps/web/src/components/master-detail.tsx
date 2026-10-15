@@ -1,9 +1,6 @@
 import type { ReactNode } from "react"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
-import type { IconName } from "@/components/icon"
+import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, type IconName } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 interface MasterDetailProps {

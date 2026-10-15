@@ -4,12 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "pnpm deps:build && vite",
+    "build": "pnpm deps:build && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "typecheck": "tsc -b",
-    "tauri": "tauri"
+    "typecheck": "pnpm deps:build && tsc -b",
+    "tauri": "tauri",
+    "deps:build": "pnpm --filter \"web^...\" run build"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -29,6 +30,8 @@
     "@tiptap/react": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
     "@tiptap/y-tiptap": "3.0.9",
+    "@unicron/tokens": "workspace:*",
+    "@unicron/ui": "workspace:*",
     "chrono-node": "2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

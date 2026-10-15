@@ -1,98 +1,23 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "@fontsource-variable/inter";
-@import "material-symbols/rounded.css";
-@import "./styles/tokens.css";
-
-@custom-variant dark (&:is(.dark *));
-
-/* Expose tier-2 tokens to Tailwind utilities (bg-background, text-muted-foreground…). */
-@theme inline {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-sans);
-
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-
-  --color-surface-chrome: var(--surface-chrome);
-  --color-surface-canvas: var(--surface-canvas);
-  --color-surface-selected: var(--surface-selected);
-  --color-unread: var(--unread);
-  --color-vertical-mail: var(--vertical-mail);
-  --color-vertical-calendar: var(--vertical-calendar);
-  --color-vertical-contacts: var(--vertical-contacts);
-  --color-vertical-notes: var(--vertical-notes);
-
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-}
-
 /*
- * Registered so the icon axes interpolate. Without @property, custom properties
- * flip discretely and a nav icon would snap from outline to filled.
+ * The shared design system (unicron): Tailwind, the core tokens, Inter, the
+ * Material Symbols font, the dark variant, the base layer, and the
+ * primitives' classes. Then Mailbird's own roles (app-extension.css).
  */
-@property --c-icon-fill {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-@property --c-icon-wght {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 400;
-}
+@import "@unicron/ui/styles";
+@import "./styles/app-extension.css";
 
+/* What only Mailbird adds to the base layer; unicron's sets borders, outlines, and the body colors. */
 @layer base {
   /* How much of the screen the on-screen keyboard covers (src/lib/keyboard-inset.ts). */
   :root {
     --keyboard-inset: 0px;
-  }
-  * {
-    @apply border-border outline-ring/50;
   }
   html {
     /* Respect notches / home indicators in Tauri mobile and installed PWAs. */
     padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
   }
   body {
-    @apply bg-background text-foreground antialiased;
     overscroll-behavior: none;
-  }
-}
-
-@utility no-scrollbar {
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
   }
 }
 

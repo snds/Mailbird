@@ -1,7 +1,6 @@
 import type { ReactNode } from "react"
 
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import { Dialog, DialogContent, DialogTitle, Sheet, SheetContent, SheetTitle } from "@unicron/ui"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 
 /** The field marked `data-editor-focus` gets focus once the frame is open. */

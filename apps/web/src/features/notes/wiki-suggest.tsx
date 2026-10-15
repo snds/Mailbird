@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/react"
 
-import { Icon } from "@/components/icon"
+import { Icon } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 import type { Choice, WikiQuery } from "./wiki-links"

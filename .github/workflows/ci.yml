@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -17,7 +19,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm build # tsc -b + vite build
+      - run: pnpm build # unicron's packages, then tsc -b + vite build
+      # Design-system analytics ratchet: fails when correct-use violations on
+      # @unicron/ui components grow beyond .dsa/baseline.json.
+      - run: pnpm ds:ratchet
       # Notes relay: two clients merge, refusals, persistence across restart.
       - run: pnpm --filter notes-relay test
 
@@ -25,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p pim-core
@@ -40,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - run: docker build -f tools/push-relay/Dockerfile -t mailbird-push-relay .
       - run: docker build -f apps/gateway/Dockerfile -t mailbird-gateway .
       - name: Gateway image starts and serves the app
@@ -55,6 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Install Dovecot
         run: |
           sudo apt-get update
@@ -82,6 +93,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Cache Stalwart binary
@@ -102,6 +115,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Install WebKitGTK and friends (Tauri Linux deps; dbus for the keychain)
         run: |
           sudo apt-get update

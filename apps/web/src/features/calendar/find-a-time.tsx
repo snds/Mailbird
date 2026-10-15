@@ -1,8 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
+import { Icon, Button } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { TimeSlot } from "@/core/types"
 

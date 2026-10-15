@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle } from "@/components/ui/sheet"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Icon, Button, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 import { hits, MARKER_COLORS, MAX_H, PEN_COLORS, SIZES, type Sketch, SKETCH_H, SKETCH_W, type Stroke, strokePath, strokeStyle } from "@/lib/sketch"
 import { cn } from "@/lib/utils"
 

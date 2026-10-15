@@ -1,4 +1,4 @@
-import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select"
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@unicron/ui"
 
 import { deviceZone, setSecondZone, useSecondZone, zones } from "./zones"
 

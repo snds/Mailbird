@@ -2,13 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName } from "@/components/icon"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { AdaptiveSheetContent, Sheet, SheetTitle } from "@/components/ui/sheet"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Icon, type IconName, Avatar, AvatarFallback, AvatarImage, Badge, Button, AdaptiveSheetContent, Sheet, SheetTitle, Skeleton, Tooltip, TooltipContent, TooltipTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { Account, AttachmentInfo, MessageDetail, MessageSummary } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -29,17 +23,6 @@ import { SnoozeMenu } from "./snooze-menu"
 import { UnsubscribeButton } from "./unsubscribe-button"
 import { CATEGORIES } from "./lanes"
 import { useSenderActions } from "./sender-actions"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import type { Category } from "@/core/types"
 import { useContactPhotos, useMailAction } from "@/core/queries"
 import { useNowSecs } from "@/hooks/use-now"

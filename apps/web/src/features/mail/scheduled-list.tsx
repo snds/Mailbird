@@ -1,9 +1,7 @@
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useScheduled } from "@/core/queries"
 import type { OutboxItem } from "@/core/types"

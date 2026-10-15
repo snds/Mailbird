@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { useDeferredValue, useState } from "react"
 
-import { Icon, type IconName } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
+import { Icon, type IconName, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { NoteLink, NoteLinkKind, NoteTarget } from "@/core/types"
 import { shortTime } from "@/lib/time"

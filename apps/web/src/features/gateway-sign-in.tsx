@@ -1,9 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+import { Icon, Button, Field, FieldDescription, FieldLabel, Input } from "@unicron/ui"
 import { SIGNED_OUT, gatewaySession, isTauri, signInToGateway } from "@/core/client"
 
 type Gate = "checking" | "open" | "sign-in"

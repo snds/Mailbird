@@ -1,10 +1,7 @@
 import { EditorContent, useEditorState, type Editor } from "@tiptap/react"
 import { useState } from "react"
 
-import { Icon, type IconName } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Toggle } from "@/components/ui/toggle"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Icon, type IconName, Button, Toggle, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 import { SAFE_LINK } from "./use-rich-editor"

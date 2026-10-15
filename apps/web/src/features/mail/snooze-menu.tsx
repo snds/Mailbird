@@ -1,14 +1,6 @@
 import type { ReactElement, ReactNode } from "react"
 
-import { Icon } from "@/components/icon"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Icon, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@unicron/ui"
 import { snoozeOptions } from "@/lib/time"
 
 /** Snooze presets. Each shows the exact time, so "Tomorrow" is never ambiguous. */

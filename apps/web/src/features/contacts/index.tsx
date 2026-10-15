@@ -2,10 +2,9 @@ import { useDeferredValue, useEffect, useState } from "react"
 
 import { pendingJump, useUi } from "@/app/ui-store"
 
-import { Icon } from "@/components/icon"
+import { Icon, Button } from "@unicron/ui"
 import { ListRow, SearchField } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
-import { Button } from "@/components/ui/button"
 import { useAccounts, useCollections, useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 

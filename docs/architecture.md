@@ -46,12 +46,14 @@ All three come from `AppShell` + `MasterDetail` (`apps/web/src/app/shell.tsx`, `
 
 ## Design system
 
-- **Components:** shadcn/ui source on **Base UI** primitives, **Nova** style. It is generated into `apps/web/src/components/ui` by `tools/shadcn-material`, which swaps every Lucide icon for a Material Symbol ([ADR-0003](decisions/0003-material-symbols.md)).
-- **Tokens:** `apps/web/src/styles/tokens.css`, in three tiers:
-  - **Global** (`--g-*`): raw OKLCH ramps, radius, and motion.
-  - **Semantic**: shadcn's contract (`--background`, `--primary`, …) plus app roles such as `--surface-chrome` and `--vertical-mail`. Only this tier changes between light and dark.
-  - **Component** (`--c-*`): shell sizes, list-row anatomy, and icon axes.
-- **Icons:** the `Icon` component (`apps/web/src/components/icon.tsx`) renders the Material Symbols variable font inside an `<svg>`. Its four axes are tier-3 tokens (`--c-icon-fill/wght/grad/opsz`), registered with `@property` so they animate. A nav item fills its icon on selection, and dark mode drops grade by 25.
+- **Shared system:** the primitives and core tokens come from **unicron**, the design system Mailbird shares with Synapse and Lockdown ([ADR-0047](decisions/0047-unicron.md)). It's a pinned submodule at `vendor/unicron`; `apps/web` imports `@unicron/ui` and `@unicron/tokens` from the workspace.
+- **Components:** shadcn/ui source on **Base UI** primitives, **Nova** style, owned in unicron (`@unicron/ui`). `tools/shadcn-material` swaps every Lucide icon for a Material Symbol ([ADR-0003](decisions/0003-material-symbols.md)); `--alias-mode package` writes unicron's import style.
+- **Tokens,** in three tiers:
+  - **Global** (`--g-*`): raw OKLCH ramps, radius, motion, and note-card hues (unicron core).
+  - **Semantic**: shadcn's contract (`--background`, `--primary`, …), in the core, plus Mailbird's app roles such as `--surface-chrome` and `--vertical-mail` in `apps/web/src/styles/app-extension.css`. Only this tier changes between light and dark.
+  - **Component** (`--c-*`): icon axes and the adaptive sheet in the core; shell sizes, list-row anatomy, notes, and calendar in the app extension.
+- **Measured:** `dsa` (design-system analytics) scans `apps/web/src`, and CI's ratchet fails if `className`/style overrides, spread props, or look-alikes of unicron components grow.
+- **Icons:** the `Icon` component (`@unicron/ui`) renders the Material Symbols variable font inside an `<svg>`. Its four axes are tier-3 tokens (`--c-icon-fill/wght/grad/opsz`), registered with `@property` so they animate. A nav item fills its icon on selection, and dark mode drops grade by 25.
 - **Vertical wayfinding:** each app area has one accent hue (Mail blue, Calendar coral, Contacts green, Notes amber), used sparingly on the active icon and on data markers.
 
 ## Data and sync
@@ -124,3 +126,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0044](decisions/0044-images-in-notes.md) | Images in notes: `note_files.rs` (schema v17 `note_files`; Markdown `![alt](note-file:ID)`; sealed with the note via `reseal_note_files`); `NoteSummary.cover` from the text; import resolves `![](path)`, `![[name]]`, and Keep attachments, export writes `attachments/`; sync: a `files` map in the index plus a `file/<id>` document each; gateway body limit 16 MB |
 | [0045](decisions/0045-scans-and-text-in-images.md) | Scans and text in images: Tesseract (tesseract.js) in a worker from the app's own `ocr/` files (a Vite plugin emits them); `ImageTextRunner` reads unread images while idle; schema v18 `note_files.text` + `notes.image_text` in `notes_fts`; text sealed with locked images; `lib/scan.ts` (page finding, perspective straightening, document filter) behind `ScanSheet`; CSP `wasm-unsafe-eval` |
 | [0046](decisions/0046-sketches.md) | Sketches: `lib/sketch.ts` (perfect-freehand outlines → SVG with strokes in `<metadata>`), `SketchSheet` + `sketch-store.ts`; `crates/core/src/sketch.rs` allow-lists SVG (quick-xml, now unconditional) on add, sync, import, and sealed open; `--c-sketch-paper` |
+| [0047](decisions/0047-unicron.md) | Shared design system: unicron as a pinned submodule (`vendor/unicron`, in the pnpm workspace); `@unicron/ui` + `@unicron/tokens`; Mailbird's roles in `styles/app-extension.css`; `dsa` scan/patterns/ratchet with `.dsa/baseline.json` in CI; `shadcn-material --alias-mode package` |

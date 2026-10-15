@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@unicron/ui"
 import type { ContactSummary } from "@/core/types"
 import { cn } from "@/lib/utils"
 

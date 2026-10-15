@@ -1,6 +1,6 @@
 import { toast } from "sonner"
 
-import type { IconName } from "@/components/icon"
+import { type IconName } from "@unicron/ui"
 import { useMailAction } from "@/core/queries"
 import type { MessageSummary, SwipeActionId } from "@/core/types"
 import { snoozeOptions } from "@/lib/time"

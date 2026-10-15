@@ -1,0 +1,138 @@
+/*
+ * Mailbird's app-extension layer, over the shared core (@unicron/tokens).
+ *
+ * The core carries the three-tier system Mailbird seeded: global primitives
+ * (--g-*, including the note-card hues), the shadcn semantic contract, and
+ * the knobs core primitives read (--c-icon-*, --c-sheet-*). This file holds
+ * only what Mailbird understands: which pane is chrome, one hue per app area,
+ * what "unread" looks like, tinted note cards, and the --c-* knobs of
+ * Mailbird-only components.
+ *
+ * Rules (unicron docs/05-consuming.md): alias tier 1 or tier 2, never a raw
+ * value (sketch paper is the one deliberate exception, below); swap only in
+ * .dark; expose to Tailwind through this file's own @theme inline block.
+ */
+
+/* ── Tier 2 · App roles (light) ─────────────────────────────────────────── */
+:root {
+  --surface-chrome: var(--g-neutral-50); /* nav rail, tab bar, list pane */
+  --surface-canvas: var(--g-neutral-0); /* reading / editing pane */
+  --surface-selected: var(--g-neutral-100);
+  /* One hue per app area — the same wayfinding Apple uses
+     (Mail blue, Calendar red, Contacts green-grey, Notes yellow). */
+  --vertical-mail: var(--g-blue-500);
+  --vertical-calendar: var(--g-coral-500);
+  --vertical-contacts: var(--g-green-500);
+  --vertical-notes: var(--g-amber-500);
+  --unread: var(--g-blue-500);
+  /* Tinted surfaces (note cards): a light, soft wash behind dark text. */
+  --tint-l: 0.95;
+  --tint-c: 0.045;
+
+  /* The core's sidebar contract, re-pointed at the chrome pane (same value as the core's). */
+  --sidebar: var(--surface-chrome);
+}
+
+/* ── Tier 2 · App roles (dark) ──────────────────────────────────────────── */
+.dark {
+  --surface-chrome: var(--g-neutral-900);
+  --surface-canvas: var(--g-neutral-950);
+  --surface-selected: var(--g-neutral-800);
+  --vertical-mail: var(--g-blue-400);
+  --vertical-calendar: var(--g-coral-400);
+  --vertical-contacts: var(--g-green-400);
+  --vertical-notes: var(--g-amber-400);
+  --unread: var(--g-blue-400);
+  /* Deep and quiet, so light text keeps its contrast. */
+  --tint-l: 0.3;
+  --tint-c: 0.05;
+  --sidebar: var(--surface-chrome);
+}
+
+/* ── Tier 3 · Mailbird-only component knobs ─────────────────────────────── */
+:root {
+  /* App shell */
+  --c-shell-rail-width: 4.5rem;
+  --c-shell-tabbar-height: 4rem;
+  --c-shell-list-width: 22rem;
+  --c-shell-active-indicator: var(--accent);
+
+  /* Nav item: icon axes animate between states (see Icon) */
+  --c-nav-icon-fill-rest: 0;
+  --c-nav-icon-fill-active: 1;
+  --c-nav-icon-wght-rest: 400;
+  --c-nav-icon-wght-active: 500;
+
+  /* List row (message, contact, note) */
+  --c-list-row-padding-x: 1rem;
+  --c-list-row-padding-y: 0.75rem;
+  --c-list-row-gap: 0.75rem;
+  --c-list-row-selected: var(--surface-selected);
+  --c-list-row-unread-dot: var(--unread);
+
+  /* Composer (rich-text body) */
+  --c-composer-quote-border: var(--border);
+  --c-composer-quote-text: var(--muted-foreground);
+  --c-composer-link: var(--primary);
+  --c-composer-placeholder: var(--muted-foreground);
+
+  /* Notes: the first line is the title (Apple Notes convention). Checked
+     items fade instead of vanishing, so a list's progress stays visible. */
+  --c-note-title-size: 1.625rem;
+  --c-note-heading-size: 1.25rem;
+  --c-note-check-accent: var(--vertical-notes);
+  --c-note-done-text: var(--muted-foreground);
+  --c-note-code-bg: var(--muted);
+  /* [[Links]] between notes (ADR-0034): the notes accent, unlike web links. */
+  --c-note-wikilink-text: var(--vertical-notes);
+  --c-note-wikilink-bg: color-mix(in oklab, var(--vertical-notes) 12%, transparent);
+
+  /* Note cards (ADR-0038): one tint per color, theme-aware through tier 2.
+     Brown and gray carry less chroma, as Keep's do. */
+  --c-note-card-red: oklch(var(--tint-l) var(--tint-c) var(--g-hue-red));
+  --c-note-card-orange: oklch(var(--tint-l) var(--tint-c) var(--g-hue-orange));
+  --c-note-card-yellow: oklch(var(--tint-l) calc(var(--tint-c) * 1.4) var(--g-hue-yellow));
+  --c-note-card-green: oklch(var(--tint-l) var(--tint-c) var(--g-hue-green));
+  --c-note-card-teal: oklch(var(--tint-l) var(--tint-c) var(--g-hue-teal));
+  --c-note-card-blue: oklch(var(--tint-l) var(--tint-c) var(--g-hue-blue));
+  --c-note-card-purple: oklch(var(--tint-l) var(--tint-c) var(--g-hue-purple));
+  --c-note-card-pink: oklch(var(--tint-l) var(--tint-c) var(--g-hue-pink));
+  --c-note-card-brown: oklch(var(--tint-l) calc(var(--tint-c) * 0.6) var(--g-hue-brown));
+  --c-note-card-gray: oklch(var(--tint-l) 0.008 var(--g-hue-gray));
+  --c-note-card-plain: var(--card);
+  --c-note-card-radius: 0.875rem;
+  /* Cards are at least this wide; the grid fits as many as the pane holds.
+     In a narrow pane (under 32rem) they shrink so two still fit. */
+  --c-note-card-min: 15rem;
+  --c-note-card-min-compact: 9.25rem;
+
+  /* Scan: the page outline over a photo (ADR-0045). Must read on any photo, so it's the ring color, not a neutral. */
+  --c-scan-edge: var(--ring);
+  --c-scan-fill: color-mix(in oklab, var(--ring) 14%, transparent);
+  /* Sketches (ADR-0046) are drawn on paper, light in both themes, so their
+     inks look the same everywhere. A raw value, deliberately not redefined for
+     dark mode: no core token means "paper in every theme". */
+  --c-sketch-paper: oklch(0.985 0.004 95);
+
+  /* Calendar */
+  --c-event-fallback: var(--vertical-calendar);
+  /* How much of the calendar color tints an event's fill. */
+  --c-event-tint: 16%;
+  --c-event-tint-hover: 26%;
+  --c-calendar-hour-height: 3rem;
+  --c-calendar-gutter: 3.5rem;
+  --c-calendar-now: var(--vertical-calendar);
+  --c-calendar-today: var(--vertical-calendar);
+}
+
+/* Mailbird's roles as Tailwind utilities (bg-surface-chrome, text-vertical-mail…). */
+@theme inline {
+  --color-surface-chrome: var(--surface-chrome);
+  --color-surface-canvas: var(--surface-canvas);
+  --color-surface-selected: var(--surface-selected);
+  --color-unread: var(--unread);
+  --color-vertical-mail: var(--vertical-mail);
+  --color-vertical-calendar: var(--vertical-calendar);
+  --color-vertical-contacts: var(--vertical-contacts);
+  --color-vertical-notes: var(--vertical-notes);
+}

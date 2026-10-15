@@ -1,5 +1,4 @@
-import { Icon } from "@/components/icon"
-import { buttonVariants } from "@/components/ui/button"
+import { Icon, buttonVariants } from "@unicron/ui"
 import { useCore, useMeetingPrefs } from "@/core/queries"
 import { cn } from "@/lib/utils"
 
