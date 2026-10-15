@@ -1,4 +1,4 @@
-import { downloadVcard } from "@/lib/download"
+import { downloadNotes, downloadVcard } from "@/lib/download"
 
 import type {
   Account,
@@ -21,6 +21,7 @@ import type {
   InterestingCalendar,
   SwipeActions,
   KeyBindings,
+  ExportedNote,
   Booked,
   BookingLink,
   BookingLinkInput,
@@ -246,6 +247,12 @@ export interface CoreClient {
   // Notes
   listNotes(query: NoteQuery): Promise<NoteSummary[]>
   getNote(id: string): Promise<NoteDetail>
+  /** Notes that link here with `[[title]]` (ADR-0034). */
+  noteBacklinks(id: string): Promise<NoteSummary[]>
+  /** The note a `[[title]]` link opens, if any. */
+  findNote(title: string): Promise<string | null>
+  /** Saves every note as Markdown files; returns where they went (ADR-0034). */
+  exportNotes(): Promise<string>
   createNote(input: NoteInput): Promise<NoteDetail>
   /** Markdown plus the editor's Yjs state. `touch: false` stores another device's text without marking it edited. */
   saveNoteBody(id: string, markdown: string, ydoc: string | null, touch: boolean): Promise<void>
@@ -394,6 +401,10 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     syncPimNow: () => call("sync_pim_now"),
     listNotes: (query) => call("list_notes", { query }),
     getNote: (id) => call("get_note", { id }),
+    noteBacklinks: (id) => call("note_backlinks", { id }),
+    findNote: (title) => call("find_note", { title }),
+    // The desktop writes a folder into Downloads.
+    exportNotes: () => call("save_notes_export"),
     createNote: (input) => call("create_note", { input }),
     saveNoteBody: (id, markdown, ydoc, touch) => call("save_note_body", { id, markdown, ydoc, touch }),
     setNoteMeta: (id, meta) => call("set_note_meta", { id, meta }),
@@ -552,6 +563,8 @@ function createGatewayClient(): CoreClient {
       return "your browser's downloads"
     },
     saveContactVcard: async (id) => downloadVcard(await call<ContactExport>("contact_vcard", { id })),
+    // A browser can't write a folder: the gateway's notes come down as a zip.
+    exportNotes: async () => downloadNotes(await call<ExportedNote[]>("export_notes")),
     on(event, handler) {
       const set = handlers.get(event) ?? new Set()
       set.add(handler)

@@ -85,6 +85,20 @@ async fn every_command_routes_and_works() {
     assert_eq!(occ[0]["title"], "Gateway check");
     let note = json_of(dispatch(&app, &state, "create_note", json!({ "input": { "markdown": "# Hello\nfrom the dispatcher" } })).await.unwrap());
     assert_eq!(note["title"], "Hello");
+
+    // Connected notes (ADR-0034): a [[link]], its backlink, finding by title, export.
+    let other = json_of(dispatch(&app, &state, "create_note", json!({ "input": { "markdown": "# Reply\nsee [[hello]]" } })).await.unwrap());
+    let back = json_of(dispatch(&app, &state, "note_backlinks", json!({ "id": note["id"] })).await.unwrap());
+    assert_eq!(back[0]["id"], other["id"]);
+    assert_eq!(json_of(dispatch(&app, &state, "find_note", json!({ "title": "HELLO" })).await.unwrap()), note["id"]);
+    let files = json_of(dispatch(&app, &state, "export_notes", Value::Null).await.unwrap());
+    let mut paths: Vec<&str> = files.as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
+    paths.sort();
+    assert_eq!(paths, ["Hello.md", "Reply.md"]);
+    let saved = json_of(dispatch(&app, &state, "save_notes_export", Value::Null).await.unwrap());
+    let saved = std::path::PathBuf::from(saved.as_str().unwrap());
+    assert!(std::fs::read_to_string(saved.join("Reply.md")).unwrap().ends_with("# Reply\nsee [[hello]]\n"));
+    let _ = std::fs::remove_dir_all(saved);
     let events = host.events.lock().unwrap().clone();
     assert!(events.contains(&"pim:changed".to_string()) && events.contains(&"notes:changed".to_string()), "{events:?}");
     let _ = std::fs::remove_dir_all(dir);

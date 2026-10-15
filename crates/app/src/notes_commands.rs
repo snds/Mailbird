@@ -74,6 +74,34 @@ pub fn set_notes_prefs(app: AppHandle, state: &Shared, prefs: pim_core::NotesPre
     Ok(out)
 }
 
+/// Notes that link here with `[[title]]` (ADR-0034).
+pub fn note_backlinks(state: &Shared, id: String) -> Res<Vec<NoteSummary>> {
+    with_store(state, |s| s.note_backlinks(&id))
+}
+
+/// The note a `[[title]]` link opens, if there is one.
+pub fn find_note(state: &Shared, title: String) -> Res<Option<String>> {
+    with_store(state, |s| s.find_note(&title))
+}
+
+/// Every note as a Markdown file, for the browser to package (ADR-0034).
+pub fn export_notes(state: &Shared) -> Res<Vec<pim_core::ExportedNote>> {
+    with_store(state, |s| s.export_notes())
+}
+
+/// Writes every note into a new folder in Downloads; returns where it went.
+pub fn save_notes_export(app: AppHandle, state: &Shared) -> Res<String> {
+    let files = with_store(state, |s| s.export_notes())?;
+    // A fresh folder each time ("Notes", then "Notes (1)"…), never mixed into an old one.
+    let name = "Notes".to_string();
+    let dir = crate::commands::unique_path(&app.download_dir()?, &name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make the {name} folder: {e}"))?;
+    for f in &files {
+        std::fs::write(dir.join(&f.path), &f.contents).map_err(|e| format!("couldn't save {}: {e}", f.path))?;
+    }
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 pub fn note_link_for(state: &Shared, target: NoteTarget) -> Res<Option<NoteLink>> {
     with_store(state, |s| s.note_link_for(&target))
 }

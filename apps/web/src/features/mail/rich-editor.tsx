@@ -115,6 +115,8 @@ export function FormatBar({ editor, notes = false }: { editor: Editor; notes?: b
           <>
             <Mark icon="title" label="Heading" pressed={state.heading} onPressedChange={() => chain().toggleHeading({ level: 2 }).run()} />
             <Mark icon="checklist" label="Checklist" pressed={state.task} onPressedChange={() => chain().toggleTaskList().run()} />
+            {/* Starts [[ so the note picker opens: easier than finding brackets on a phone keyboard. */}
+            <Mark icon="add_link" label="Link to a note" pressed={false} onPressedChange={() => chain().insertContent("[[").run()} />
             <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
           </>
         )}

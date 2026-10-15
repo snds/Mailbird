@@ -1,4 +1,5 @@
 import { useDeferredValue, useState } from "react"
+import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
 import { Icon } from "@/components/icon"
@@ -7,6 +8,7 @@ import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { getCoreClient } from "@/core/client"
 import { useNoteAction, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
 import { shortTime } from "@/lib/time"
 import { cn } from "@/lib/utils"
@@ -34,6 +36,15 @@ export function NotesView() {
   const sync = useSyncStatus()
   const { data: prefs } = useNotesPrefs()
   const setPrefs = useNoteAction((c, sortChecked: boolean) => c.setNotesPrefs({ sortChecked }))
+
+  // Every note as a Markdown file with front matter, as Obsidian reads them (ADR-0034).
+  const exportAll = async () => {
+    try {
+      toast.success(`Notes saved to ${await (await getCoreClient()).exportNotes()}`, { duration: 4000 })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const pinned = notes.filter((n) => n.pinned)
   const rest = notes.filter((n) => !n.pinned)
@@ -91,6 +102,9 @@ export function NotesView() {
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setImporting(true)}>
                     <Icon name="upload_file" /> Import notes…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void exportAll()}>
+                    <Icon name="download" /> Export all as Markdown
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setRelayOpen(true)}>
                     <Icon name="sync" /> Sync between devices…

@@ -3,6 +3,8 @@
 // first, word-prefix search over title, text, and tags, tombstones for
 // sync, newest-record-wins merges, and the same import formats.
 
+import { downloadNotes } from "@/lib/download"
+
 import type { CoreEvent } from "./client"
 import type { ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
 
@@ -32,9 +34,35 @@ function plainLine(line: string): string {
   if (l.startsWith("```") || /^[-*_= ]*$/.test(l)) return ""
   l = l.replace(/^>\s*/, "").replace(/^#+\s*/, "")
   l = l.replace(/^([-*+] \[[ xX]\] |[-*+] |\d+\. )/, "")
+  l = l.replace(/\[\[([^[\]|\n]+?)(?:\|([^[\]\n]+?))?\]\]/g, (_, t: string, shown?: string) => shown ?? t)
   l = l.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-  return l.replace(/\*\*|__|~~|[`*]/g, "").trim()
+  // Markdown's escapes (`\[`, `\#`) read as the plain character.
+  return l.replace(/\*\*|__|~~|[`*]/g, "").replace(/\\([!-/:-@[-`{-~])/g, "$1").trim()
 }
+
+/** The `[[wikilinks]]` in Markdown as target titles, skipping code (notes_store.rs). */
+export function wikilinks(markdown: string): string[] {
+  const out: string[] = []
+  let fenced = false
+  for (const line of markdown.split("\n")) {
+    if (line.trimStart().startsWith("```")) fenced = !fenced
+    if (fenced) continue
+    const plain = line.replace(/`[^`]*`/g, "")
+    for (const m of plain.matchAll(/\[\[([^[\]|\n]+?)(?:\|[^[\]\n]+?)?\]\]/g)) {
+      const t = m[1]!.split("#")[0]!.trim()
+      if (t) out.push(t)
+    }
+  }
+  return out
+}
+
+/** A title as a file name, as the core makes it. */
+const fileStem = (title: string) => {
+  const s = title.replace(/[/\\:*?"<>|#^[\]\p{Cc}]/gu, " ").split(/\s+/).filter(Boolean).join(" ").replace(/^\.+|\.+$/g, "").trim()
+  return s ? s.slice(0, 120) : "Untitled"
+}
+const yamlText = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+const iso = (t: number) => new Date(t * 1000).toISOString().replace(/\.\d{3}Z$/, "Z")
 
 export function titleAndSnippet(markdown: string): [string, string] {
   const lines = markdown.split("\n").map(plainLine).filter(Boolean)
@@ -94,7 +122,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
     note("Cabin packing list\n\n- [ ] Board games\n- [ ] Coffee + grinder\n- [x] Rain jackets\n- [ ] Ferry tickets (in Mail)", 2 * 3600, {
       pinned: true, tags: ["trip"], links: [event("Cabin weekend")].filter((l): l is NoteLink => !!l),
     }),
-    note("Design review agenda\n\n1. Token drift in the **semantic** tier\n2. List density on phones\n3. Mobile tab bar labels", 5 * 3600, {
+    note("Design review agenda\n\n1. Token drift in the **semantic** tier\n2. List density on phones\n3. Mobile tab bar labels\n\nBackground: [[Icon axis ideas]]", 5 * 3600, {
       tags: ["work"], links: [event("Design review")].filter((l): l is NoteLink => !!l),
     }),
     note("Icon axis ideas\n\nFill animates on selection. Grade drops in dark mode. Optical size follows the rendered px size.", DAY, { tags: ["design"] }),
@@ -151,6 +179,41 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
       return later(out)
     },
     getNote: async (id: string) => later(detail(find(id))),
+    // Connected notes (ADR-0034), as the core does them.
+    noteBacklinks: async (id: string) => {
+      const title = titleAndSnippet(find(id).markdown)[0].toLowerCase()
+      if (!title.trim()) return later([])
+      const out = notes
+        .filter((x) => !x.deleted && x.id !== id && wikilinks(x.markdown).some((t) => t.toLowerCase() === title))
+        .sort((a, b) => b.updated - a.updated)
+        .map(summary)
+      return later(out)
+    },
+    findNote: async (title: string) => {
+      const t = title.split("#")[0]!.trim().toLowerCase()
+      const hit = t ? notes.filter((x) => !x.deleted && titleAndSnippet(x.markdown)[0].toLowerCase() === t).sort((a, b) => b.updated - a.updated)[0] : undefined
+      return later(hit?.id ?? null)
+    },
+    exportNotes: async () => {
+      const taken = new Set<string>()
+      const files = notes
+        .filter((x) => !x.deleted)
+        .sort((a, b) => a.created - b.created)
+        .map((x) => {
+          const title = titleAndSnippet(x.markdown)[0]
+          const stem = fileStem(title)
+          let path = `${stem}.md`
+          for (let i = 2; taken.has(path.toLowerCase()); i++) path = `${stem} ${i}.md`
+          taken.add(path.toLowerCase())
+          let fm = `---\ntitle: ${yamlText(title)}\n`
+          if (x.tags.length) fm += `tags:\n${x.tags.map((t) => `  - ${yamlText(t)}\n`).join("")}`
+          fm += `created: ${iso(x.created)}\nupdated: ${iso(x.updated)}\n`
+          if (x.pinned) fm += "pinned: true\n"
+          if (x.archived) fm += "archived: true\n"
+          return { path, contents: `${fm}---\n${x.markdown.trimEnd()}\n` }
+        })
+      return downloadNotes(files)
+    },
     createNote: async (input: NoteInput) => {
       // Random ids, like the core's UUIDs: two devices never mint the same one.
       const x = note(input.markdown, 0, { id: crypto.randomUUID(), pinned: !!input.pinned, tags: cleanTags(input.tags ?? []), links: cleanLinks(input.links ?? []), created: now(), updated: now() })

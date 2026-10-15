@@ -155,6 +155,10 @@ pub const COMMANDS: &[&str] = &[
     "delete_note",
     "restore_note",
     "note_tags",
+    "note_backlinks",
+    "find_note",
+    "export_notes",
+    "save_notes_export",
     "note_tasks",
     "meeting_prefs",
     "set_meeting_prefs",
@@ -565,6 +569,16 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(notes_commands::restore_note(app.clone(), state, id)?)
         }
         "note_tags" => Output::json(notes_commands::note_tags(state)?),
+        "note_backlinks" => {
+            args!(args, id: String);
+            Output::json(notes_commands::note_backlinks(state, id)?)
+        }
+        "find_note" => {
+            args!(args, title: String);
+            Output::json(notes_commands::find_note(state, title)?)
+        }
+        "export_notes" => Output::json(notes_commands::export_notes(state)?),
+        "save_notes_export" => Output::json(notes_commands::save_notes_export(app.clone(), state)?),
         "note_tasks" => {
             args!(args, done: Option<bool>);
             Output::json(notes_commands::note_tasks(state, done.unwrap_or(false))?)

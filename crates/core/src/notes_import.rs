@@ -6,7 +6,7 @@
 //!   to the JSON are ignored.
 //! - **Markdown folders** (Obsidian, Bear, Apple Notes exporters, plain
 //!   `.md`/`.txt`): YAML front matter (`title`, `tags`, `created`,
-//!   `updated`/`modified`, `pinned`) is read and removed; Bear-style
+//!   `updated`/`modified`, `pinned`, `archived`) is read and removed; Bear-style
 //!   `#tags` in the text are collected as tags; the folders under the one
 //!   you picked become a tag (`Work/Clients`).
 //!
@@ -170,7 +170,7 @@ fn markdown_note(segments: &[&str], contents: &str, modified: Option<i64>) -> Im
         markdown: markdown.trim_end().to_string(),
         tags,
         pinned: matches!(get("pinned"), Some(FrontValue::Text(t)) if t == "true"),
-        archived: false,
+        archived: matches!(get("archived"), Some(FrontValue::Text(t)) if t == "true"),
         created,
         updated: updated.max(created),
     }

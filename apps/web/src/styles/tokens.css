@@ -155,6 +155,9 @@
   --c-note-check-accent: var(--vertical-notes);
   --c-note-done-text: var(--muted-foreground);
   --c-note-code-bg: var(--muted);
+  /* [[Links]] between notes (ADR-0034): the notes accent, unlike web links. */
+  --c-note-wikilink-text: var(--vertical-notes);
+  --c-note-wikilink-bg: color-mix(in oklab, var(--vertical-notes) 12%, transparent);
 
   /* Calendar */
   --c-event-fallback: var(--vertical-calendar);

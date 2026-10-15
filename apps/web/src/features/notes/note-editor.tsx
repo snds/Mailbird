@@ -1,7 +1,8 @@
 import { HocuspocusProvider } from "@hocuspocus/provider"
 import Collaboration from "@tiptap/extension-collaboration"
 import { Placeholder } from "@tiptap/extensions"
-import { EditorContent, useEditor } from "@tiptap/react"
+import { NodeSelection } from "@tiptap/pm/state"
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import { useEffect, useRef, useState } from "react"
 import type * as Y from "yjs"
 
@@ -13,6 +14,9 @@ import { FormatBar } from "../mail/rich-editor"
 import { SortChecked } from "./checklists"
 import { noteExtensions } from "./extensions"
 import { notesSync, useSyncStatus } from "./sync"
+import { type Choice, openWikiLink, pickChoice, useWikiChoices, wikiQueryAt } from "./wiki-links"
+import { WikiSuggest } from "./wiki-suggest"
+import { linkPlainWikiText } from "./wikilink"
 import { isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
 
 const SAVE_DELAY = 400
@@ -50,6 +54,9 @@ export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; aut
   // turning it off applies to the open note too.
   useNotesPrefs()
 
+  // The [[ suggestions: read by the editor's key handler through a ref.
+  const suggest = useRef<{ open: boolean; move: (d: number) => void; pick: () => boolean; close: () => void }>({ open: false, move: () => {}, pick: () => false, close: () => {} })
+
   const editor = useEditor(
     {
       extensions: [
@@ -60,7 +67,32 @@ export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; aut
       ],
       immediatelyRender: true,
       autofocus: autoFocus ? "end" : false,
+      // `[[Title]]` still in plain text (older notes, other devices) becomes a link.
+      onCreate: ({ editor: e }) => {
+        const tr = linkPlainWikiText(e.state)
+        if (tr) e.view.dispatch(tr)
+      },
       editorProps: {
+        handleClickOn: (_view, _pos, node) => {
+          if (node.type.name !== "wikiLink") return false
+          void openWikiLink(node.attrs.target as string)
+          return true
+        },
+        handleKeyDown: (view, event) => {
+          const s = suggest.current
+          if (s.open) {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") return s.move(event.key === "ArrowDown" ? 1 : -1), true
+            if (event.key === "Enter" || event.key === "Tab") return s.pick()
+            if (event.key === "Escape") return s.close(), true
+          }
+          // Enter on a selected link opens it, so keyboards can follow links too.
+          const sel = view.state.selection
+          if (event.key === "Enter" && sel instanceof NodeSelection && sel.node.type.name === "wikiLink") {
+            void openWikiLink(sel.node.attrs.target as string)
+            return true
+          }
+          return false
+        },
         attributes: {
           role: "textbox",
           "aria-label": "Note",
@@ -84,9 +116,33 @@ export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; aut
     }
   }, [syncing, note.id, doc])
 
+  // What's typed after [[, and the choices for it.
+  const q = useEditorState({ editor, selector: ({ editor: e }) => wikiQueryAt(e), equalityFn: (a, b) => a?.from === b?.from && a?.query === b?.query })
+  const [dismissed, setDismissed] = useState<number | null>(null)
+  // The highlighted choice, reset whenever the query changes.
+  const [picked, setActive] = useState({ query: "", i: 0 })
+  const live = q && q.from !== dismissed ? q : null
+  const active = picked.query === live?.query ? picked.i : 0
+  const choices = useWikiChoices(live, note.id)
+  const choose = (c: Choice) => live && pickChoice(editor, live, c.title)
+  useEffect(() => {
+    suggest.current = {
+      open: !!live && choices.length > 0,
+      move: (d) => setActive({ query: live?.query ?? "", i: (active + d + choices.length) % choices.length }),
+      pick: () => {
+        const c = choices[Math.min(active, choices.length - 1)]
+        if (!c) return false
+        choose(c)
+        return true
+      },
+      close: () => setDismissed(live?.from ?? null),
+    }
+  })
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <EditorContent editor={editor} className="min-h-0 flex-1 overflow-y-auto [&>div]:min-h-full" />
+      {live && <WikiSuggest editor={editor} q={live} choices={choices} active={active} onPick={choose} />}
       <div className="sticky bottom-0 bg-background">
         <FormatBar editor={editor} notes />
       </div>
