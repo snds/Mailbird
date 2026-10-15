@@ -405,6 +405,15 @@ export function createDemoClient(): CoreClient {
     invite: inviteSeed ? pim.inviteFor(inviteSeed, address(m.accountId)) : null,
   })
 
+  // Newest first, one row per conversation with any of these addresses.
+  const threadsWith = (emails: string[]) => {
+    const rows = new Map<string, MessageSummary>()
+    for (const m of [...state.messages].sort((a, b) => b.date - a.date)) {
+      if (rows.has(m.threadId) || ![m.from, ...m.to, ...m.cc].some((a) => emails.includes(a.email.toLowerCase()))) continue
+      rows.set(m.threadId, { ...summary(m), category: categoryOf(m), threadCount: thread(m.threadId).length })
+    }
+    return [...rows.values()].slice(0, 5)
+  }
   return {
     kind: "demo",
     remote: false,
@@ -461,12 +470,28 @@ export function createDemoClient(): CoreClient {
     contactActivity: async (id) => {
       const { contactMeetings, getContact } = pimApi
       const emails = (await getContact(id)).emails.map((e) => e.value.trim().toLowerCase())
-      const rows = new Map<string, MessageSummary>()
-      for (const m of [...state.messages].sort((a, b) => b.date - a.date)) {
-        if (rows.has(m.threadId) || ![m.from, ...m.to, ...m.cc].some((a) => emails.includes(a.email.toLowerCase()))) continue
-        rows.set(m.threadId, { ...summary(m), category: categoryOf(m), threadCount: thread(m.threadId).length })
-      }
-      return later({ threads: [...rows.values()].slice(0, 5), ...contactMeetings(id) })
+      return later({ threads: threadsWith(emails), ...contactMeetings(id) })
+    },
+    // The sender profile (ADR-0036), as the core builds it.
+    senderProfile: async (raw) => {
+      const email = raw.trim().toLowerCase()
+      if (!email.includes("@")) throw new Error("that isn't an email address")
+      const theirs = state.messages.filter((m) => m.from.email.toLowerCase() === email).sort((a, b) => b.date - a.date)
+      const name = theirs.find((m) => m.from.name?.trim())?.from.name ?? null
+      // Two cards can share an address; the one named as they sign wins.
+      const named = (c: { fullName: string }) => Number(c.fullName.toLowerCase() === (name ?? "").toLowerCase())
+      const hit = (await pimApi.listContacts(null)).filter((c) => c.emails.some((e) => e.value.trim().toLowerCase() === email)).sort((a, b) => named(b) - named(a) || a.fullName.localeCompare(b.fullName))[0]
+      const contact = hit ? await pimApi.getContact(hit.id) : null
+      const emails = [...new Set([email, ...(contact?.emails ?? []).map((e) => e.value.trim().toLowerCase()).filter((e) => e.includes("@"))])]
+      const meetings = contact ? pimApi.contactMeetings(contact.id) : { upcoming: [], past: [] }
+      return later({
+        email,
+        name,
+        contact,
+        received: theirs.length,
+        firstSeen: theirs.length ? Math.min(...theirs.map((m) => m.date)) : null,
+        activity: { threads: threadsWith(emails), ...meetings },
+      })
     },
     ...notes,
     respondToInvite: async (messageId, response, calendarId) => {

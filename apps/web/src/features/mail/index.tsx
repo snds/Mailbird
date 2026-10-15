@@ -280,6 +280,7 @@ export function MailView() {
             triage={triage}
             screening={tab === "screener"}
             onLeave={() => setSelected(null)}
+            onOpenThread={setSelected}
           />
         )
       }

@@ -269,6 +269,11 @@ export function useContact(id: string | null) {
   return useQuery({ queryKey: keys.contact(id ?? ""), queryFn: () => call((c) => c.getContact(id!)), enabled: id !== null })
 }
 
+/** Who sent mail from an address (ADR-0036); refreshes with mail and contacts. */
+export function useSenderProfile(email: string | null) {
+  return useQuery({ queryKey: ["pim", "activity", "sender", email], queryFn: () => call((c) => c.senderProfile(email!)), enabled: !!email })
+}
+
 export function useContactActivity(id: string) {
   return useQuery({ queryKey: keys.contactActivity(id), queryFn: () => call((c) => c.contactActivity(id)) })
 }

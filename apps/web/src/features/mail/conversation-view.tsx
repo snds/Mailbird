@@ -6,6 +6,7 @@ import { Icon, type IconName } from "@/components/icon"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { AdaptiveSheetContent, Sheet, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCoreClient } from "@/core/client"
@@ -21,6 +22,7 @@ import { HtmlBody } from "./html-body"
 import { LinkedNotes } from "../notes/linked-notes"
 import { InviteCard } from "./invite-card"
 import { FollowUpAtMenu } from "./send-later"
+import { SenderProfile } from "./sender-profile"
 import { SignatureSuggestion } from "./signature-suggestion"
 import { SnoozeMenu } from "./snooze-menu"
 import { UnsubscribeButton } from "./unsubscribe-button"
@@ -192,6 +194,7 @@ export function ConversationView({
   triage,
   screening = false,
   onLeave,
+  onOpenThread,
 }: {
   /** The list row for this conversation (thread-level state). */
   row: MessageSummary | undefined
@@ -203,6 +206,8 @@ export function ConversationView({
   screening?: boolean
   /** Close the reader: its conversation is leaving the list (screened out, blocked). */
   onLeave?: () => void
+  /** Open another conversation in this reader (from the sender profile). */
+  onOpenThread?: (row: MessageSummary) => void
 }) {
   const openComposer = useUi((s) => s.openComposer)
   // Gmail/Apple Mail convention: open the newest and anything unread.
@@ -246,9 +251,14 @@ export function ConversationView({
   const sentAny = thread.some((m) => m.mailbox === "Sent")
   const reminder = thread.map((m) => m.followUpAt).find((t) => t != null) ?? null
   const due = reminder !== null && reminder <= now
+  // The person on the other side (ADR-0036): the newest message you didn't send.
+  const other = thread.findLast((m) => m.mailbox !== "Sent" && m.from.email !== account?.address)?.from
 
   return (
-    <article className="mx-auto flex max-w-3xl flex-col gap-3 px-4 pb-8 md:px-8 md:pt-6">
+    // A container, so the profile column depends on the reader's width, not the window's.
+    <div className="@container">
+    <div className="flex justify-center gap-2">
+    <article className="flex w-full min-w-0 max-w-3xl flex-col gap-3 px-4 pb-8 md:px-8 md:pt-6">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-1">
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-semibold tracking-tight break-words">{subject}</h2>
@@ -263,6 +273,7 @@ export function ConversationView({
           </p>
         </div>
         <div className="-mr-2 flex shrink-0 items-center">
+          {other && <AboutSender from={other} threadId={row.threadId} onOpenThread={onOpenThread} />}
           <ToolbarButton icon={row.archived ? "unarchive" : "archive"} label={row.archived ? "Move to Inbox" : "Archive"} shortcut="E" onClick={() => triage.toggleArchive(row)} />
           {snoozed ? (
             <ToolbarButton icon="notifications_active" label="Unsnooze" onClick={() => triage.unsnooze(row)} active />
@@ -381,5 +392,42 @@ export function ConversationView({
         <LinkedNotes target={{ kind: "thread", id: row.threadId }} title={subject} />
       </div>
     </article>
+    {other && (
+      <aside aria-label="Sender" className="sticky top-0 hidden max-h-dvh w-72 shrink-0 overflow-y-auto pt-6 pr-6 pb-8 @4xl:block">
+        <SenderProfile from={other} threadId={row.threadId} onOpenThread={onOpenThread} />
+      </aside>
+    )}
+    </div>
+    </div>
+  )
+}
+
+/** Narrow readers: the same profile, a tap away in a sheet. */
+function AboutSender({ from, threadId, onOpenThread }: { from: MessageDetail["from"]; threadId: string; onOpenThread?: (row: MessageSummary) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <span className="@4xl:hidden">
+        <ToolbarButton icon="account_circle" label={`About ${displayName(from)}`} onClick={() => setOpen(true)} />
+      </span>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <AdaptiveSheetContent className="px-6 pb-6 sm:pt-6">
+          <SheetTitle className="sr-only">About {displayName(from)}</SheetTitle>
+          {open && (
+            <SenderProfile
+              from={from}
+              threadId={threadId}
+              onOpenThread={
+                onOpenThread &&
+                ((t) => {
+                  setOpen(false)
+                  onOpenThread(t)
+                })
+              }
+            />
+          )}
+        </AdaptiveSheetContent>
+      </Sheet>
+    </>
   )
 }
