@@ -74,7 +74,95 @@ fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
     })
 }
 
+/// A note as a file other apps open (ADR-0034).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExportedNote {
+    /// File name, unique within the export: the title, as Obsidian expects,
+    /// so `[[Title]]` links keep working there.
+    pub path: String,
+    pub contents: String,
+}
+
+/// A title as a file name: characters no file system allows become spaces.
+fn file_stem(title: &str) -> String {
+    let cleaned: String = title.chars().map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '#' | '^' | '[' | ']') || c.is_control() { ' ' } else { c }).collect();
+    let stem = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let stem = stem.trim_matches('.').trim().to_string();
+    if stem.is_empty() { "Untitled".into() } else { stem.chars().take(120).collect() }
+}
+
+fn yaml_text(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn iso(t: i64) -> String {
+    chrono::DateTime::from_timestamp(t, 0).map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string()).unwrap_or_default()
+}
+
 impl Store {
+    /// Notes whose text links here with `[[this note's title]]` (ADR-0034),
+    /// most recently changed first. Matching ignores case, as Obsidian does.
+    pub fn note_backlinks(&self, id: &str) -> Result<Vec<NoteSummary>> {
+        let title: Option<String> = self.db.query_row("SELECT title FROM notes WHERE id = ?1 AND deleted = 0", [id], |r| r.get(0)).optional()?;
+        let Some(title) = title.filter(|t| !t.trim().is_empty()) else { return Ok(Vec::new()) };
+        // A cheap filter in SQL, then the exact parse, so `[[Trip]]` doesn't match `[[Trip plan]]`.
+        let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 AND n.id <> ?1 AND instr(lower(n.body), '[[') > 0 ORDER BY n.updated DESC"))?;
+        let rows = st.query_map([id], |r| Ok((summary_row(r)?, r.get::<_, String>(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut out = Vec::new();
+        for (mut n, body) in rows {
+            if wikilinks(&body).iter().any(|(t, _)| t.to_lowercase() == title.to_lowercase()) {
+                self.resolve_links(&mut n.links)?;
+                out.push(n);
+            }
+        }
+        Ok(out)
+    }
+
+    /// The note a `[[title]]` link opens: the most recently changed one with
+    /// that title, archived ones included.
+    pub fn find_note(&self, title: &str) -> Result<Option<String>> {
+        let title = title.split('#').next().unwrap_or_default().trim();
+        if title.is_empty() {
+            return Ok(None);
+        }
+        Ok(self.db.query_row("SELECT id FROM notes WHERE deleted = 0 AND title = ?1 COLLATE NOCASE ORDER BY updated DESC LIMIT 1", [title], |r| r.get(0)).optional()?)
+    }
+
+    /// Every note as a Markdown file with front matter, as Obsidian and
+    /// this app's own importer read it (ADR-0034).
+    pub fn export_notes(&self) -> Result<Vec<ExportedNote>> {
+        let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 ORDER BY n.created, n.rowid"))?;
+        let rows = st.query_map([], |r| Ok((summary_row(r)?, r.get::<_, String>(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut taken = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for (n, body) in rows {
+            let stem = file_stem(&n.title);
+            let mut path = format!("{stem}.md");
+            let mut i = 2;
+            while !taken.insert(path.to_lowercase()) {
+                path = format!("{stem} {i}.md");
+                i += 1;
+            }
+            let mut fm = format!("---\ntitle: {}\n", yaml_text(&n.title));
+            if !n.tags.is_empty() {
+                fm.push_str("tags:\n");
+                for t in &n.tags {
+                    fm.push_str(&format!("  - {}\n", yaml_text(t)));
+                }
+            }
+            fm.push_str(&format!("created: {}\nupdated: {}\n", iso(n.created), iso(n.updated)));
+            if n.pinned {
+                fm.push_str("pinned: true\n");
+            }
+            if n.archived {
+                fm.push_str("archived: true\n");
+            }
+            fm.push_str("---\n");
+            out.push(ExportedNote { path, contents: format!("{fm}{}\n", body.trim_end()) });
+        }
+        Ok(out)
+    }
+
     /// Notes, pinned first, then most recently changed. Search matches the
     /// title, text, and tags by word prefix.
     pub fn notes(&self, q: &NoteQuery) -> Result<Vec<NoteSummary>> {
@@ -352,6 +440,62 @@ pub(crate) fn title_and_snippet(markdown: &str) -> (String, String) {
     (title.chars().take(200).collect(), snippet)
 }
 
+/// The `[[wikilinks]]` in Markdown: (target note title, shown text).
+/// `[[Note#Heading]]` targets the note. Ignores links inside code spans.
+pub fn wikilinks(markdown: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in markdown.lines() {
+        let mut in_code = false;
+        let mut rest = line;
+        while !rest.is_empty() {
+            if rest.starts_with('`') {
+                in_code = !in_code;
+                rest = &rest[1..];
+            } else if !in_code && rest.starts_with("[[") {
+                match rest[2..].find("]]") {
+                    Some(end) if !rest[2..2 + end].contains('[') => {
+                        let inner = &rest[2..2 + end];
+                        let (target, shown) = inner.split_once('|').unwrap_or((inner, inner));
+                        let target = target.split('#').next().unwrap_or_default().trim();
+                        if !target.is_empty() {
+                            out.push((target.to_string(), shown.trim().to_string()));
+                        }
+                        rest = &rest[4 + end..];
+                    }
+                    _ => rest = &rest[2..],
+                }
+            } else {
+                let next = rest.char_indices().nth(1).map(|(i, _)| i).unwrap_or(rest.len());
+                rest = &rest[next..];
+            }
+        }
+    }
+    out
+}
+
+/// A line with each `[[Note]]` or `[[Note|shown]]` replaced by its shown text.
+fn unwiki(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(open) = rest.find("[[") {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 2..];
+        match after.find("]]") {
+            Some(end) if !after[..end].contains('[') => {
+                let inner = &after[..end];
+                out.push_str(inner.split_once('|').map(|(_, shown)| shown).unwrap_or(inner));
+                rest = &after[end + 2..];
+            }
+            _ => {
+                out.push_str("[[");
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// One line of Markdown as plain text.
 pub(crate) fn plain_line(line: &str) -> String {
     let mut l = line.trim();
@@ -372,9 +516,11 @@ pub(crate) fn plain_line(line: &str) -> String {
     {
         l = rest;
     }
+    // [[Note]] → Note, [[Note|shown]] → shown (ADR-0034).
+    let unlinked = unwiki(l);
     // [text](url) → text, ![alt](src) → alt, then drop emphasis and code marks.
     let mut out = String::with_capacity(l.len());
-    let mut rest = l;
+    let mut rest = unlinked.as_str();
     while let Some(open) = rest.find('[') {
         let (before, after) = rest.split_at(open);
         out.push_str(before.trim_end_matches('!'));
@@ -390,7 +536,17 @@ pub(crate) fn plain_line(line: &str) -> String {
         }
     }
     out.push_str(rest);
-    out.replace("**", "").replace("__", "").replace("~~", "").replace(['`', '*'], "").trim().to_string()
+    let out = out.replace("**", "").replace("__", "").replace("~~", "").replace(['`', '*'], "");
+    // Markdown's escapes (`\[`, `\#`) read as the plain character.
+    let mut plain = String::with_capacity(out.len());
+    let mut chars = out.chars().peekable();
+    while let Some(c) = chars.next() {
+        match chars.peek() {
+            Some(&n) if c == '\\' && n.is_ascii_punctuation() => {}
+            _ => plain.push(c),
+        }
+    }
+    plain.trim().to_string()
 }
 
 #[cfg(test)]
@@ -554,5 +710,67 @@ mod tests {
         assert_eq!(n.title, "One");
         assert_eq!(n.tags, ["Ideas", "idea"]);
         assert_eq!(n.updated, 100);
+    }
+
+    #[test]
+    fn wikilinks_parse_and_read_as_text() {
+        let md = "# Trip\n\nSee [[Packing list]], [[Budget|money]], and [[Hotels#Lisbon]].\nNot `[[code]]`, not [[ ]], not [[a [b]]].";
+        let got = wikilinks(md);
+        assert_eq!(
+            got,
+            vec![("Packing list".into(), "Packing list".into()), ("Budget".into(), "money".into()), ("Hotels".into(), "Hotels#Lisbon".into())]
+        );
+        let (_, snippet) = title_and_snippet(md);
+        assert!(snippet.starts_with("See Packing list, money, and Hotels#Lisbon."), "{snippet}");
+        assert_eq!(title_and_snippet("# Trip\n\nBring \\[\\[gift").1, "Bring [[gift", "escapes read as plain text");
+    }
+
+    #[test]
+    fn backlinks_find_notes_that_link_by_title() {
+        let s = Store::open_in_memory().unwrap();
+        let mk = |md: &str| s.create_note(&NoteInput { markdown: md.into(), ..Default::default() }).unwrap().summary.id;
+        let trip = mk("# Trip\n\nPlans.");
+        let a = mk("# Packing\n\nFor the [[trip]].");
+        let b = mk("# Budget\n\nSee [[Trip|the trip]] and [[Trip plan]].");
+        let _plan = mk("# Trip plan\n\nOnly [[Trip plan]] itself, and `[[Trip]]` in code.");
+        let _self = s.save_note_body(&trip, "# Trip\n\nPlans, see [[Trip]].", None, true);
+        let back: Vec<String> = s.note_backlinks(&trip).unwrap().into_iter().map(|n| n.id).collect();
+        assert_eq!(back.len(), 2, "case-insensitive, exact title, not itself, not code");
+        assert!(back.contains(&a) && back.contains(&b));
+        s.delete_note(&a).unwrap();
+        assert_eq!(s.note_backlinks(&trip).unwrap().len(), 1, "deleted notes don't count");
+
+        assert_eq!(s.find_note("TRIP").unwrap(), Some(trip.clone()));
+        assert_eq!(s.find_note("Trip#Day 1").unwrap(), Some(trip));
+        assert_eq!(s.find_note("Nowhere").unwrap(), None);
+        assert_eq!(s.find_note("  ").unwrap(), None);
+    }
+
+    #[test]
+    fn export_round_trips_through_the_importer() {
+        let s = Store::open_in_memory().unwrap();
+        let a = s.create_note(&NoteInput { markdown: "# Trip: Lisbon/Porto\n\nSee [[Budget]].".into(), pinned: true, tags: vec!["travel".into(), "2026".into()], ..Default::default() }).unwrap();
+        s.create_note(&NoteInput { markdown: "# Budget\n\nMoney.".into(), ..Default::default() }).unwrap();
+        let dup = s.create_note(&NoteInput { markdown: "# budget\n\nAnother.".into(), ..Default::default() }).unwrap();
+        s.set_note_meta(&dup.summary.id, &NoteMeta { archived: Some(true), ..Default::default() }).unwrap();
+        s.create_note(&NoteInput { markdown: "".into(), ..Default::default() }).unwrap();
+
+        let files = s.export_notes().unwrap();
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, vec!["Trip Lisbon Porto.md", "Budget.md", "budget 2.md", "Untitled.md"]);
+        let trip = &files[0].contents;
+        assert!(trip.starts_with("---\ntitle: \"Trip: Lisbon/Porto\"\ntags:\n  - \"travel\"\n  - \"2026\"\ncreated: "), "{trip}");
+        assert!(trip.contains("pinned: true\n---\n# Trip: Lisbon/Porto\n\nSee [[Budget]].\n"));
+        assert!(files[2].contents.contains("archived: true"));
+
+        let other = Store::open_in_memory().unwrap();
+        let picked: Vec<ImportFile> = files.iter().map(|f| ImportFile { path: format!("Mailbird notes/{}", f.path), contents: f.contents.clone(), modified: None }).collect();
+        assert_eq!(other.import_notes(&picked).unwrap().imported, 4);
+        let back = other.notes(&NoteQuery { search: Some("Lisbon".into()), ..Default::default() }).unwrap();
+        let n = &back[0];
+        assert_eq!((n.title.as_str(), n.pinned, n.created, n.updated), ("Trip: Lisbon/Porto", true, a.summary.created, a.summary.updated));
+        assert!(n.tags.contains(&"travel".to_string()) && n.tags.contains(&"2026".to_string()));
+        assert_eq!(other.note(&n.id).unwrap().markdown, "# Trip: Lisbon/Porto\n\nSee [[Budget]].");
+        assert_eq!(other.notes(&NoteQuery { archived: true, ..Default::default() }).unwrap().len(), 1, "archived stays archived");
     }
 }

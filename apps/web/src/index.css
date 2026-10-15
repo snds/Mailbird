@@ -120,6 +120,17 @@
       color: var(--c-composer-link);
       text-decoration: underline;
     }
+    & a.wikilink {
+      color: var(--c-note-wikilink-text);
+      background: var(--c-note-wikilink-bg);
+      border-radius: 0.25em;
+      padding: 0 0.2em;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    & a.wikilink.ProseMirror-selectednode {
+      outline: 2px solid var(--c-note-wikilink-text);
+    }
     & code {
       font-family: var(--font-mono);
       font-size: 0.9em;

@@ -3,12 +3,15 @@ import { TaskItem, TaskList } from "@tiptap/extension-list"
 import { Markdown, MarkdownManager } from "@tiptap/markdown"
 import StarterKit from "@tiptap/starter-kit"
 
+import { WikiLink } from "./wikilink"
+
 /** Only web and mail links; Tiptap's own check already refuses `javascript:`. */
 export const SAFE_LINK = /^(https?:|mailto:)/i
 
 /**
  * The note document: everything Markdown can say that people use in notes
- * (headings, lists, checklists, quotes, code, links). The same list builds
+ * (headings, lists, checklists, quotes, code, links, and `[[links]]` to
+ * other notes). The same list builds
  * the editor, the schema, and the headless Markdown converter that sync
  * uses, so all three always agree.
  */
@@ -20,6 +23,7 @@ export const noteExtensions: AnyExtension[] = [
   }),
   TaskList,
   TaskItem.configure({ nested: true }),
+  WikiLink,
   Markdown,
 ]
 

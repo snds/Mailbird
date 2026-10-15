@@ -37,6 +37,7 @@ const keys = {
   // they refresh with "pim" too (see useCoreEvents).
   notes: (q: NoteQuery) => ["notes", "list", q] as const,
   note: (id: string) => ["notes", "note", id] as const,
+  noteBacklinks: (id: string) => ["notes", "backlinks", id] as const,
   noteTags: ["notes", "tags"] as const,
   // Tasks read notes and their linked events: they refresh with both.
   noteTasks: (done: boolean) => ["notes", "tasks", done] as const,
@@ -290,6 +291,11 @@ export function useNotes(q: NoteQuery) {
 }
 
 /** Read once per open: after that, the editor (and its Yjs document) is the source of truth. */
+/** Notes that link to this one with `[[its title]]` (ADR-0034). */
+export function useNoteBacklinks(id: string) {
+  return useQuery({ queryKey: keys.noteBacklinks(id), queryFn: () => call((c) => c.noteBacklinks(id)) })
+}
+
 export function useNote(id: string | null) {
   return useQuery({ queryKey: keys.note(id ?? ""), queryFn: () => call((c) => c.getNote(id!)), enabled: id !== null, gcTime: 0 })
 }

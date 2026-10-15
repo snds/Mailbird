@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Toggle } from "@/components/ui/toggle"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCoreClient } from "@/core/client"
-import { useNote, useNoteAction, useNoteTags } from "@/core/queries"
+import { useNote, useNoteAction, useNoteBacklinks, useNoteTags } from "@/core/queries"
 import type { NoteLink, NoteLinkKind, NoteMeta } from "@/core/types"
 import { longTime } from "@/lib/time"
 
@@ -137,6 +137,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
         ))}
         <TagEditor tags={current.tags} onChange={(tags) => void update({ tags })} />
       </div>
+      <LinkedFrom id={id} />
 
       <NoteEditor
         note={note}
@@ -147,6 +148,29 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
         }}
       />
     </article>
+  )
+}
+
+/** Notes that link here with `[[this title]]`, one tap away (ADR-0034). */
+function LinkedFrom({ id }: { id: string }) {
+  const { data: back = [] } = useNoteBacklinks(id)
+  const setOpenNote = useUi((s) => s.setOpenNote)
+  if (back.length === 0) return null
+  return (
+    <section aria-label="Linked from" className="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pt-1.5 text-xs md:px-8">
+      <span className="text-muted-foreground">Linked from</span>
+      {back.map((n) => (
+        <button
+          key={n.id}
+          type="button"
+          className="inline-flex h-7 max-w-56 items-center gap-1 rounded-full border bg-muted/50 px-2.5 hover:bg-muted"
+          onClick={() => setOpenNote({ id: n.id, fresh: false })}
+        >
+          <Icon name="description" className="size-3.5" />
+          <span className="truncate">{n.title || "New note"}</span>
+        </button>
+      ))}
+    </section>
   )
 }
 

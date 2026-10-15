@@ -640,6 +640,12 @@ export interface SwipeActions {
   leftLong: SwipeActionId
 }
 
+/** A note as a Markdown file (ADR-0034). */
+export interface ExportedNote {
+  path: string
+  contents: string
+}
+
 /** Command id → key (ADR-0032); "" for none. */
 export type KeyBindings = Record<string, string>
 
