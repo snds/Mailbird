@@ -23,6 +23,7 @@ const keys = {
   event: (id: string, start: number | null) => ["pim", "event", id, start] as const,
   contacts: (search: string, label: string | null, group: string | null) => ["pim", "contacts", search, label, group] as const,
   smartGroups: ["pim", "smart-groups"] as const,
+  interesting: ["pim", "interesting"] as const,
   contactLabels: ["pim", "contact-labels"] as const,
   calendarSets: ["pim", "calendar-sets"] as const,
   deletedContacts: ["pim", "contacts-deleted"] as const,
@@ -202,6 +203,10 @@ export function useCalendarSets() {
 
 export function useContactLabels() {
   return useQuery({ queryKey: keys.contactLabels, queryFn: () => call((c) => c.contactLabels()) })
+}
+
+export function useInterestingCalendars() {
+  return useQuery({ queryKey: keys.interesting, queryFn: () => call((c) => c.interestingCalendars()) })
 }
 
 export function useSmartGroups() {

@@ -509,6 +509,16 @@ export interface ContactLabel {
   count: number
 }
 
+/** A holiday or moon-phase calendar you can add (ADR-0024). */
+export interface InterestingCalendar {
+  id: string
+  name: string
+  group: "holidays" | "sky"
+  /** ISO country code, for holidays. */
+  country: string | null
+  subscribed: boolean
+}
+
 /** What a smart group matches; every filled-in rule must hold (ADR-0023). */
 export interface SmartGroupInput {
   name: string

@@ -18,6 +18,8 @@ mod contacts_store;
 mod planning_store;
 mod inbox_store;
 mod people_store;
+pub mod interesting;
+pub use interesting::{INTERESTING_PREFIX, InterestingCalendar, SPECIAL_PREFIX};
 pub mod ical;
 pub mod itip;
 pub use connected_store::BIRTHDAY_PREFIX;

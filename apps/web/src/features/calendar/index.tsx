@@ -19,6 +19,7 @@ import { EventDetailPane } from "./event-detail"
 import { MiniMonth } from "./mini-month"
 import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
+import { InterestingCalendarsButton } from "./interesting"
 import { SecondZonePicker } from "./second-zone"
 import { occurrenceKey } from "./layout"
 import { TimeGrid } from "./time-grid"
@@ -83,8 +84,11 @@ function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) {
 function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
   const { data: accounts = [] } = useAccounts()
   const toggle = usePimAction((c, { id, hidden }: { id: string; hidden: boolean }) => c.setCollectionHidden(id, hidden))
-  const groups = [...new Set([...calendars.values()].map((c) => c.accountId))]
-  const name = (id: string | null) => (id ? accounts.find((a) => a.id === id)?.displayName ?? "Account" : "On this device")
+  // Added holidays and moon phases get their own group, after the rest.
+  const groupOf = (c: Collection) => (c.id.startsWith("interesting:") ? "interesting" : c.accountId)
+  const groups = [...new Set([...calendars.values()].map(groupOf))].sort((a, b) => Number(a === "interesting") - Number(b === "interesting"))
+  const name = (id: string | null) =>
+    id === "interesting" ? "Holidays and more" : id ? accounts.find((a) => a.id === id)?.displayName ?? "Account" : "On this device"
   const failing = accounts.filter((a) => a.davError)
   return (
     <div className="flex flex-col gap-3 px-4 pb-4" data-slot="calendar-list">
@@ -100,7 +104,7 @@ function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
         <section key={g ?? "local"} aria-label={name(g)}>
           <h3 className="pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{name(g)}</h3>
           {[...calendars.values()]
-            .filter((c) => c.accountId === g)
+            .filter((c) => groupOf(c) === g)
             .map((c) => (
               <label key={c.id} className="flex h-9 items-center gap-2.5 rounded-lg px-1 text-sm hover:bg-accent/50">
                 <Checkbox
@@ -115,6 +119,7 @@ function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
             ))}
         </section>
       ))}
+      <InterestingCalendarsButton />
       <CalendarSets calendars={calendars} />
       <SecondZonePicker />
     </div>

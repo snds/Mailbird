@@ -4,6 +4,7 @@
 // the Rust core does the real iCalendar and time-zone work.
 
 import type { CoreEvent } from "./client"
+import { HOLIDAY_COUNTRIES, INTERESTING, MOON, SPECIAL, dayKey, daysOf, holidayId, localMidnight, moonPhases, parseDay } from "./demo-interesting"
 import type {
   Address,
   Attendee,
@@ -29,6 +30,7 @@ import type {
   Repeat,
   CalendarSet,
   FindTimes,
+  InterestingCalendar,
   TimeSlot,
   ContactSuggestion,
   SignatureCard,
@@ -285,6 +287,37 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       }
     }
     return out
+  }
+  // Interesting calendars: holidays and moon phases from rules (ADR-0024).
+  const catalog = (): InterestingCalendar[] => [
+    ...HOLIDAY_COUNTRIES.map((c) => ({ id: holidayId(c.code), name: `Holidays in ${c.country}`, group: "holidays" as const, country: c.code, subscribed: collections.some((x) => x.id === holidayId(c.code)) })),
+    { id: MOON, name: "Moon phases", group: "sky" as const, country: null, subscribed: collections.some((x) => x.id === MOON) },
+  ]
+  const interesting = (from: number, to: number): Occurrence[] =>
+    collections
+      .filter((c) => c.id.startsWith(INTERESTING) && !c.hidden)
+      .flatMap((c) =>
+        daysOf(c.id, from, to).map(([d, n, title]): Occurrence => {
+          const start = localMidnight(d)
+          return { eventId: `${SPECIAL}${c.id}|${dayKey(d)}|${n}`, calendarId: c.id, title, location: null, start, end: localMidnight(d, 1), originalStart: start, allDay: true, recurring: false, meetingUrl: null, contactId: null }
+        }),
+      )
+      .filter((o) => o.start < to && o.end > from)
+  const specialDetail = (id: string): EventDetail => {
+    const [cal, day, n] = id.slice(SPECIAL.length).split("|")
+    const d = parseDay(day ?? "")
+    const col = collections.find((c) => c.id === cal)
+    const o = col && interesting(localMidnight(d), localMidnight(d, 1)).find((x) => x.eventId === id)
+    if (!col || !o || n == null) throw new Error("that calendar was removed")
+    const country = HOLIDAY_COUNTRIES.find((c) => holidayId(c.code) === cal)?.country
+    const at = moonPhases(o.start, o.end).find(([, p]) => p === o.title)?.[0]
+    const notes =
+      cal === MOON
+        ? `${o.title} at ${new Date((at ?? o.start) * 1000).toTimeString().slice(0, 5)}.`
+        : /\((observed|substitute day)\)$/.test(o.title)
+          ? `The day off for a holiday that falls on a weekend, in ${country}. From ${col.name}.`
+          : `A public holiday in ${country}. Regional holidays aren't included. From ${col.name}.`
+    return { ...o, notes, repeat: "none", timeZone: null, organizer: null, attendees: [], url: null, writable: false, reminders: [] }
   }
   const birthdayDetail = (id: string, start?: number | null): EventDetail => {
     const from = start != null ? start - 1 : Math.floor(Date.now() / 1000)
@@ -591,10 +624,26 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
         .filter((e) => visible(e.calendarId))
         .flatMap((e) => expand(e, from, to).map((o) => occurrence(e, o)))
         .concat(birthdays(from, to))
+        .concat(interesting(from, to))
         .sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start - b.start || a.title.localeCompare(b.title))
       return later(out)
     },
-    getEvent: async (id: string, start?: number | null) => later(id.startsWith(BIRTHDAY) ? birthdayDetail(id, start) : detail(event(id), start)),
+    getEvent: async (id: string, start?: number | null) =>
+      later(id.startsWith(BIRTHDAY) ? birthdayDetail(id, start) : id.startsWith(SPECIAL) ? specialDetail(id) : detail(event(id), start)),
+    interestingCalendars: async () => later(catalog()),
+    addInterestingCalendar: async (id: string) => {
+      const c = catalog().find((x) => x.id === id)
+      if (!c) throw new Error("there's no such calendar to add")
+      const color = id === MOON ? "#64748b" : HOLIDAY_COUNTRIES.find((x) => holidayId(x.code) === id)!.color
+      if (!c.subscribed) collections.push({ id, accountId: null, kind: "calendar", name: c.name, color, writable: false, hidden: false, scheduling: false })
+      changed()
+    },
+    removeInterestingCalendar: async (id: string) => {
+      if (!id.startsWith(INTERESTING)) throw new Error("only added calendars can be removed here")
+      const i = collections.findIndex((c) => c.id === id)
+      if (i >= 0) collections.splice(i, 1)
+      changed()
+    },
     createEvent: async (input: EventInput) => {
       writable(input.calendarId)
       const e = apply(ev(input.calendarId, "", 0, 0), input)
