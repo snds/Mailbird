@@ -117,6 +117,14 @@ async fn every_command_routes_and_works() {
     assert_eq!(info["unlocked"], true);
     assert_eq!(json_of(dispatch(&app, &state, "open_locked_note", json!({ "id": secret["id"] })).await.unwrap())["markdown"], "Codes\nalarm 4242");
     assert!(json_of(dispatch(&app, &state, "notes_lock_setting", Value::Null).await.unwrap())["check"].is_string());
+    // Images in notes (ADR-0044): a locked note's image is sealed, and opens while unlocked.
+    let img = json_of(dispatch(&app, &state, "add_note_file", json!({ "noteId": secret["id"], "mime": "image/png", "dataBase64": "aW1n", "width": 2, "height": 1 })).await.unwrap());
+    assert_eq!(img["sealed"], true);
+    assert_eq!(json_of(dispatch(&app, &state, "note_file", json!({ "id": img["id"] })).await.unwrap())["dataBase64"], "aW1n");
+    assert_ne!(json_of(dispatch(&app, &state, "note_file_raw", json!({ "id": img["id"] })).await.unwrap()), "aW1n");
+    assert_eq!(json_of(dispatch(&app, &state, "note_files", json!({ "noteId": secret["id"] })).await.unwrap()).as_array().unwrap().len(), 1);
+    let records = json_of(dispatch(&app, &state, "note_file_records", Value::Null).await.unwrap());
+    assert_eq!(json_of(dispatch(&app, &state, "put_note_file", json!({ "file": records[0], "rawBase64": "aW1n" })).await.unwrap()), false, "not newer");
     // Smart folders (ADR-0042): one that matches, then gone.
     let folder = json_of(dispatch(&app, &state, "save_note_folder", json!({ "id": null, "input": { "name": "Greetings", "words": "hello" } })).await.unwrap());
     assert_eq!(folder["count"], 2, "the note and the one linking to it");

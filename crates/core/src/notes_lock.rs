@@ -164,6 +164,7 @@ impl Store {
             for (id, sealed) in rows {
                 let plain = open(old, &id, &sealed)?;
                 tx.execute("UPDATE notes SET sealed = ?2, updated = MAX(?3, updated + 1) WHERE id = ?1", params![id, seal(&key, &id, &plain)?, now()])?;
+                self.reseal_note_files(&id, Some(old), Some(&key))?;
             }
         }
         let setting = NotesLockSetting { salt: B64.encode(salt), iterations: ITERATIONS, check: seal(&key, LOCK_KEY, CHECK)?, hint, updated: now() };
@@ -184,7 +185,7 @@ impl Store {
             "UPDATE notes SET locked = 1, sealed = ?2, body = '', snippet = '', ydoc = NULL, updated = MAX(?3, updated + 1) WHERE id = ?1",
             params![id, sealed, now()],
         )?;
-        Ok(())
+        self.reseal_note_files(id, None, Some(key))
     }
 
     /// Takes the lock off: the text goes back to being an ordinary note's.
@@ -195,6 +196,7 @@ impl Store {
             "UPDATE notes SET locked = 0, sealed = NULL, title = ?2, snippet = ?3, body = ?4, updated = MAX(?5, updated + 1) WHERE id = ?1",
             params![id, title, snippet, markdown, now()],
         )?;
+        self.reseal_note_files(id, Some(key), None)?;
         self.note(id)
     }
 

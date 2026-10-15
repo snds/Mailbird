@@ -19,6 +19,7 @@ import { ImportDialog } from "./import-dialog"
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
 import { NoteDetailPane } from "./note-detail"
 import { NoteFolderChips } from "./note-folders"
+import { NoteCover } from "./note-image"
 import { RelayDialog } from "./relay-dialog"
 import { useSyncStatus } from "./sync"
 
@@ -245,6 +246,7 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
         )}
         style={{ background: noteFill(n.color), borderColor: noteEdge(n.color) }}
       >
+        {n.cover && !n.locked && <NoteCover id={n.cover} className="-mx-3 -mt-3 mb-1 w-[calc(100%+1.5rem)] max-w-none rounded-t-[calc(var(--c-note-card-radius)-1px)]" />}
         <span className="flex items-start gap-1.5">
           <span className={cn("min-w-0 flex-1 font-semibold break-words", !n.title && "text-muted-foreground")}>{n.title || "New note"}</span>
           {n.locked && <Icon name="lock" className="size-4 shrink-0 text-foreground/60" label="Locked" />}

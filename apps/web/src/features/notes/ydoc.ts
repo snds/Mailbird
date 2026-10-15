@@ -2,23 +2,14 @@ import type { JSONContent } from "@tiptap/core"
 import { prosemirrorJSONToYXmlFragment, yXmlFragmentToProseMirrorRootNode } from "@tiptap/y-tiptap"
 import * as Y from "yjs"
 
-import { markdown, noteSchema } from "./extensions"
+import { fromBase64, toBase64 } from "@/lib/base64"
+
+import { markdown, noteSchema, parseNote } from "./extensions"
 
 /** The Yjs field Tiptap's Collaboration extension edits. */
 export const FIELD = "default"
 
-export function toBase64(bytes: Uint8Array): string {
-  let s = ""
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(s)
-}
-
-export function fromBase64(b64: string): Uint8Array {
-  const s = atob(b64)
-  const out = new Uint8Array(s.length)
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i)
-  return out
-}
+export { fromBase64, toBase64 } from "@/lib/base64"
 
 /** A note's Yjs document from its saved state (or a new, empty one). */
 export function loadDoc(state: string | null): Y.Doc {
@@ -49,7 +40,7 @@ export function seed(doc: Y.Doc, md: string, noteId: string) {
   const own = doc.clientID
   doc.clientID = seedClient(noteId)
   try {
-    doc.transact(() => prosemirrorJSONToYXmlFragment(noteSchema, markdown.parse(md), doc.getXmlFragment(FIELD)), "seed")
+    doc.transact(() => prosemirrorJSONToYXmlFragment(noteSchema, parseNote(md), doc.getXmlFragment(FIELD)), "seed")
   } finally {
     doc.clientID = own
   }

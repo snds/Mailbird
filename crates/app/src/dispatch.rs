@@ -178,6 +178,12 @@ pub const COMMANDS: &[&str] = &[
     "save_locked_note",
     "notes_lock_setting",
     "apply_notes_lock_setting",
+    "add_note_file",
+    "note_file",
+    "note_files",
+    "note_file_records",
+    "note_file_raw",
+    "put_note_file",
     "save_note_folder",
     "delete_note_folder",
     "set_notes_prefs",
@@ -643,6 +649,27 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "apply_notes_lock_setting" => {
             args!(args, setting: pim_core::NotesLockSetting);
             Output::json(notes_commands::apply_notes_lock_setting(app.clone(), state, setting)?)
+        }
+        "add_note_file" => {
+            args!(args, note_id: String, mime: String, data_base64: String, width: Option<u32>, height: Option<u32>);
+            Output::json(notes_commands::add_note_file(app.clone(), state, note_id, mime, data_base64, width, height)?)
+        }
+        "note_file" => {
+            args!(args, id: String);
+            Output::json(notes_commands::note_file(state, id)?)
+        }
+        "note_files" => {
+            args!(args, note_id: String);
+            Output::json(notes_commands::note_files(state, note_id)?)
+        }
+        "note_file_records" => Output::json(notes_commands::note_file_records(state)?),
+        "note_file_raw" => {
+            args!(args, id: String);
+            Output::json(notes_commands::note_file_raw(state, id)?)
+        }
+        "put_note_file" => {
+            args!(args, file: pim_core::NoteFile, raw_base64: String);
+            Output::json(notes_commands::put_note_file(app.clone(), state, file, raw_base64)?)
         }
         "save_note_folder" => {
             args!(args, id: Option<String>, input: pim_core::NoteFolderInput);

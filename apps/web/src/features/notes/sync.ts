@@ -3,7 +3,7 @@ import * as Y from "yjs"
 import { create } from "zustand"
 
 import type { CoreClient } from "@/core/client"
-import type { NoteRecord, NotesLockSetting, RelayConfig } from "@/core/types"
+import type { NoteFile, NoteRecord, NotesLockSetting, RelayConfig } from "@/core/types"
 
 import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
 
@@ -23,6 +23,11 @@ import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
  * exception (ADR-0043): their text travels sealed in the record, their own
  * document is emptied when they're locked and never synced while they are,
  * and the passphrase's salt and check ride in the index for other devices.
+ *
+ * Images (ADR-0044) have their facts in the index's `files` map and their
+ * bytes in a document each (`file/<id>`), written before the record so a
+ * device that sees the record finds the bytes. A locked note's images
+ * travel sealed.
  */
 
 export type SyncStatus = "off" | "connecting" | "synced" | "error"
@@ -54,6 +59,11 @@ export class NotesSync {
   private records = this.index.getMap<NoteRecord>("notes")
   /** The locked-notes passphrase setting, one entry: newest `updated` wins. */
   private lockSetting = this.index.getMap<NotesLockSetting>("lock")
+  /** Every image's facts; the bytes are in `file/<id>`. Newest `updated` wins. */
+  private fileRecords = this.index.getMap<NoteFile>("files")
+  /** Images moving now, one at a time so a big first sync doesn't flood the relay. */
+  private filesBusy = new Set<string>()
+  private fileChain: Promise<void> = Promise.resolve()
   private indexProvider: HocuspocusProvider
   /** Notes open in an editor, with their live connection. */
   private open = new Map<string, HocuspocusProvider>()
@@ -80,6 +90,9 @@ export class NotesSync {
     this.records.observe((e) => {
       if (e.transaction.local) return
       void this.pull()
+    })
+    this.fileRecords.observe((e) => {
+      if (!e.transaction.local) void this.pullFiles()
     })
     this.lockSetting.observe((e) => {
       if (e.transaction.local) return
@@ -136,6 +149,68 @@ export class NotesSync {
     })
     // A local text edit bumps `updated`; open notes are already live.
     for (const r of local) if (!r.deleted && !this.open.has(r.id) && this.syncedAt.get(r.id) !== r.updated) this.enqueue(r.id)
+    await this.pushFiles()
+  }
+
+  /** Images newer here go up: bytes first, then the record that points at them. */
+  private async pushFiles() {
+    for (const f of await this.core.noteFileRecords()) {
+      const remote = this.fileRecords.get(f.id)
+      if ((remote && remote.updated >= f.updated) || this.filesBusy.has(f.id)) continue
+      this.moveFile(f.id, async (bytes) => {
+        bytes.set("raw", await this.core.noteFileRaw(f.id))
+        bytes.set("updated", f.updated)
+      }, () => this.fileRecords.set(f.id, f))
+    }
+  }
+
+  /** Images newer on the relay come down. */
+  private async pullFiles() {
+    if (this.stopped) return
+    const local = new Map((await this.core.noteFileRecords()).map((f) => [f.id, f.updated]))
+    for (const f of this.fileRecords.values()) {
+      if ((local.get(f.id) ?? -1) >= f.updated || this.filesBusy.has(f.id)) continue
+      this.moveFile(f.id, async (bytes) => {
+        const raw = bytes.get("raw")
+        const at = bytes.get("updated")
+        if (typeof raw === "string" && typeof at === "number" && at >= f.updated) await this.core.putNoteFile(f, raw)
+      })
+    }
+  }
+
+  /** Opens one image's document, does `work` once it's synced, waits for the sends, and closes. */
+  private moveFile(id: string, work: (bytes: Y.Map<unknown>) => Promise<void>, then?: () => void) {
+    this.filesBusy.add(id)
+    this.fileChain = this.fileChain.then(async () => {
+      if (this.stopped) return
+      const doc = new Y.Doc()
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let done = false
+          const finish = (e?: unknown) => {
+            if (done) return
+            done = true
+            p.destroy()
+            if (e) reject(e)
+            else resolve()
+          }
+          const p = this.provider(`file/${id}`, doc, () => {
+            work(doc.getMap("file")).then(
+              // Let the bytes reach the relay before letting go.
+              () => setTimeout(() => finish(), p.hasUnsyncedChanges ? 500 : 0),
+              finish,
+            )
+          })
+          setTimeout(() => finish(new Error("An image took too long to sync")), SYNC_TIMEOUT * 2)
+        })
+        then?.()
+      } catch (e) {
+        set("error", e instanceof Error ? e.message : String(e))
+      } finally {
+        doc.destroy()
+        this.filesBusy.delete(id)
+      }
+    })
   }
 
   /** Index records newer than ours come down; their text follows. */
@@ -149,6 +224,7 @@ export class NotesSync {
       const r = this.records.get(id)
       if (r && !r.deleted && !this.open.has(id)) this.enqueue(id)
     }
+    await this.pullFiles()
   }
 
   private enqueue(id: string) {

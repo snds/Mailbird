@@ -1088,6 +1088,9 @@ pub struct NoteSummary {
     /// title is readable.
     #[serde(default)]
     pub locked: bool,
+    /// The first image the text shows, for a card's thumbnail (ADR-0044).
+    #[serde(default)]
+    pub cover: Option<String>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,
@@ -1167,10 +1170,14 @@ pub struct TagCount {
 #[serde(rename_all = "camelCase")]
 pub struct ImportFile {
     pub path: String,
+    #[serde(default)]
     pub contents: String,
     /// The file's modified time (Unix seconds), when the picker knows it.
     #[serde(default)]
     pub modified: Option<i64>,
+    /// An image's bytes (base64), sent for the images notes show (ADR-0044).
+    #[serde(default)]
+    pub data_base64: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1181,7 +1188,7 @@ pub struct ImportReport {
     pub duplicates: u32,
     /// In the source app's trash.
     pub trashed: u32,
-    /// Images, audio, and drawings that weren't brought over.
+    /// Images it couldn't find, and audio, PDFs, and drawings, which aren't brought over.
     pub attachments_dropped: u32,
     /// Files that weren't notes we could read.
     pub skipped: Vec<String>,
