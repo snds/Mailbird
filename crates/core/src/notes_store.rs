@@ -484,6 +484,7 @@ mod tests {
                 repeat: Repeat::None,
                 reminders: None,
                 attendees: None,
+                travel: None,
             })
             .unwrap();
         let target = NoteTarget { kind: NoteLinkKind::Event, id: ev.occurrence.event_id.clone() };

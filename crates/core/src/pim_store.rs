@@ -84,6 +84,15 @@ ALTER TABLE events ADD COLUMN alarms TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE collections ADD COLUMN scheduling INTEGER NOT NULL DEFAULT 0;
 "#;
 
+/// Whether any occurrence of an event has travel time (indexed so reminder
+/// checks only parse events that can fire).
+fn series_travel(ics: &str, m: &ical::EventMeta) -> Option<i64> {
+    m.travel.or_else(|| ics.to_ascii_uppercase().contains("X-APPLE-TRAVEL-DURATION").then_some(0))
+}
+
+/// Version 12: each event's travel time (minutes), for "time to leave" checks.
+pub(crate) const MIGRATE_V12: &str = "ALTER TABLE events ADD COLUMN travel INTEGER;";
+
 /// Reminders are looked up this far ahead of an occurrence at most.
 const MAX_LEAD_MINUTES: i64 = 14 * 24 * 60;
 
@@ -276,6 +285,7 @@ impl Store {
                     original_start: o.original,
                     all_day,
                     recurring,
+                    travel: o.travel,
                 });
             }
         }
@@ -313,6 +323,7 @@ impl Store {
                 calendar_id: calendar_id.clone(),
                 meeting_url,
                 contact_id: None,
+                travel: inst.travel,
                 title: inst.title,
                 location: inst.location,
                 start: inst.start,
@@ -351,6 +362,7 @@ impl Store {
             attendees: vec![],
             url: None,
             reminders: vec![],
+            travel: None,
         })
     }
 
@@ -358,9 +370,9 @@ impl Store {
         let m = self.index_event(ics);
         let id = uuid::Uuid::new_v4().to_string();
         self.db.execute(
-            "INSERT INTO events (id, collection_id, href, etag, uid, ics, state, title, location, all_day, recurring, first_start, last_end, alarms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![id, collection_id, href, etag, m.uid, ics, state, m.title, m.location, m.all_day, m.recurring, m.first_start, m.last_end, json(&m.reminders)],
+            "INSERT INTO events (id, collection_id, href, etag, uid, ics, state, title, location, all_day, recurring, first_start, last_end, alarms, travel)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![id, collection_id, href, etag, m.uid, ics, state, m.title, m.location, m.all_day, m.recurring, m.first_start, m.last_end, json(&m.reminders), series_travel(ics, &m)],
         )?;
         Ok(id)
     }
@@ -368,8 +380,8 @@ impl Store {
     pub(crate) fn rewrite_event(&self, id: &str, ics: &str, state: &str) -> Result<()> {
         let m = self.index_event(ics);
         self.db.execute(
-            "UPDATE events SET ics = ?2, state = ?3, title = ?4, location = ?5, all_day = ?6, recurring = ?7, first_start = ?8, last_end = ?9, alarms = ?10 WHERE id = ?1",
-            params![id, ics, state, m.title, m.location, m.all_day, m.recurring, m.first_start, m.last_end, json(&m.reminders)],
+            "UPDATE events SET ics = ?2, state = ?3, title = ?4, location = ?5, all_day = ?6, recurring = ?7, first_start = ?8, last_end = ?9, alarms = ?10, travel = ?11 WHERE id = ?1",
+            params![id, ics, state, m.title, m.location, m.all_day, m.recurring, m.first_start, m.last_end, json(&m.reminders), series_travel(ics, &m)],
         )?;
         Ok(())
     }
@@ -500,8 +512,8 @@ impl Store {
         for (id, ics) in rows {
             let m = self.index_event(&ics);
             self.db.execute(
-                "UPDATE events SET title = ?2, location = ?3, all_day = ?4, recurring = ?5, first_start = ?6, last_end = ?7, alarms = ?8 WHERE id = ?1",
-                params![id, m.title, m.location, m.all_day, m.recurring, m.first_start, m.last_end, json(&m.reminders)],
+                "UPDATE events SET title = ?2, location = ?3, all_day = ?4, recurring = ?5, first_start = ?6, last_end = ?7, alarms = ?8, travel = ?9 WHERE id = ?1",
+                params![id, m.title, m.location, m.all_day, m.recurring, m.first_start, m.last_end, json(&m.reminders), series_travel(&ics, &m)],
             )?;
         }
         Ok(())
@@ -514,7 +526,7 @@ impl Store {
         let tz = self.time_zone()?;
         let mut st = self.db.prepare(
             "SELECT e.id, e.ics, e.alarms FROM events e JOIN collections c ON c.id = e.collection_id
-             WHERE c.hidden = 0 AND e.state != 'deleted' AND e.alarms != '[]'
+             WHERE c.hidden = 0 AND e.state != 'deleted' AND (e.alarms != '[]' OR e.travel IS NOT NULL)
                AND e.first_start <= ?2 AND (e.last_end IS NULL OR e.last_end > ?1)",
         )?;
         let rows = st.query_map(params![after - SLACK, until + MAX_LEAD_MINUTES * 60 + SLACK], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
@@ -522,14 +534,22 @@ impl Store {
         for row in rows {
             let (id, ics, alarms) = row?;
             let leads: Vec<i64> = from_json(alarms);
-            let Some(max) = leads.iter().copied().max() else { continue };
+            // Travel can reach back up to a day: look that far ahead too.
+            let max = leads.iter().copied().max().unwrap_or(0).max(24 * 60);
             let min = leads.iter().copied().min().unwrap_or(0);
             // Occurrences whose reminders could land in the window.
-            for o in ical::occurrences(&ics, &tz, after + min.min(0) * 60, until + max.max(0) * 60 + 1).unwrap_or_default() {
+            for o in ical::occurrences(&ics, &tz, after + min.min(0) * 60, until + max * 60 + 1).unwrap_or_default() {
                 for lead in &leads {
                     let fire_at = o.start - lead * 60;
                     if fire_at > after && fire_at <= until {
-                        out.push(crate::DueReminder { event_id: id.clone(), title: o.title.clone(), location: o.location.clone(), start: o.start, fire_at });
+                        out.push(crate::DueReminder { event_id: id.clone(), title: o.title.clone(), location: o.location.clone(), start: o.start, fire_at, leave: false });
+                    }
+                }
+                // Time to leave, unless a reminder already fires right then.
+                if let Some(t) = o.travel.filter(|t| !leads.contains(t)) {
+                    let fire_at = o.start - t * 60;
+                    if fire_at > after && fire_at <= until {
+                        out.push(crate::DueReminder { event_id: id.clone(), title: o.title.clone(), location: o.location.clone(), start: o.start, fire_at, leave: true });
                     }
                 }
             }
@@ -861,6 +881,7 @@ mod tests {
             repeat: Repeat::None,
             reminders: None,
             attendees: None,
+            travel: None,
         }
     }
 
@@ -981,6 +1002,33 @@ mod tests {
         assert_eq!(next_week.len(), 2, "the next occurrence reminds too");
         s.set_collection_hidden(&cal, true).unwrap();
         assert!(s.due_reminders(start - 1801, start).unwrap().is_empty(), "hidden calendars stay quiet");
+    }
+
+    #[test]
+    fn travel_time_says_when_to_leave() {
+        let s = store();
+        let cal = local(&s, CollectionKind::Calendar);
+        let mut dentist = event(&cal, "2026-10-14T18:00", "2026-10-14T19:00");
+        dentist.travel = Some(25);
+        dentist.reminders = Some(vec![]);
+        let e = s.create_event(&dentist).unwrap();
+        assert_eq!(e.occurrence.travel, Some(25));
+        let start = e.occurrence.start;
+        assert_eq!(s.occurrences(start - 60, start + 60).unwrap()[0].travel, Some(25), "views carry it");
+        let due = s.due_reminders(start - 3600, start).unwrap();
+        assert_eq!(due.iter().map(|r| (r.fire_at, r.leave)).collect::<Vec<_>>(), [(start - 25 * 60, true)], "an event with only travel time still alerts, as time to leave");
+        // A reminder at the same moment stands in for it: one alert, not two.
+        let mut same = dentist.clone();
+        same.reminders = Some(vec![25, 5]);
+        s.update_event(&e.occurrence.event_id, &same, crate::EditScope::All, None).unwrap();
+        let due = s.due_reminders(start - 3600, start).unwrap();
+        assert_eq!(due.iter().map(|r| (r.fire_at, r.leave)).collect::<Vec<_>>(), [(start - 25 * 60, false), (start - 5 * 60, false)]);
+        // Travel reaching back over a day boundary is still found.
+        let mut far = event(&cal, "2026-10-20T00:30", "2026-10-20T01:00");
+        far.travel = Some(120);
+        let f = s.create_event(&far).unwrap();
+        let fs = f.occurrence.start;
+        assert!(s.due_reminders(fs - 7201, fs - 7200).unwrap().iter().any(|r| r.leave && r.event_id == f.occurrence.event_id));
     }
 
     #[test]

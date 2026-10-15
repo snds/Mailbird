@@ -32,9 +32,12 @@ export function ReminderWatcher() {
           : minutes < 60
             ? `In ${minutes} min · ${fmt.time(r.start)}`
             : `${fmt.dayLong(new Date(r.start * 1000))}, ${fmt.time(r.start)}`
-      toast(missed ? `Missed: ${r.title || "(no title)"}` : r.title || "(no title)", {
+      // Time to leave (ADR-0029): the travel time before the event starts now.
+      const title = r.leave ? `Time to leave: ${r.title || "(no title)"}` : r.title || "(no title)"
+      const lead = r.leave && !missed ? `Starts in ${minutes} min · ${fmt.time(r.start)}` : when
+      toast(missed ? `Missed: ${title}` : title, {
         id: `reminder-${r.eventId}-${r.fireAt}`,
-        description: r.location ? `${when} · ${r.location}` : when,
+        description: r.location ? `${lead} · ${r.location}` : lead,
         duration: missed ? Infinity : 15_000,
         closeButton: missed,
       })

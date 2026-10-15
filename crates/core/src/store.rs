@@ -36,7 +36,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 11;
+const SCHEMA_VERSION: i64 = 12;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -238,11 +238,14 @@ impl Store {
             tx.execute_batch(MIGRATE_V11_THREADS)?;
             tx.execute_batch(crate::people_store::MIGRATE_V11)?;
         }
+        if version < 12 {
+            tx.execute_batch(crate::pim_store::MIGRATE_V12)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
         let store = Self { db };
-        if (1..5).contains(&version) {
-            // Fill the new reminder index for events stored before it existed.
+        if (1..12).contains(&version) {
+            // Fill the new reminder (v5) and travel (v12) index for events stored before them.
             store.reindex_events()?;
         }
         if (1..8).contains(&version) {

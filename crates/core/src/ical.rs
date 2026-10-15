@@ -42,6 +42,8 @@ pub struct EventMeta {
     pub url: Option<String>,
     /// Minutes before the start, from the master's editable alarms.
     pub reminders: Vec<i64>,
+    /// Minutes to get there (Apple's `X-APPLE-TRAVEL-DURATION`).
+    pub travel: Option<i64>,
 }
 
 /// One occurrence of an event, in absolute time.
@@ -54,6 +56,8 @@ pub struct Instance {
     pub original: i64,
     pub title: String,
     pub location: Option<String>,
+    /// Minutes to get there: this occurrence's own, else the series'.
+    pub travel: Option<i64>,
 }
 
 fn parse(ics: &str) -> Result<ICalendar> {
@@ -80,6 +84,65 @@ pub(crate) fn local_date(ts: i64, zone: &str) -> chrono::NaiveDate {
 /// An IANA zone; unknown names fall back to UTC rather than floating time.
 fn tz(name: &str) -> Tz {
     Tz::from_str(name).or_else(|_| Tz::from_str("UTC")).unwrap_or_default()
+}
+
+/// Apple Calendar's travel time, which iCloud and macOS/iOS read and write.
+/// There's no standard property for it, so we use theirs (ADR-0029).
+const TRAVEL: &str = "X-APPLE-TRAVEL-DURATION";
+
+fn is_travel(p: &ICalendarProperty) -> bool {
+    matches!(p, ICalendarProperty::Other(n) if n.eq_ignore_ascii_case(TRAVEL))
+}
+
+/// Whole minutes in an ISO 8601 duration ("PT1H30M", "P0DT0H45M0S").
+fn duration_minutes(s: &str) -> Option<i64> {
+    let s = s.trim().to_ascii_uppercase();
+    let rest = s.strip_prefix('P')?;
+    let (mut total, mut num, mut time) = (0i64, String::new(), false);
+    for ch in rest.chars() {
+        match ch {
+            'T' => time = true,
+            '0'..='9' => num.push(ch),
+            unit => {
+                let n: i64 = num.parse().ok()?;
+                num.clear();
+                total += match (unit, time) {
+                    ('W', false) => n * 7 * 24 * 60,
+                    ('D', false) => n * 24 * 60,
+                    ('H', true) => n * 60,
+                    ('M', true) => n,
+                    ('S', true) => n / 60,
+                    _ => return None,
+                };
+            }
+        }
+    }
+    num.is_empty().then_some(total)
+}
+
+/// A component's travel time in minutes, if it has a positive one.
+fn travel_of(c: &ICalendarComponent) -> Option<i64> {
+    let e = c.entries.iter().find(|e| is_travel(&e.name))?;
+    let m = match e.values.first()? {
+        ICalendarValue::Duration(d) => d.as_seconds() / 60,
+        v => duration_minutes(v.as_text()?)?,
+    };
+    (m > 0).then_some(m.min(24 * 60))
+}
+
+/// Sets (or with 0, removes) travel time on the component `find` locates.
+/// `None` leaves it alone.
+fn set_travel(cal: &mut ICalendar, find: impl Fn(&ICalendar) -> Option<usize>, minutes: Option<i64>) -> Result<()> {
+    let Some(m) = minutes else { return Ok(()) };
+    if !(0..=24 * 60).contains(&m) {
+        return Err(Error::Invalid("travel time is up to a day".into()));
+    }
+    let fresh = if m > 0 { entries(&[format!("{TRAVEL};VALUE=DURATION:PT{m}M")])? } else { vec![] };
+    let i = find(cal).ok_or_else(|| Error::Parse("no event".into()))?;
+    let c = &mut cal.components[i];
+    c.entries.retain(|e| !is_travel(&e.name));
+    c.entries.extend(fresh);
+    Ok(())
 }
 
 fn text(c: &ICalendarComponent, prop: ICalendarProperty) -> Option<String> {
@@ -152,6 +215,7 @@ fn for_expansion(cal: &ICalendar) -> ICalendar {
 }
 
 fn expand_all(cal: &ICalendar, local_tz: &str) -> Vec<Instance> {
+    let series_travel = master_index(cal).and_then(|m| travel_of(&cal.components[m]));
     let exp = for_expansion(cal).expand_dates(tz(local_tz), EXPAND_LIMIT);
     exp.events
         .into_iter()
@@ -168,7 +232,14 @@ fn expand_all(cal: &ICalendar, local_tz: &str) -> Vec<Instance> {
             // A missing DTEND means a zero-length event, or one day for all-day ones.
             let end = if end > start { end } else if is_date_only(c) { start + 86_400 } else { start };
             let original = if c.has_property(&ICalendarProperty::RecurrenceId) { rid_ts(cal, c, local_tz).unwrap_or(start) } else { start };
-            Some(Instance { start, end, original, title: text(c, ICalendarProperty::Summary).unwrap_or_default(), location: text(c, ICalendarProperty::Location) })
+            Some(Instance {
+                start,
+                end,
+                original,
+                title: text(c, ICalendarProperty::Summary).unwrap_or_default(),
+                location: text(c, ICalendarProperty::Location),
+                travel: if is_date_only(c) { None } else { travel_of(c).or(series_travel) },
+            })
         })
         .collect()
 }
@@ -210,6 +281,7 @@ pub fn read_event(ics: &str, local_tz: &str) -> Result<EventMeta> {
             .collect(),
         url: text(c, ICalendarProperty::Url),
         reminders: reminders_of(&cal, i),
+        travel: if is_date_only(c) { None } else { travel_of(c) },
     })
 }
 
@@ -367,6 +439,9 @@ pub fn new_event(uid: &str, input: &EventInput) -> Result<String> {
     if let Some(r) = &input.reminders {
         set_reminders(&mut cal, master_index, r)?;
     }
+    if !input.all_day {
+        set_travel(&mut cal, master_index, input.travel)?;
+    }
     Ok(finish(cal))
 }
 
@@ -406,6 +481,8 @@ pub fn edit_event(ics: &str, input: &EventInput) -> Result<String> {
     if let Some(r) = &input.reminders {
         set_reminders(&mut cal, master_index, r)?;
     }
+    // An all-day event has no start to travel to.
+    set_travel(&mut cal, master_index, if input.all_day { Some(0) } else { input.travel })?;
     Ok(finish(cal))
 }
 
@@ -498,6 +575,7 @@ pub fn edit_occurrence(ics: &str, original: i64, input: &EventInput, local_tz: &
         if let Some(r) = &input.reminders {
             set_reminders(&mut cal, |c| override_index(c, original, local_tz), r)?;
         }
+        set_travel(&mut cal, |c| override_index(c, original, local_tz), if input.all_day { Some(0) } else { input.travel })?;
         return Ok(finish(cal));
     }
     lines.push(slot_line(&cal, &cal.components[m], "RECURRENCE-ID", original, local_tz)?);
@@ -519,6 +597,7 @@ pub fn edit_occurrence(ics: &str, original: i64, input: &EventInput, local_tz: &
     if let Some(r) = &input.reminders {
         set_reminders(&mut cal, |c| override_index(c, original, local_tz), r)?;
     }
+    set_travel(&mut cal, |c| override_index(c, original, local_tz), if input.all_day { Some(0) } else { input.travel })?;
     Ok(finish(cal))
 }
 
@@ -603,6 +682,7 @@ pub fn split_series(ics: &str, original: i64, new_uid: &str, input: &EventInput,
     if let Some(r) = &input.reminders {
         set_reminders(&mut cal, master_index, r)?;
     }
+    set_travel(&mut cal, master_index, if input.all_day { Some(0) } else { input.travel })?;
     Ok(finish(cal))
 }
 
@@ -775,6 +855,7 @@ mod tests {
             repeat: Repeat::None,
             reminders: None,
             attendees: None,
+            travel: None,
         }
     }
 
@@ -966,6 +1047,47 @@ mod tests {
         let created = new_event("r1", &n).unwrap();
         assert!(created.contains("TRIGGER:-PT15M"));
         assert_eq!(read_event(&created, "UTC").unwrap().reminders, [15]);
+    }
+
+    #[test]
+    fn travel_time_reads_apples_and_round_trips() {
+        let apple = SERIES.replacen("SUMMARY:Standup\r\n", "SUMMARY:Standup\r\nX-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT1H30M\r\n", 1);
+        assert_eq!(read_event(&apple, "UTC").unwrap().travel, Some(90), "Apple's property, hours and minutes");
+        let all = occurrences(&apple, "UTC", 0, i64::MAX).unwrap();
+        assert!(all.iter().all(|o| o.travel == Some(90)), "every occurrence, the moved one too");
+        assert_eq!(read_event(SERIES, "UTC").unwrap().travel, None);
+        assert_eq!(duration_minutes("P0DT0H45M0S"), Some(45));
+        assert_eq!(duration_minutes("P1D"), Some(24 * 60));
+        assert_eq!(duration_minutes("PT"), Some(0));
+        assert_eq!(duration_minutes("45M"), None);
+
+        let mut n = input("2026-10-14T12:30", "2026-10-14T13:30");
+        n.travel = Some(20);
+        let created = new_event("t1", &n).unwrap();
+        assert!(created.contains("X-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT20M"), "written the way Apple reads it:\n{created}");
+        assert_eq!(read_event(&created, "UTC").unwrap().travel, Some(20));
+        n.travel = None;
+        let kept = edit_event(&created, &n).unwrap();
+        assert_eq!(read_event(&kept, "UTC").unwrap().travel, Some(20), "None keeps it");
+        n.travel = Some(45);
+        let changed = edit_event(&kept, &n).unwrap();
+        assert_eq!(read_event(&changed, "UTC").unwrap().travel, Some(45));
+        assert_eq!(changed.matches("X-APPLE-TRAVEL-DURATION").count(), 1, "replaced, not added");
+        n.travel = Some(0);
+        assert_eq!(read_event(&edit_event(&changed, &n).unwrap(), "UTC").unwrap().travel, None, "0 removes it");
+        n.travel = Some(25 * 60);
+        assert!(edit_event(&changed, &n).is_err(), "more than a day is a mistake");
+        let mut day = input("2026-10-14", "2026-10-15");
+        day.all_day = true;
+        day.travel = None;
+        assert!(!edit_event(&changed, &day).unwrap().contains("X-APPLE-TRAVEL"), "an all-day event drops it");
+
+        // One occurrence can have its own.
+        let mut one = input("2026-11-10T10:00", "2026-11-10T10:30");
+        one.travel = Some(15);
+        let edited = edit_occurrence(SERIES, 1_794_303_000, &one, "UTC").unwrap();
+        let by_start: Vec<_> = occurrences(&edited, "UTC", 0, i64::MAX).unwrap().into_iter().map(|o| (o.original, o.travel)).collect();
+        assert!(by_start.contains(&(1_794_303_000, Some(15))) && by_start.iter().filter(|(_, t)| t.is_some()).count() == 1, "{by_start:?}");
     }
 
     #[test]

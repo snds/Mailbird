@@ -532,6 +532,8 @@ fn notify(app: &AppHandle, r: &pim_core::DueReminder) {
         m if m < 1440 => format!("In {} h", m / 60),
         m => format!("In {} days", m / 1440),
     };
+    // Time to leave: the travel time before the event starts now (ADR-0029).
+    let when = if r.leave { format!("Time to leave · starts in {minutes} min") } else { when };
     let body = match &r.location {
         Some(l) => format!("{when} · {l}"),
         None => when,

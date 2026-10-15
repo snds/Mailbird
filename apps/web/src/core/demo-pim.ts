@@ -41,6 +41,7 @@ import type {
   SignatureCard,
 } from "./types"
 import { parseSignature } from "./demo-signature"
+import { zonedDate } from "@/lib/zoned"
 
 interface DemoEvent {
   id: string
@@ -62,6 +63,10 @@ interface DemoEvent {
   organizer: Address | null
   reminders: number[]
   uid: string
+  /** Minutes to get there (ADR-0029). */
+  travel: number | null
+  /** The zone its times were written in; null for the device's. */
+  timeZone: string | null
 }
 
 /** A demo message's invitation, as the organizer sent it, or a guest's counter-proposal. */
@@ -188,7 +193,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   let n = 0
   const ev = (calendarId: string, title: string, start: number, end: number, extra: Partial<DemoEvent> = {}): DemoEvent => ({
     id: `ev-${++n}`, calendarId, title, location: null, notes: null, start, end, allDay: false, repeat: "none",
-    skipped: [], overrides: {}, until: null, attendees: [], organizer: null, reminders: [], uid: `demo-${n}@mailbird`, ...extra,
+    skipped: [], overrides: {}, until: null, attendees: [], organizer: null, reminders: [], uid: `demo-${n}@mailbird`, travel: null, timeZone: null, ...extra,
   })
   const priya = { name: "Priya Raman", email: "priya@studio.example" }
   const team = (status: string) => [
@@ -209,7 +214,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     ev("cal-personal", "Lunch with Ana", at(0, 12, 30), at(0, 13, 30), { location: "Café Lisboa" }),
     ev("cal-work", "Design review", at(1, 15), at(1, 16, 30), { location: "https://meet.google.com/kfp-wqzr-xmd", organizer: priya, attendees: team("accepted") }),
     ev("cal-personal", "Climbing", at(2, 18), at(2, 19, 30), { repeat: "weekly", location: "North Wall gym" }),
-    ev("cal-personal", "Ferry to the cabin", at(untilSaturday, 8, 15), at(untilSaturday, 9), { location: "Pier 3", notes: "Booking reference FX-2210. Arrive 30 minutes early." }),
+    ev("cal-personal", "Ferry to the cabin", at(untilSaturday, 8, 15), at(untilSaturday, 9), { location: "Pier 3", notes: "Booking reference FX-2210. Arrive 30 minutes early.", travel: 30 }),
     ev("cal-personal", "Cabin weekend", at(untilSaturday, 0), at(untilSaturday + 2, 0), { allDay: true }),
     ev("cal-holidays", "Bank holiday", at(9, 0), at(10, 0), { allDay: true }),
     ev("cal-work", "Quarterly planning", at(-2, 10), at(-2, 12), { organizer: priya, attendees: team("accepted") }),
@@ -271,6 +276,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   const occurrence = (e: DemoEvent, o: Slot): Occurrence => ({
     eventId: e.id, calendarId: e.calendarId, title: o.title, location: o.location, start: o.start, end: o.end,
     originalStart: o.original, allDay: e.allDay, recurring: e.repeat !== "none", meetingUrl: meetingLink(o.location), contactId: null,
+    travel: e.allDay ? null : e.travel,
   })
 
   // Birthdays: a yearly all-day occurrence per contact with a birthday.
@@ -328,7 +334,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   // the link's hours, two hours out through its days ahead.
   let links: BookingLink[] = []
   const busyBetween = (from: number, to: number) =>
-    events.filter((e) => visible(e.calendarId) && !e.allDay).flatMap((e) => expand(e, from, to)).map((o) => [o.start, o.end] as const)
+    events.filter((e) => visible(e.calendarId) && !e.allDay).flatMap((e) => expand(e, from, to).map((o) => [o.start - (e.travel ?? 0) * 60, o.end] as const))
   const freeSlots = (l: BookingLink) => {
     const GRID = 1800, len = l.minutes * 60
     const nowS = Math.floor(Date.now() / 1000)
@@ -376,7 +382,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     const all = expand(e, start != null ? start - 86_400 : -Infinity, Infinity)
     const o = all.find((x) => x.start === start || x.original === start) ?? all[0] ?? { start: e.start, end: e.end, original: e.start, title: e.title, location: e.location }
     return {
-      ...occurrence(e, o), meetingUrl: meetingLink(o.location, e.notes), notes: e.notes, repeat: e.repeat, timeZone: e.allDay ? null : Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...occurrence(e, o), meetingUrl: meetingLink(o.location, e.notes), notes: e.notes, repeat: e.repeat, timeZone: e.allDay ? null : e.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       organizer: e.organizer, attendees: e.attendees, url: null, writable: calendar(e.calendarId).writable, reminders: [...e.reminders].sort((a, b) => a - b),
     }
   }
@@ -386,8 +392,11 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   }
   const parseTimes = (input: EventInput) => {
     if (!input.title.trim()) throw new Error("give the event a title")
-    const start = parseLocal(input.start)
-    const end = parseLocal(input.end)
+    // Times in another zone are that zone's wall clock (the core does the same with TZID).
+    const zone = !input.allDay && input.timeZone && input.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone ? input.timeZone : null
+    const at = (v: string) => (zone ? Math.floor(zonedDate(v.slice(0, 10), v.slice(11, 16), zone).getTime() / 1000) : parseLocal(v))
+    const start = at(input.start)
+    const end = at(input.end)
     if (end < start || (input.allDay && end === start)) throw new Error("the event ends before it starts")
     return { start, end }
   }
@@ -400,6 +409,12 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       repeat: input.repeat === "custom" ? e.repeat : input.repeat,
     })
     if (input.reminders) e.reminders = [...new Set(input.reminders)]
+    e.timeZone = input.allDay ? null : input.timeZone || null
+    if (input.allDay) e.travel = null
+    else if (input.travel != null) {
+      if (input.travel < 0 || input.travel > 1440) throw new Error("travel time is up to a day")
+      e.travel = input.travel || null
+    }
     if (input.attendees) {
       const organizer = me(input.calendarId)
       const prior = e.attendees
@@ -517,12 +532,17 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   setInterval(() => {
     const until = Math.floor(Date.now() / 1000)
     const due: DueReminder[] = []
-    for (const e of events.filter((x) => x.reminders.length && visible(x.calendarId))) {
-      const lead = Math.max(...e.reminders) * 60
+    for (const e of events.filter((x) => (x.reminders.length || x.travel) && visible(x.calendarId))) {
+      const lead = Math.max(0, ...e.reminders, e.travel ?? 0) * 60
       for (const o of expand(e, checked, until + lead + 1)) {
         for (const m of e.reminders) {
           const fireAt = o.start - m * 60
           if (fireAt > checked && fireAt <= until) due.push({ eventId: e.id, title: o.title, location: o.location, start: o.start, fireAt })
+        }
+        // Time to leave, unless a reminder already fires right then (as the core does).
+        if (e.travel && !e.allDay && !e.reminders.includes(e.travel)) {
+          const fireAt = o.start - e.travel * 60
+          if (fireAt > checked && fireAt <= until) due.push({ eventId: e.id, title: o.title, location: o.location, start: o.start, fireAt, leave: true })
         }
       }
     }
@@ -591,8 +611,8 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     const start = up(Math.max(from, Math.floor(Date.now() / 1000)))
     const busy = events
       .filter((e) => visible(e.calendarId) && !e.allDay)
-      .flatMap((e) => expand(e, start, start + 15 * 86_400))
-      .map((o) => [o.start, o.end] as const)
+      // Travel time before an event is busy too (ADR-0029).
+      .flatMap((e) => expand(e, start, start + 15 * 86_400).map((o) => [o.start - (e.travel ?? 0) * 60, o.end] as const))
     const out: TimeSlot[] = []
     const day = new Date(start * 1000)
     day.setHours(0, 0, 0, 0)

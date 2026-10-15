@@ -158,7 +158,7 @@ impl Store {
         let tz = self.time_zone()?;
         let from = (now() + LEAD).div_euclid(GRID) * GRID + GRID;
         let until = from + i64::from(i.days_ahead) * 86_400;
-        let mut busy: Vec<(i64, i64)> = self.occurrences(from - 86_400, until + 86_400)?.into_iter().filter(|o| !o.all_day).map(|o| (o.start, o.end)).collect();
+        let mut busy: Vec<(i64, i64)> = self.occurrences(from - 86_400, until + 86_400)?.into_iter().filter(|o| !o.all_day).map(|o| (o.start - o.travel.unwrap_or(0) * 60, o.end)).collect();
         busy.sort_unstable();
         let mut out = Vec::new();
         for day in ical::local_date(from, &tz).iter_days().take(i.days_ahead as usize + 1) {
@@ -233,6 +233,7 @@ impl Store {
             repeat: Repeat::None,
             reminders: None,
             attendees: invited.then(|| vec![Address { name: Some(name.to_string()), email: email.clone() }]),
+            travel: None,
         })?;
         l.booked_at.push(now());
         self.save_links(&links)?;
@@ -311,6 +312,7 @@ mod tests {
             repeat: Repeat::None,
             reminders: None,
             attendees: None,
+            travel: None,
         };
         s.create_event(&busy).unwrap();
         let after = s.public_booking(&l.token).unwrap().slots;

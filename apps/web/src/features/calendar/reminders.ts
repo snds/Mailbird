@@ -10,3 +10,6 @@ export function reminderLabel(minutes: number, allDay = false) {
   if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? "" : "s"} before`
   return `${minutes} minutes before`
 }
+
+/** Travel time (ADR-0029): "20 min", "1 h", "1 h 30 min". */
+export const travelLabel = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`)

@@ -14,11 +14,14 @@ import type { Collection, EditScope, EventDetail as Detail, Repeat } from "@/cor
 import { displayName, initials } from "../mail/format"
 import { LinkedNotes } from "../notes/linked-notes"
 import { calendarColor } from "./colors"
-import { dayLabel, fromSecs, rangeLabel } from "./dates"
+import { dayLabel, fmt, fromSecs, rangeLabel } from "./dates"
 import { JoinButton } from "./join-button"
 import { placeLabel } from "./meeting"
 import { inputFromDetail } from "./quick-add"
-import { reminderLabel } from "./reminders"
+import { reminderLabel, travelLabel } from "./reminders"
+import { zoneAbbr, zoneCity } from "./zones"
+
+const theirTime = (secs: number, zone: string) => fromSecs(secs).toLocaleTimeString(undefined, { timeZone: zone, hour: "numeric", minute: "2-digit" })
 
 const REPEAT_TEXT: Record<Repeat, string | null> = {
   none: null,
@@ -167,8 +170,19 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
             <span className="break-words">{placeLabel(e)}</span>
           </Row>
         )}
+        {e.travel && !e.allDay ? (
+          <Row icon="directions_car">
+            <span data-slot="travel">
+              {travelLabel(e.travel)} travel · leave by {fmt.time(e.start - e.travel * 60)}
+            </span>
+          </Row>
+        ) : null}
         {e.timeZone && e.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone && (
-          <Row icon="public">Scheduled in {e.timeZone.replace(/_/g, " ")}</Row>
+          <Row icon="public">
+            <span data-slot="zone">
+              Scheduled in {zoneCity(e.timeZone)} time: {theirTime(e.start, e.timeZone)}–{theirTime(e.end, e.timeZone)} {zoneAbbr(e.timeZone, fromSecs(e.start))}
+            </span>
+          </Row>
         )}
         <Row icon="calendar_month">
           {cal?.name ?? "Calendar"}

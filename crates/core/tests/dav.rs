@@ -74,6 +74,7 @@ fn event(calendar: &str, title: &str) -> EventInput {
         repeat: Repeat::None,
         reminders: None,
         attendees: None,
+        travel: None,
     }
 }
 
