@@ -11,7 +11,7 @@ import { AccountsDialog } from "@/features/accounts"
 import { CommandPalette } from "@/features/command-palette"
 import { WritingDialog } from "@/features/writing-settings"
 import { GatewayGate } from "@/features/gateway-sign-in"
-import { BookingPage } from "@/features/booking/page"
+import { BookingPage, ManageBookingPage } from "@/features/booking/page"
 import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
 import { EventEditor } from "@/features/calendar/event-editor"
@@ -81,8 +81,11 @@ function Root() {
   )
 }
 
-/** A scheduling link's public page: `/book/<token>`, no sign-in (ADR-0026). */
-const bookingToken = /^\/book\/([A-Za-z0-9_-]{8,64})\/?$/.exec(location.pathname)?.[1] ?? null
+/** A scheduling link's public page: `/book/<token>`, no sign-in (ADR-0026),
+ *  and a booking's own page, `/book/<token>/b/<code>` (ADR-0031). */
+const bookingPath = /^\/book\/([A-Za-z0-9_-]{8,64})(?:\/b\/([A-Za-z0-9_-]{8,64}))?\/?$/.exec(location.pathname)
+const bookingToken = bookingPath?.[1] ?? null
+const bookingCode = bookingPath?.[2] ?? null
 
 export default function App() {
   return (
@@ -91,7 +94,7 @@ export default function App() {
         <TooltipProvider>
           {bookingToken ? (
             <div className="min-h-dvh bg-background">
-              <BookingPage token={bookingToken} />
+              {bookingCode ? <ManageBookingPage token={bookingToken} code={bookingCode} /> : <BookingPage token={bookingToken} />}
             </div>
           ) : (
             <GatewayGate>

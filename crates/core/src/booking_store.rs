@@ -10,6 +10,12 @@ use crate::store::{Store, from_json, json};
 use crate::{Address, Error, EventInput, Repeat, Result, TimeSlot, ical, now};
 
 const KEY: &str = "booking_links";
+/// Bookings made through links, for their manage pages (ADR-0031).
+const BOOKINGS: &str = "bookings";
+/// A booking can move this many times before its page says to write instead.
+const MAX_MOVES: u32 = 5;
+/// Past bookings are forgotten after this long.
+const KEEP: i64 = 30 * 86_400;
 const GRID: i64 = 30 * 60;
 /// Bookings a link takes per rolling day before it pauses itself.
 const MAX_PER_DAY: usize = 10;
@@ -81,6 +87,55 @@ pub struct Booked {
     pub host: String,
     /// An invitation was emailed (the calendar is on a mail account).
     pub invited: bool,
+    /// The private code for this booking's manage page: change the time or cancel.
+    #[serde(default)]
+    pub code: String,
+}
+
+/// One booking, kept so the person who made it can change it (ADR-0031).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BookingRecord {
+    code: String,
+    link_id: String,
+    event_id: String,
+    start: i64,
+    end: i64,
+    name: String,
+    email: String,
+    #[serde(default)]
+    moves: u32,
+    #[serde(default)]
+    cancelled: bool,
+}
+
+/// What a booking's manage page shows: the booking, and the times it can move to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedBooking {
+    pub title: String,
+    pub host: String,
+    pub name: String,
+    pub start: i64,
+    pub end: i64,
+    pub minutes: u32,
+    pub time_zone: String,
+    /// Cancelled from the page, or by the host.
+    pub cancelled: bool,
+    /// Over: it can't be changed any more.
+    pub past: bool,
+    /// The link's free times; empty when it can't move (cancelled, past, moved too often).
+    pub slots: Vec<TimeSlot>,
+    /// It has moved as often as it may.
+    pub moves_left: u32,
+}
+
+/// What the manage page asks for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "action")]
+pub enum BookingChange {
+    Reschedule { start: i64 },
+    Cancel,
 }
 
 impl Store {
@@ -153,12 +208,22 @@ impl Store {
     /// Every free start on the half hour, inside the link's hours, from two
     /// hours from now through `days_ahead` days.
     fn free_slots(&self, l: &BookingLink) -> Result<Vec<TimeSlot>> {
+        self.free_slots_except(l, None)
+    }
+
+    /// Free times, counting one event's own time as free (to move it).
+    fn free_slots_except(&self, l: &BookingLink, except: Option<&str>) -> Result<Vec<TimeSlot>> {
         let i = &l.input;
         let len = i64::from(i.minutes) * 60;
         let tz = self.time_zone()?;
         let from = (now() + LEAD).div_euclid(GRID) * GRID + GRID;
         let until = from + i64::from(i.days_ahead) * 86_400;
-        let mut busy: Vec<(i64, i64)> = self.occurrences(from - 86_400, until + 86_400)?.into_iter().filter(|o| !o.all_day).map(|o| (o.start - o.travel.unwrap_or(0) * 60, o.end)).collect();
+        let mut busy: Vec<(i64, i64)> = self
+            .occurrences(from - 86_400, until + 86_400)?
+            .into_iter()
+            .filter(|o| !o.all_day && Some(o.event_id.as_str()) != except)
+            .map(|o| (o.start - o.travel.unwrap_or(0) * 60, o.end))
+            .collect();
         busy.sort_unstable();
         let mut out = Vec::new();
         for day in ical::local_date(from, &tz).iter_days().take(i.days_ahead as usize + 1) {
@@ -198,7 +263,9 @@ impl Store {
     /// Books one of the link's free times: an event in your calendar with
     /// the booker as guest (emailed an invitation when the calendar is on a
     /// mail account). The time must still be free.
-    pub fn book(&self, token: &str, req: &BookingRequest) -> Result<Booked> {
+    /// `manage_base` is where this booking's page lives ("https://host/book/<token>/b/"),
+    /// when the server knows its own public address; the invitation then carries it.
+    pub fn book(&self, token: &str, req: &BookingRequest, manage_base: Option<&str>) -> Result<Booked> {
         let mut links = self.booking_links()?;
         let l = links.iter_mut().find(|l| l.token == token).ok_or_else(|| Error::NotFound("this booking link isn't active".into()))?;
         let name = req.name.trim();
@@ -219,9 +286,12 @@ impl Store {
         let tz = self.time_zone()?;
         let invited = self.collection(&link.input.calendar_id)?.account_id.is_some();
         let note = req.note.as_deref().map(str::trim).filter(|n| !n.is_empty()).map(|n| n.chars().take(2000).collect::<String>());
-        let notes = format!("Booked by {name} <{email}> through “{}”.{}", link.input.title, note.map(|n| format!("\n\n{n}")).unwrap_or_default());
+        // Random like the link's own token: unguessable, so the code alone opens the page.
+        let code = uuid::Uuid::new_v4().simple().to_string();
+        let manage = manage_base.map(|b| format!("\n\nNeed to change it? Pick a new time or cancel: {b}{code}")).unwrap_or_default();
+        let notes = format!("Booked by {name} <{email}> through “{}”.{}{manage}", link.input.title, note.map(|n| format!("\n\n{n}")).unwrap_or_default());
         let title = format!("{} with {name}", link.input.title);
-        self.create_event(&EventInput {
+        let event = self.create_event(&EventInput {
             calendar_id: link.input.calendar_id.clone(),
             title: title.clone(),
             location: None,
@@ -237,7 +307,128 @@ impl Store {
         })?;
         l.booked_at.push(now());
         self.save_links(&links)?;
-        Ok(Booked { start: slot.start, end: slot.end, title: link.input.title, host: self.host_name(&link.input.calendar_id)?, invited })
+        let mut records = self.booking_records()?;
+        records.push(BookingRecord {
+            code: code.clone(),
+            link_id: link.id.clone(),
+            event_id: event.occurrence.event_id,
+            start: slot.start,
+            end: slot.end,
+            name: name.to_string(),
+            email,
+            moves: 0,
+            cancelled: false,
+        });
+        self.save_records(records)?;
+        Ok(Booked { start: slot.start, end: slot.end, title: link.input.title, host: self.host_name(&link.input.calendar_id)?, invited, code })
+    }
+
+    fn booking_records(&self) -> Result<Vec<BookingRecord>> {
+        Ok(self.setting(BOOKINGS)?.map(from_json::<Vec<BookingRecord>>).unwrap_or_default())
+    }
+
+    fn save_records(&self, mut records: Vec<BookingRecord>) -> Result<()> {
+        records.retain(|r| r.end > now() - KEEP);
+        self.set_setting(BOOKINGS, Some(&json(&records)))
+    }
+
+    /// A booking by its link and private code. Both must match: a code from
+    /// another link, or a wrong one, finds nothing.
+    fn record(&self, token: &str, code: &str) -> Result<(BookingLink, BookingRecord)> {
+        let gone = || Error::NotFound("this booking link isn't active".into());
+        let l = self.link_by_token(token).map_err(|_| gone())?;
+        let r = self.booking_records()?.into_iter().find(|r| r.code == code && r.link_id == l.id).ok_or_else(gone)?;
+        Ok((l, r))
+    }
+
+    /// The event still exists where the booking put it (the host may have deleted it).
+    fn booking_live(&self, r: &BookingRecord) -> bool {
+        !r.cancelled && self.event(&r.event_id, None).is_ok()
+    }
+
+    /// The manage page's data: the booking, and where it can move.
+    pub fn managed_booking(&self, token: &str, code: &str) -> Result<ManagedBooking> {
+        let (l, r) = self.record(token, code)?;
+        let live = self.booking_live(&r);
+        let past = r.start <= now();
+        let can_move = live && !past && r.moves < MAX_MOVES;
+        Ok(ManagedBooking {
+            title: l.input.title.clone(),
+            host: self.host_name(&l.input.calendar_id)?,
+            name: r.name.clone(),
+            start: r.start,
+            end: r.end,
+            minutes: l.input.minutes,
+            time_zone: self.time_zone()?,
+            cancelled: !live,
+            past,
+            slots: if can_move { self.free_slots_except(&l, Some(&r.event_id))?.into_iter().filter(|s| s.start != r.start).collect() } else { vec![] },
+            moves_left: if live { MAX_MOVES.saturating_sub(r.moves) } else { 0 },
+        })
+    }
+
+    /// Moves or cancels a booking from its manage page. The event moves (or
+    /// goes) in your calendar, and the guest's invitation is updated (or
+    /// cancelled) as for any change you make.
+    pub fn change_booking(&self, token: &str, code: &str, change: &BookingChange) -> Result<ManagedBooking> {
+        let (l, r) = self.record(token, code)?;
+        if !self.booking_live(&r) {
+            return Err(Error::Invalid("this booking was cancelled".into()));
+        }
+        if r.start <= now() {
+            return Err(Error::Invalid("this booking has already started".into()));
+        }
+        let mut records = self.booking_records()?;
+        let rec = records.iter_mut().find(|x| x.code == r.code).ok_or_else(|| Error::NotFound("this booking link isn't active".into()))?;
+        match change {
+            BookingChange::Cancel => {
+                self.delete_event(&r.event_id, None, crate::EditScope::All)?;
+                rec.cancelled = true;
+            }
+            BookingChange::Reschedule { start } => {
+                if r.moves >= MAX_MOVES {
+                    return Err(Error::Invalid("this booking has moved as often as it can; write to your host instead".into()));
+                }
+                let slot = self
+                    .free_slots_except(&l, Some(&r.event_id))?
+                    .into_iter()
+                    .find(|s| s.start == *start && s.start != r.start)
+                    .ok_or_else(|| Error::Invalid("that time was just taken; pick another".into()))?;
+                let e = self.event(&r.event_id, None)?;
+                let tz = self.time_zone()?;
+                // Everything stays as it was but the time; the guest gets the update.
+                let guests: Vec<Address> = e
+                    .attendees
+                    .iter()
+                    .filter(|a| e.organizer.as_ref().is_none_or(|o| !o.email.eq_ignore_ascii_case(&a.email)))
+                    .map(|a| Address { name: a.name.clone(), email: a.email.clone() })
+                    .collect();
+                self.update_event(
+                    &r.event_id,
+                    &EventInput {
+                        calendar_id: e.occurrence.calendar_id.clone(),
+                        title: e.occurrence.title.clone(),
+                        location: e.occurrence.location.clone(),
+                        notes: e.notes.clone(),
+                        start: ical::local_input(slot.start, &tz),
+                        end: ical::local_input(slot.end, &tz),
+                        all_day: false,
+                        time_zone: tz,
+                        repeat: Repeat::None,
+                        reminders: None,
+                        attendees: (!guests.is_empty()).then_some(guests),
+                        travel: None,
+                    },
+                    crate::EditScope::All,
+                    None,
+                )?;
+                rec.start = slot.start;
+                rec.end = slot.end;
+                rec.moves += 1;
+            }
+        }
+        self.save_records(records)?;
+        self.managed_booking(token, code)
     }
 }
 
@@ -321,17 +512,17 @@ mod tests {
         // Booking: validation, then the event, then the slot is gone.
         let pick = after[0];
         let req = |name: &str, email: &str, start: i64| BookingRequest { start, name: name.into(), email: email.into(), note: Some("About the glaze".into()) };
-        assert!(s.book(&l.token, &req("", "ana@example.com", pick.start)).is_err());
-        assert!(s.book(&l.token, &req("Ana", "not-an-email", pick.start)).is_err());
-        assert!(s.book(&l.token, &req("Ana", "ana@example.com", pick.start + 60)).unwrap_err().to_string().contains("just taken"));
-        assert!(s.book("wrong-token", &req("Ana", "ana@example.com", pick.start)).is_err());
-        let done = s.book(&l.token, &req("Ana Duarte", "Ana@Example.com", pick.start)).unwrap();
+        assert!(s.book(&l.token, &req("", "ana@example.com", pick.start), None).is_err());
+        assert!(s.book(&l.token, &req("Ana", "not-an-email", pick.start), None).is_err());
+        assert!(s.book(&l.token, &req("Ana", "ana@example.com", pick.start + 60), None).unwrap_err().to_string().contains("just taken"));
+        assert!(s.book("wrong-token", &req("Ana", "ana@example.com", pick.start), None).is_err());
+        let done = s.book(&l.token, &req("Ana Duarte", "Ana@Example.com", pick.start), None).unwrap();
         assert_eq!((done.start, done.invited), (pick.start, false), "a device calendar can't send invitations");
         let ev = s.occurrences(pick.start - 1, pick.end + 1).unwrap().into_iter().find(|o| o.title == "Intro call with Ana Duarte").unwrap();
         let detail = s.event(&ev.event_id, None).unwrap();
         assert!(detail.notes.unwrap().contains("Booked by Ana Duarte <ana@example.com>"));
         assert!(!s.public_booking(&l.token).unwrap().slots.iter().any(|t| t.start == pick.start), "the booked time leaves the page");
-        assert!(s.book(&l.token, &req("Sam", "sam@example.com", pick.start)).unwrap_err().to_string().contains("just taken"), "no double booking");
+        assert!(s.book(&l.token, &req("Sam", "sam@example.com", pick.start), None).unwrap_err().to_string().contains("just taken"), "no double booking");
     }
 
     #[test]
@@ -349,10 +540,54 @@ mod tests {
         let slots = s.public_booking(&l.token).unwrap().slots;
         assert!(slots.iter().all(|t| ical::local_date(t.start, "Europe/Lisbon").weekday().number_from_monday() <= 5));
         for (n, t) in slots.iter().step_by(3).take(MAX_PER_DAY).enumerate() {
-            s.book(&l.token, &BookingRequest { start: t.start, name: format!("Guest {n}"), email: format!("g{n}@example.com"), note: None }).unwrap();
+            s.book(&l.token, &BookingRequest { start: t.start, name: format!("Guest {n}"), email: format!("g{n}@example.com"), note: None }, None).unwrap();
         }
         let next = s.public_booking(&l.token).unwrap().slots[0].start;
-        let err = s.book(&l.token, &BookingRequest { start: next, name: "One more".into(), email: "x@example.com".into(), note: None }).unwrap_err();
+        let err = s.book(&l.token, &BookingRequest { start: next, name: "One more".into(), email: "x@example.com".into(), note: None }, None).unwrap_err();
         assert!(err.to_string().contains("all the bookings it can today"));
+    }
+
+    #[test]
+    fn bookers_can_move_or_cancel_with_their_code() {
+        let (s, cal) = store();
+        let l = s.save_booking_link(None, &input(&cal)).unwrap();
+        let other = s.save_booking_link(None, &BookingLinkInput { title: "Studio visit".into(), ..input(&cal) }).unwrap();
+        let slots = s.public_booking(&l.token).unwrap().slots;
+        let done = s.book(&l.token, &BookingRequest { start: slots[0].start, name: "Ana".into(), email: "ana@example.com".into(), note: None }, Some("https://cal.example/book/T/b/")).unwrap();
+        assert_eq!(done.code.len(), 32);
+        let event_of = |start: i64| s.occurrences(start - 1, start + 1).unwrap().into_iter().find(|o| o.title == "Intro call with Ana");
+        let ev = event_of(slots[0].start).unwrap();
+        assert!(s.event(&ev.event_id, None).unwrap().notes.unwrap().contains(&format!("https://cal.example/book/T/b/{}", done.code)), "the invitation carries the manage link");
+
+        // Only this link and this code open it.
+        assert!(s.managed_booking(&other.token, &done.code).is_err(), "a code works only with its own link");
+        assert!(s.managed_booking(&l.token, "0".repeat(32).as_str()).is_err());
+        let page = s.managed_booking(&l.token, &done.code).unwrap();
+        assert_eq!((page.name.as_str(), page.start, page.cancelled, page.moves_left), ("Ana", slots[0].start, false, MAX_MOVES));
+        assert!(!page.slots.iter().any(|t| t.start == slots[0].start), "its own time isn't offered as a move");
+        assert!(page.slots.iter().any(|t| t.start == slots[1].start), "but the time right after is, though its own event overlaps it");
+
+        // Move it: the event moves, and the old time frees up on the public page.
+        let to = page.slots.iter().find(|t| t.start >= slots[0].start + 3 * 3600).unwrap().start;
+        let moved = s.change_booking(&l.token, &done.code, &BookingChange::Reschedule { start: to }).unwrap();
+        assert_eq!((moved.start, moved.moves_left), (to, MAX_MOVES - 1));
+        assert!(event_of(slots[0].start).is_none() && event_of(to).is_some(), "the event moved");
+        assert!(s.public_booking(&l.token).unwrap().slots.iter().any(|t| t.start == slots[0].start), "the old time is free again");
+        assert!(s.change_booking(&l.token, &done.code, &BookingChange::Reschedule { start: to + 60 }).is_err(), "only a free slot");
+
+        // Cancel it: the event goes, and the page says so.
+        let gone = s.change_booking(&l.token, &done.code, &BookingChange::Cancel).unwrap();
+        assert!(gone.cancelled && gone.slots.is_empty());
+        assert!(event_of(to).is_none());
+        assert!(s.change_booking(&l.token, &done.code, &BookingChange::Cancel).unwrap_err().to_string().contains("cancelled"));
+
+        // The host deleting the event reads as cancelled too.
+        let again = s.book(&l.token, &BookingRequest { start: slots[0].start, name: "Ana".into(), email: "ana@example.com".into(), note: None }, None).unwrap();
+        let ev = event_of(slots[0].start).unwrap();
+        s.delete_event(&ev.event_id, None, crate::EditScope::All).unwrap();
+        assert!(s.managed_booking(&l.token, &again.code).unwrap().cancelled);
+        assert!(s.change_booking(&l.token, &again.code, &BookingChange::Cancel).is_err(), "nothing left to cancel");
+        let serde: BookingChange = serde_json::from_str(r#"{"action":"reschedule","start":5}"#).unwrap();
+        assert_eq!(serde, BookingChange::Reschedule { start: 5 });
     }
 }

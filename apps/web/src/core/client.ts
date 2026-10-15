@@ -56,6 +56,8 @@ import type {
   NoteRecord,
   NoteSummary,
   NoteTask,
+  ManagedBooking,
+  BookingChange,
   MeetingPrefs,
   NotesPrefs,
   NoteTarget,
@@ -157,6 +159,9 @@ export interface CoreClient {
   /** A scheduling link's public page (no session needed on a gateway). */
   publicBooking(token: string): Promise<PublicBooking>
   bookSlot(token: string, request: BookingRequest): Promise<Booked>
+  /** A booking's own page, and changing it from there (ADR-0031). */
+  managedBooking(token: string, code: string): Promise<ManagedBooking>
+  changeBooking(token: string, code: string, change: BookingChange): Promise<ManagedBooking>
   setSwipeActions(actions: SwipeActions): Promise<SwipeActions>
   addInterestingCalendar(id: string): Promise<void>
   removeInterestingCalendar(id: string): Promise<void>
@@ -323,6 +328,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     deleteBookingLink: (id) => call("delete_booking_link", { id }),
     publicBooking: (token) => call("public_booking", { token }),
     bookSlot: (token, request) => call("book_slot", { token, request }),
+    managedBooking: (token, code) => call("managed_booking", { token, code }),
+    changeBooking: (token, code, change) => call("change_booking", { token, code, change }),
     setSwipeActions: (actions) => call("set_swipe_actions", { actions }),
     addInterestingCalendar: (id) => call("add_interesting_calendar", { id }),
     removeInterestingCalendar: (id) => call("remove_interesting_calendar", { id }),
@@ -471,6 +478,20 @@ export async function visitorBook(token: string, request: BookingRequest): Promi
   const r = await fetch(`/api/book/${encodeURIComponent(token)}`, { method: "POST", credentials: "omit", headers: { "Content-Type": "application/json", ...CSRF }, body: JSON.stringify(request) })
   if (!r.ok) throw await gatewayError(r)
   return (await r.json()) as Booked
+}
+
+export async function visitorManaged(token: string, code: string): Promise<ManagedBooking> {
+  if (!onGateway()) return (await getCoreClient()).managedBooking(token, code)
+  const r = await fetch(`/api/book/${encodeURIComponent(token)}/b/${encodeURIComponent(code)}`, { credentials: "omit" })
+  if (!r.ok) throw await gatewayError(r)
+  return (await r.json()) as ManagedBooking
+}
+
+export async function visitorChange(token: string, code: string, change: BookingChange): Promise<ManagedBooking> {
+  if (!onGateway()) return (await getCoreClient()).changeBooking(token, code, change)
+  const r = await fetch(`/api/book/${encodeURIComponent(token)}/b/${encodeURIComponent(code)}`, { method: "POST", credentials: "omit", headers: { "Content-Type": "application/json", ...CSRF }, body: JSON.stringify(change) })
+  if (!r.ok) throw await gatewayError(r)
+  return (await r.json()) as ManagedBooking
 }
 
 export async function signInToGateway(password: string): Promise<void> {

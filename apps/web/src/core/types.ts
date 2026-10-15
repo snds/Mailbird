@@ -608,7 +608,26 @@ export interface Booked {
   host: string
   /** An invitation was emailed to the booker. */
   invited: boolean
+  /** The private code for this booking's own page: change the time or cancel (ADR-0031). */
+  code: string
 }
+
+/** A booking's own page: the booking, and the times it can move to. */
+export interface ManagedBooking {
+  title: string
+  host: string
+  name: string
+  start: number
+  end: number
+  minutes: number
+  timeZone: string
+  cancelled: boolean
+  past: boolean
+  slots: TimeSlot[]
+  movesLeft: number
+}
+
+export type BookingChange = { action: "reschedule"; start: number } | { action: "cancel" }
 
 /** A mail action a swipe can do (ADR-0025). */
 export type SwipeActionId = "none" | "read" | "archive" | "star" | "snooze-tomorrow" | "snooze-next-week" | "remind" | "newsletters"

@@ -98,6 +98,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **18 · Tasks on the calendar** ✅ | Checklist items from every note listed beside the calendar, planned into free time as linked blocks, checked off from either side; checked items move down their list ([ADR-0028](docs/decisions/0028-tasks-on-the-calendar.md)) |
 | **19 · Travel and time zones** ✅ | Travel time before events (the same property Apple Calendar uses), drawn above the event and counted as busy, with a "time to leave" alert; events set in another time zone, showing what that is on your clock ([ADR-0029](docs/decisions/0029-travel-and-time-zones.md)) |
 | **20 · Meeting services** ✅ | Calls read from the invitation (Zoom, Meet, Teams, Webex, and more: link, meeting ID, passcode, one-tap dial-in), Join in the service's app or the browser, Calendly and Cal.com reschedule and cancel links, Add video call (Jitsi) ([ADR-0030](docs/decisions/0030-meeting-services.md)) |
+| **21 · Change a booking** ✅ | Everyone who books gets a private link to pick a new time or cancel (on the confirmation, and in the invitation when the gateway knows its address); the event moves or goes, and the guest's invitation follows ([ADR-0031](docs/decisions/0031-change-a-booking.md)) |
 
 ## License
 

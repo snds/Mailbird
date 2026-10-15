@@ -142,6 +142,7 @@ export function manageLinks(...texts: (string | null | undefined)[]): ManageLink
         : is("savvycal.com") && /\/(reschedule|cancel|manage)/.test(path) ? [path.includes("cancel") ? "cancel" : path.includes("reschedule") ? "reschedule" : "manage", "SavvyCal"]
         : is("acuityscheduling.com") && (path.includes("action=") || path.includes("/appointments/")) ? ["manage", "Acuity"]
         : is("doodle.com") && path.startsWith("/meeting/") ? ["manage", "Doodle"]
+        : /^\/book\/[0-9a-f]{32}\/b\/[0-9a-f]{32}\/?$/.test(path) ? ["manage", "Mailbird"]
         : null
       if (found && !out.some((x) => x.url === url)) out.push({ action: found[0], tool: found[1], url })
     }
