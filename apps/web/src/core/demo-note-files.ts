@@ -51,7 +51,7 @@ export function createDemoFiles(isLocked: (noteId: string) => boolean, unlocked:
       const f = files.get(id)
       if (!f) throw new Error("that image is gone")
       if (f.sealed && !unlocked()) throw new Error("Locked notes are locked. Enter your passphrase to see this image.")
-      return { id, mime: f.mime, dataBase64: f.data }
+      return { id, mime: f.mime, dataBase64: f.data, text: f.text ?? null }
     },
     of: (noteId: string) => [...files.values()].filter((f) => f.noteId === noteId).sort((a, b) => a.created - b.created).map(info),
     records: () => [...files.values()].map(info),
@@ -66,6 +66,17 @@ export function createDemoFiles(isLocked: (noteId: string) => boolean, unlocked:
       files.set(f.id, { ...f, data: raw })
       return true
     },
+    /** Text in images (ADR-0045). */
+    setText(id: string, text: string): NoteFile {
+      const f = files.get(id)
+      if (!f) throw new Error("that image is gone")
+      if (f.sealed && !unlocked()) throw new Error("Locked notes are locked. Enter your passphrase first.")
+      Object.assign(f, { text: text.trim().slice(0, 20_000), updated: Math.max(now(), f.updated + 1) })
+      return info(f)
+    },
+    withoutText: (limit: number) => [...files.values()].filter((f) => f.text == null && !f.sealed).slice(0, limit).map(info),
+    /** What search sees of a note's images: nothing while it's locked. */
+    textOf: (noteId: string) => [...files.values()].filter((f) => f.noteId === noteId && !f.sealed && f.text).map((f) => f.text!).join("\n"),
     /** With its note's lock (ADR-0043). */
     reseal(noteId: string, sealed: boolean) {
       for (const f of files.values()) if (f.noteId === noteId) Object.assign(f, { sealed, updated: Math.max(now(), f.updated + 1) })

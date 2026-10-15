@@ -2,6 +2,9 @@
 //! `![alt](note-file:ID)`; the bytes live here, one row per image, so the
 //! text stays small, searchable, and mergeable while images sync on their
 //! own. A locked note's images are sealed with its text (ADR-0043).
+//!
+//! The text found in an image (ADR-0045) is kept with it, sealed with it
+//! too, and gathered into the note's `image_text` so search finds it.
 
 use base64::Engine;
 use rusqlite::{OptionalExtension, params};
@@ -25,6 +28,38 @@ pub(crate) const MIGRATE_V17: &str = "CREATE TABLE note_files (
 );
 CREATE INDEX note_files_note ON note_files (note_id);";
 
+/// Version 18: the text found in images, searchable with the note's own
+/// (ADR-0045). Full-text search gains a column, so its index is rebuilt.
+pub(crate) const MIGRATE_V18: &str = "ALTER TABLE note_files ADD COLUMN text TEXT;
+ALTER TABLE notes ADD COLUMN image_text TEXT NOT NULL DEFAULT '';
+DROP TRIGGER notes_ai;
+DROP TRIGGER notes_ad;
+DROP TRIGGER notes_au;
+DROP TABLE notes_fts;
+CREATE VIRTUAL TABLE notes_fts USING fts5(
+  title, body, tags, image_text,
+  content = 'notes', content_rowid = 'rowid',
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN
+  INSERT INTO notes_fts (rowid, title, body, tags, image_text) VALUES (new.rowid, new.title, new.body, new.tags, new.image_text);
+END;
+CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
+  INSERT INTO notes_fts (notes_fts, rowid, title, body, tags, image_text) VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.image_text);
+END;
+CREATE TRIGGER notes_au AFTER UPDATE OF title, body, tags, image_text ON notes BEGIN
+  INSERT INTO notes_fts (notes_fts, rowid, title, body, tags, image_text) VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.image_text);
+  INSERT INTO notes_fts (rowid, title, body, tags, image_text) VALUES (new.rowid, new.title, new.body, new.tags, new.image_text);
+END;
+INSERT INTO notes_fts (notes_fts) VALUES ('rebuild');";
+
+/// More text than any page holds; anything longer is cut.
+const MAX_TEXT: usize = 20_000;
+/// What a sealed image's text is bound to, apart from its bytes.
+fn text_aad(id: &str) -> String {
+    format!("{id}#text")
+}
+
 /// How notes link to their images in Markdown.
 pub const NOTE_FILE_SCHEME: &str = "note-file:";
 /// Images the editor can show; anything else is refused at the door.
@@ -46,6 +81,10 @@ pub struct NoteFile {
     pub size: u32,
     /// Sealed with the notes passphrase: its note is locked.
     pub sealed: bool,
+    /// The text found in it, as stored: plain, or sealed when the image is.
+    /// `None` until something has looked (ADR-0045).
+    #[serde(default)]
+    pub text: Option<String>,
     pub created: i64,
     pub updated: i64,
 }
@@ -57,6 +96,9 @@ pub struct NoteFileData {
     pub id: String,
     pub mime: String,
     pub data_base64: String,
+    /// The text found in it, readable; `None` until something has looked.
+    #[serde(default)]
+    pub text: Option<String>,
 }
 
 /// The extension an image gets when it's written out as a file.
@@ -93,6 +135,19 @@ pub(crate) fn sniff_mime(data: &[u8]) -> Option<&'static str> {
     })
 }
 
+/// Whitespace tidied and the length capped, at a character boundary.
+fn clip(text: &str) -> String {
+    let t: String = text.lines().map(str::trim_end).collect::<Vec<_>>().join("\n").trim().to_string();
+    match t.char_indices().nth(MAX_TEXT) {
+        Some((i, _)) => t[..i].to_string(),
+        None => t,
+    }
+}
+
+fn open_text(key: &NotesKey, id: &str, sealed: &str) -> Result<String> {
+    String::from_utf8(open(key, &text_aad(id), sealed)?).map_err(|_| Error::Invalid("the image's text is damaged".into()))
+}
+
 /// The ids a note's Markdown points at, in order, once each.
 pub fn note_file_ids(markdown: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -117,10 +172,11 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<NoteFile> {
         sealed: r.get(6)?,
         created: r.get(7)?,
         updated: r.get(8)?,
+        text: r.get(9)?,
     })
 }
 
-const COLS: &str = "id, note_id, mime, width, height, length(data), sealed, created, updated";
+const COLS: &str = "id, note_id, mime, width, height, length(data), sealed, created, updated, text";
 
 impl Store {
     fn note_locked(&self, note_id: &str) -> Result<bool> {
@@ -178,37 +234,75 @@ impl Store {
 
     /// An image's bytes to show. A sealed one opens only with the key.
     pub fn note_file(&self, id: &str, key: Option<&NotesKey>) -> Result<NoteFileData> {
-        let (mime, data, sealed): (String, Vec<u8>, bool) = self
+        let (mime, data, sealed, text): (String, Vec<u8>, bool, Option<String>) = self
             .db
-            .query_row("SELECT mime, data, sealed FROM note_files WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .query_row("SELECT mime, data, sealed, text FROM note_files WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
             .optional()?
             .ok_or_else(|| Error::NotFound("that image is gone".into()))?;
-        let plain = match (sealed, key) {
-            (false, _) => data,
-            (true, Some(k)) => open(k, id, &B64.encode(&data))?,
+        let (plain, text) = match (sealed, key) {
+            (false, _) => (data, text),
+            (true, Some(k)) => (open(k, id, &B64.encode(&data))?, text.map(|t| open_text(k, id, &t)).transpose()?),
             (true, None) => return Err(Error::Invalid("Locked notes are locked. Enter your passphrase to see this image.".into())),
         };
-        Ok(NoteFileData { id: id.to_string(), mime, data_base64: B64.encode(plain) })
+        Ok(NoteFileData { id: id.to_string(), mime, data_base64: B64.encode(plain), text })
     }
 
     /// Seals (or, with `seal_them` false, opens) every image of a note, with
     /// the note's own lock or unlock (ADR-0043).
     pub(crate) fn reseal_note_files(&self, note_id: &str, from: Option<&NotesKey>, to: Option<&NotesKey>) -> Result<()> {
-        let mut st = self.db.prepare("SELECT id, data, sealed FROM note_files WHERE note_id = ?1")?;
-        let rows: Vec<(String, Vec<u8>, bool)> = st.query_map([note_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+        let mut st = self.db.prepare("SELECT id, data, sealed, text FROM note_files WHERE note_id = ?1")?;
+        let rows: Vec<(String, Vec<u8>, bool, Option<String>)> = st.query_map([note_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<rusqlite::Result<_>>()?;
         drop(st);
-        for (id, data, sealed) in rows {
-            let plain = match (sealed, from) {
-                (false, _) => data,
-                (true, Some(k)) => open(k, &id, &B64.encode(&data))?,
+        for (id, data, sealed, text) in rows {
+            let (plain, text) = match (sealed, from) {
+                (false, _) => (data, text),
+                (true, Some(k)) => (open(k, &id, &B64.encode(&data))?, text.map(|t| open_text(k, &id, &t)).transpose()?),
                 (true, None) => continue,
             };
-            let (out, now_sealed) = match to {
-                Some(k) => (B64.decode(seal(k, &id, &plain)?).map_err(|_| Error::Invalid("couldn't seal the image".into()))?, true),
-                None => (plain, false),
+            let (out, text, now_sealed) = match to {
+                Some(k) => (
+                    B64.decode(seal(k, &id, &plain)?).map_err(|_| Error::Invalid("couldn't seal the image".into()))?,
+                    text.map(|t| seal(k, &text_aad(&id), t.as_bytes())).transpose()?,
+                    true,
+                ),
+                None => (plain, text, false),
             };
-            self.db.execute("UPDATE note_files SET data = ?2, sealed = ?3, updated = MAX(?4, updated + 1) WHERE id = ?1", params![id, out, now_sealed, now()])?;
+            self.db.execute("UPDATE note_files SET data = ?2, sealed = ?3, text = ?4, updated = MAX(?5, updated + 1) WHERE id = ?1", params![id, out, now_sealed, text, now()])?;
         }
+        self.refresh_image_text(note_id)
+    }
+
+    // ── Text in images (ADR-0045) ─────────────────────────────────────────
+
+    /// Keeps the text found in an image. A sealed image's text is sealed
+    /// too, so that needs the key. `""` means looked, found nothing.
+    pub fn set_note_file_text(&self, id: &str, text: &str, key: Option<&NotesKey>) -> Result<NoteFile> {
+        let f = self.note_file_info(id)?;
+        let text = clip(text);
+        let stored = match (f.sealed, key) {
+            (false, _) => text,
+            (true, Some(k)) => seal(k, &text_aad(id), text.as_bytes())?,
+            (true, None) => return Err(Error::Invalid("Locked notes are locked. Enter your passphrase first.".into())),
+        };
+        self.db.execute("UPDATE note_files SET text = ?2, updated = MAX(?3, updated + 1) WHERE id = ?1", params![id, stored, now()])?;
+        self.refresh_image_text(&f.note_id)?;
+        self.note_file_info(id)
+    }
+
+    /// Images no one has read the text of yet, oldest first. Sealed ones wait
+    /// for an unlock; this doesn't open them.
+    pub fn note_files_without_text(&self, limit: u32) -> Result<Vec<NoteFile>> {
+        let mut st = self.db.prepare(&format!("SELECT {COLS} FROM note_files WHERE text IS NULL AND sealed = 0 ORDER BY created, rowid LIMIT ?1"))?;
+        Ok(st.query_map([limit], row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Gathers a note's readable image text into the note, for search. A
+    /// locked note's images are sealed, so it gathers nothing.
+    pub(crate) fn refresh_image_text(&self, note_id: &str) -> Result<()> {
+        let mut st = self.db.prepare("SELECT text FROM note_files WHERE note_id = ?1 AND sealed = 0 AND text IS NOT NULL AND text <> '' ORDER BY created, rowid")?;
+        let texts: Vec<String> = st.query_map([note_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        let all = texts.join("\n");
+        self.db.execute("UPDATE notes SET image_text = ?2 WHERE id = ?1 AND image_text <> ?2", params![note_id, all])?;
         Ok(())
     }
 
@@ -240,10 +334,11 @@ impl Store {
             return Err(Error::Invalid("that image is over 10 MB".into()));
         }
         self.db.execute(
-            "INSERT INTO note_files (id, note_id, mime, data, sealed, width, height, created, updated) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(id) DO UPDATE SET data = excluded.data, sealed = excluded.sealed, mime = excluded.mime, width = excluded.width, height = excluded.height, updated = excluded.updated",
-            params![f.id, f.note_id, f.mime, data, f.sealed, f.width, f.height, f.created, f.updated],
+            "INSERT INTO note_files (id, note_id, mime, data, sealed, width, height, created, updated, text) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET data = excluded.data, sealed = excluded.sealed, mime = excluded.mime, width = excluded.width, height = excluded.height, updated = excluded.updated, text = excluded.text",
+            params![f.id, f.note_id, f.mime, data, f.sealed, f.width, f.height, f.created, f.updated, f.text.as_deref().map(|t| if f.sealed { t.to_string() } else { clip(t) })],
         )?;
+        self.refresh_image_text(&f.note_id)?;
         Ok(true)
     }
 }
@@ -343,5 +438,44 @@ mod tests {
         assert_ne!(ids[0], f.id, "a copy of its own");
         assert_eq!(other.note_files(&back[0].id).unwrap()[0].id, ids[0]);
         assert_eq!(B64.decode(other.note_file(&ids[0], None).unwrap().data_base64).unwrap(), PNG);
+    }
+
+    #[test]
+    fn text_in_images_is_searchable_and_sealed_with_the_note() {
+        let s = Store::open_in_memory().unwrap();
+        let n = note(&s);
+        let f = s.add_note_file(&n, "image/png", &B64.encode(PNG), None, None, None).unwrap();
+        assert_eq!(s.note_files_without_text(10).unwrap().len(), 1, "nothing has read it yet");
+        s.set_note_file_text(&f.id, "  INVOICE 4417\n  Lisboa  \n", None).unwrap();
+        assert!(s.note_files_without_text(10).unwrap().is_empty());
+        assert_eq!(s.note_file(&f.id, None).unwrap().text.as_deref(), Some("INVOICE 4417\n  Lisboa"));
+        let found = |q: &str| s.notes(&crate::NoteQuery { search: Some(q.into()), ..Default::default() }).unwrap().len();
+        assert_eq!(found("lisboa"), 1, "search finds words in its images");
+        assert_eq!(found("4417"), 1);
+
+        // Locked: the text is sealed and search can't see it; unlocking brings both back.
+        let k = s.set_notes_passphrase(None, "correct horse", None).unwrap();
+        s.lock_note(&n, &k).unwrap();
+        assert_eq!(found("lisboa"), 0);
+        let stored = s.note_file_info(&f.id).unwrap().text.unwrap();
+        assert!(!stored.contains("Lisboa"), "sealed at rest");
+        assert_eq!(s.note_file(&f.id, Some(&k)).unwrap().text.as_deref(), Some("INVOICE 4417\n  Lisboa"));
+        assert!(s.set_note_file_text(&f.id, "x", None).is_err(), "a sealed image's text needs the key");
+        let k2 = s.set_notes_passphrase(Some(&k), "battery staple", None).unwrap();
+        assert!(s.note_file(&f.id, Some(&k2)).unwrap().text.is_some(), "a new passphrase reseals the text too");
+        s.remove_note_lock(&n, &k2).unwrap();
+        assert_eq!(found("lisboa"), 1);
+
+        // Another device's copy brings its text; an empty answer means "looked, found none".
+        let other = Store::open_in_memory().unwrap();
+        let m = note(&other);
+        let mut rec = s.note_file_info(&f.id).unwrap();
+        rec.note_id = m.clone();
+        other.put_note_file(&rec, &s.note_file_raw(&f.id).unwrap()).unwrap();
+        assert_eq!(other.notes(&crate::NoteQuery { search: Some("invoice".into()), ..Default::default() }).unwrap().len(), 1);
+        let g = other.add_note_file(&m, "image/png", &B64.encode(PNG), None, None, None).unwrap();
+        other.set_note_file_text(&g.id, "", None).unwrap();
+        assert!(other.note_files_without_text(10).unwrap().is_empty());
+        assert_eq!(clip(&"é".repeat(MAX_TEXT + 5)).chars().count(), MAX_TEXT);
     }
 }

@@ -328,3 +328,18 @@ pub fn put_note_file(app: AppHandle, state: &Shared, file: pim_core::NoteFile, r
     }
     Ok(kept)
 }
+
+// ── Text in images (ADR-0045) ───────────────────────────────────────────────
+
+/// Keeps the text found in an image; a locked note's needs the notes unlocked.
+pub fn set_note_file_text(app: AppHandle, state: &Shared, id: String, text: String) -> Res<pim_core::NoteFile> {
+    let k = key(state).ok();
+    let f = with_store(state, |s| s.set_note_file_text(&id, &text, k.as_ref()))?;
+    changed(&app);
+    Ok(f)
+}
+
+/// Images whose text no one has read yet, for the app to read on the device.
+pub fn note_files_without_text(state: &Shared, limit: u32) -> Res<Vec<pim_core::NoteFile>> {
+    with_store(state, |s| s.note_files_without_text(limit.min(50)))
+}

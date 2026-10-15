@@ -125,6 +125,10 @@ async fn every_command_routes_and_works() {
     assert_eq!(json_of(dispatch(&app, &state, "note_files", json!({ "noteId": secret["id"] })).await.unwrap()).as_array().unwrap().len(), 1);
     let records = json_of(dispatch(&app, &state, "note_file_records", Value::Null).await.unwrap());
     assert_eq!(json_of(dispatch(&app, &state, "put_note_file", json!({ "file": records[0], "rawBase64": "aW1n" })).await.unwrap()), false, "not newer");
+    // Text in images (ADR-0045): sealed like the image, readable while unlocked.
+    assert!(json_of(dispatch(&app, &state, "note_files_without_text", json!({ "limit": 10 })).await.unwrap()).as_array().unwrap().is_empty(), "sealed ones wait");
+    dispatch(&app, &state, "set_note_file_text", json!({ "id": img["id"], "text": "Gate code 4242" })).await.unwrap();
+    assert_eq!(json_of(dispatch(&app, &state, "note_file", json!({ "id": img["id"] })).await.unwrap())["text"], "Gate code 4242");
     // Smart folders (ADR-0042): one that matches, then gone.
     let folder = json_of(dispatch(&app, &state, "save_note_folder", json!({ "id": null, "input": { "name": "Greetings", "words": "hello" } })).await.unwrap());
     assert_eq!(folder["count"], 2, "the note and the one linking to it");

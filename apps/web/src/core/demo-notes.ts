@@ -142,7 +142,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     }),
     note(`Old color experiments\n\nOKLCH ramps with a fixed chroma cap.\n\n![Six hue ramps, light to dark](${NOTE_FILE}demo-swatches)`, 40 * DAY, { archived: true, tags: ["design"] }),
   ]
-  let prefs: NotesPrefs = { sortChecked: true, grid: false }
+  let prefs: NotesPrefs = { sortChecked: true, grid: false, readImageText: true }
   let relay: RelayConfig | null = null
   try {
     const saved = localStorage.getItem("mailbird.demo.relay")
@@ -215,7 +215,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
   const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
   const matches = (x: DemoNote, search: string) => {
     // A locked note is found by its title only, as the core's search does.
-    const hay = [...words(x.locked ? (x.title ?? "") : x.markdown), ...x.tags.flatMap(words)]
+    const hay = [...words(x.locked ? (x.title ?? "") : `${x.markdown} ${files.textOf(x.id)}`), ...x.tags.flatMap(words)]
     return words(search).every((w) => hay.some((h) => h.startsWith(w)))
   }
   // Smart folders (ADR-0042), with the core's rules and checks.
@@ -468,6 +468,12 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       if (kept) changed()
       return later(kept)
     },
+    setNoteFileText: async (id: string, text: string) => {
+      const f = files.setText(id, text)
+      changed()
+      return later(f)
+    },
+    noteFilesWithoutText: async (limit: number) => later(files.withoutText(limit)),
     noteFolders: async () => later(folders.map((f) => ({ ...f, count: folderCount(f) }))),
     saveNoteFolder: async (id: string | null, input: NoteFolderInput) => {
       const rule = checkFolder(input)

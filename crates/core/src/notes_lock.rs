@@ -182,7 +182,7 @@ impl Store {
         }
         let sealed = seal(key, id, n.markdown.as_bytes())?;
         self.db.execute(
-            "UPDATE notes SET locked = 1, sealed = ?2, body = '', snippet = '', ydoc = NULL, updated = MAX(?3, updated + 1) WHERE id = ?1",
+            "UPDATE notes SET locked = 1, sealed = ?2, body = '', snippet = '', ydoc = NULL, image_text = '', updated = MAX(?3, updated + 1) WHERE id = ?1",
             params![id, sealed, now()],
         )?;
         self.reseal_note_files(id, None, Some(key))

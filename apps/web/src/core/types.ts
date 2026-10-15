@@ -686,6 +686,8 @@ export interface NoteFile {
   size: number
   /** Sealed with the notes passphrase: its note is locked. */
   sealed: boolean
+  /** The text found in it, as stored (sealed when the image is); null until read (ADR-0045). */
+  text?: string | null
   created: number
   updated: number
 }
@@ -695,6 +697,8 @@ export interface NoteFileData {
   id: string
   mime: string
   dataBase64: string
+  /** The text found in it, readable; null until read. */
+  text?: string | null
 }
 
 /** Command id → key (ADR-0032); "" for none. */
@@ -806,6 +810,8 @@ export interface NotesPrefs {
   sortChecked: boolean
   /** Notes as cards in a grid, the way Keep shows them (ADR-0038). */
   grid?: boolean
+  /** Read the text in images on this device, so search finds it (ADR-0045). On unless turned off. */
+  readImageText?: boolean
 }
 
 /** A note card's color: Keep's palette by name. The shades are tokens (`--c-note-card-*`). */

@@ -94,8 +94,12 @@ export function useCoreEvents() {
         void qc.invalidateQueries({ queryKey: ["notes", "list"] })
         void qc.invalidateQueries({ queryKey: ["notes", "tasks"] })
       }),
-      // The open note's own query stays put: its editor is the live copy.
-      core.on("notes:changed", () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" })),
+      // The open note's own query stays put: its editor is the live copy. A
+      // shown image does too (ADR-0044): its bytes don't change with an edit,
+      // and reloading would flicker. One that failed (not synced yet) retries.
+      core.on("notes:changed", () =>
+        void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" && !(q.queryKey[1] === "file" && q.state.status === "success") }),
+      ),
       core.on("compose:changed", () => void qc.invalidateQueries({ queryKey: ["compose"] })),
     ]
     // All-day events sit on the device clock; tell the core which one that is.
@@ -357,7 +361,7 @@ export function useNoteFile(id: string | null) {
     queryKey: keys.noteFile(id ?? ""),
     queryFn: async () => {
       const f = await call((c) => c.noteFile(id!))
-      return { mime: f.mime, url: URL.createObjectURL(new Blob([fromBase64(f.dataBase64)], { type: f.mime })) }
+      return { mime: f.mime, text: f.text ?? null, url: URL.createObjectURL(new Blob([fromBase64(f.dataBase64)], { type: f.mime })) }
     },
     enabled: !!id,
     staleTime: Infinity,
