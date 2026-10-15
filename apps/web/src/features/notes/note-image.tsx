@@ -5,9 +5,11 @@ import { toast } from "sonner"
 import { Icon } from "@/components/icon"
 import { Button } from "@/components/ui/button"
 import { useNoteFile } from "@/core/queries"
+import { fromSvg, SVG_MIME } from "@/lib/sketch"
 import { cn } from "@/lib/utils"
 
 import { noteFileId } from "./note-src"
+import { useSketchSheet } from "./sketch-store"
 
 const frame = "inline-flex max-w-full items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 align-middle text-sm text-muted-foreground"
 
@@ -39,6 +41,14 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     } catch {
       toast.error("Couldn't copy: the browser blocked it")
     }
+  }
+  // A sketch (ADR-0046) shows on its paper, and opens again to edit.
+  const sketch = file.data?.mime === SVG_MIME
+  const editSketch = async () => {
+    const at = getPos()
+    const parsed = file.data ? fromSvg(await (await fetch(file.data.url)).text()) : null
+    if (!parsed || typeof at !== "number") return void toast.error("This sketch can't be edited here")
+    useSketchSheet.getState().show(parsed, at)
   }
   const insertText = () => {
     const at = getPos()
@@ -88,7 +98,11 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
         alt={alt}
         draggable={false}
         onError={() => setBroken(true)}
-        className={cn("block max-h-[70vh] max-w-full rounded-lg border object-contain", selected && "ring-2 ring-ring ring-offset-2 ring-offset-background")}
+        className={cn(
+          "block max-h-[70vh] max-w-full rounded-lg border object-contain",
+          sketch && "bg-(--c-sketch-paper)",
+          selected && "ring-2 ring-ring ring-offset-2 ring-offset-background",
+        )}
       />
     )
   } else {
@@ -104,11 +118,18 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     <NodeViewWrapper as="span" className="my-1 inline-flex max-w-full flex-col gap-1.5 align-bottom" data-drag-handle>
       {body}
       {/* The description is how the image reads aloud, and what search sees. */}
-      {(selected || draft !== null || showText) && editor.isEditable && found && (
+      {(selected || draft !== null || showText) && editor.isEditable && (found || sketch) && (
         <span className="flex flex-wrap items-center gap-1.5" contentEditable={false}>
-          <Button type="button" size="xs" variant="outline" aria-expanded={showText} onClick={() => setShowText((v) => !v)}>
-            <Icon name="document_scanner" data-icon="inline-start" /> Text in image
-          </Button>
+          {sketch && (
+            <Button type="button" size="xs" variant="outline" onClick={() => void editSketch()}>
+              <Icon name="draw" data-icon="inline-start" /> Edit sketch
+            </Button>
+          )}
+          {found && (
+            <Button type="button" size="xs" variant="outline" aria-expanded={showText} onClick={() => setShowText((v) => !v)}>
+              <Icon name="document_scanner" data-icon="inline-start" /> Text in image
+            </Button>
+          )}
         </span>
       )}
       {showText && found && (
@@ -160,7 +181,7 @@ export function NoteCover({ id, className }: { id: string; className?: string })
   const url = file.data?.url
   if (file.isError) return null
   return url ? (
-    <img src={url} alt="" draggable={false} className={cn("block max-h-48 w-full object-cover", className)} />
+    <img src={url} alt="" draggable={false} className={cn("block max-h-48 w-full object-cover", file.data?.mime === SVG_MIME && "bg-(--c-sketch-paper) object-contain", className)} />
   ) : (
     <span aria-hidden className={cn("block h-24 w-full animate-pulse bg-foreground/5", className)} />
   )

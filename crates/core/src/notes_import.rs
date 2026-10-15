@@ -267,6 +267,10 @@ impl<'a> Media<'a> {
         })?;
         let data = base64::engine::general_purpose::STANDARD.decode(data).ok().filter(|d| !d.is_empty() && d.len() <= MAX_NOTE_FILE)?;
         let mime = sniff_mime(&data).unwrap_or(mime);
+        // An SVG comes in only if it's a sketch as the app draws them (ADR-0046).
+        if mime == crate::sketch::SVG && crate::sketch::check_sketch(&data).is_err() {
+            return None;
+        }
         Some(ImportedImage { id: uuid::Uuid::new_v4().to_string(), mime, data })
     }
 }

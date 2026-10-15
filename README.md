@@ -113,6 +113,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **33 · Locked notes** ✅ | One passphrase (never stored) seals a note's text with AES-256-GCM on the device and in sync, and the relay keeps no readable copy; the title stays visible, search and export skip the text, and notes lock again after 10 idle minutes ([ADR-0043](docs/decisions/0043-locked-notes.md)) |
 | **34 · Images in notes** ✅ | Add, paste, or drop photos into a note (shrunk to 2048 px), describe them for screen readers, and see the first one on its card; they sync on their own, seal with locked notes, come along from Obsidian, Bear, Apple Notes, and Keep imports, and export to `attachments/`; web images load only when asked ([ADR-0044](docs/decisions/0044-images-in-notes.md)) |
 | **35 · Scans and text in images** ✅ | Scan a page from a photo (found, straightened, and cleaned to white paper and black ink), and the text in every note image is read on the device so search finds it; copy it or add it to the note; sealed with locked notes ([ADR-0045](docs/decisions/0045-scans-and-text-in-images.md)) |
+| **36 · Sketches** ✅ | Draw in a note with a pen (its pressure shapes the line), a finger, or a mouse: pens, see-through markers, an eraser, undo, and more room; sketches save as SVG you can edit again, sit on light paper in both themes, and the core keeps only SVG the app drew ([ADR-0046](docs/decisions/0046-sketches.md)) |
 
 ## License
 

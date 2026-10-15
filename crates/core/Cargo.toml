@@ -20,7 +20,6 @@ net = [
   "dep:tokio-rustls",
   "dep:webpki-roots",
   "dep:reqwest",
-  "dep:quick-xml",
 ]
 
 [dependencies]
@@ -45,8 +44,9 @@ webpki-roots = { version = "1.0", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["json", "query", "http2", "rustls-no-provider"], optional = true }
 # iCalendar + vCard parsing and recurrence expansion (Stalwart's, Apache-2.0 OR MIT).
 calcard = { version = "=0.3.14", default-features = false }
-# WebDAV multistatus parsing for CalDAV/CardDAV.
-quick-xml = { version = "0.42", optional = true }
+# WebDAV multistatus parsing for CalDAV/CardDAV, and checking sketches (SVG,
+# ADR-0046). Not behind `net`: the sketch check is store logic.
+quick-xml = "0.42"
 # PKCE (SHA-256), OAuth state, and locked notes (AES-256-GCM, PBKDF2): the
 # same ring that rustls already uses. Not behind `net`: locking is store logic.
 ring = "0.17"
