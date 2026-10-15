@@ -25,7 +25,7 @@ mod tasks_store;
 pub use tasks_store::{NoteTask, NotesPrefs, PlannedTask};
 pub use booking_store::{Booked, BookingChange, BookingLink, BookingLinkInput, BookingRequest, ManagedBooking, PublicBooking};
 pub use grammar::{KEY_COMMANDS, KeyBindings, SWIPE_ACTIONS, SwipeActions};
-pub use interesting::{INTERESTING_PREFIX, InterestingCalendar, SPECIAL_PREFIX};
+pub use interesting::{INTERESTING_PREFIX, InterestingCalendar, REGIONS, RegionChoice, SPECIAL_PREFIX};
 pub mod ical;
 pub mod itip;
 pub use connected_store::BIRTHDAY_PREFIX;

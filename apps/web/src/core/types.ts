@@ -651,6 +651,10 @@ export interface InterestingCalendar {
   /** ISO country code, for holidays. */
   country: string | null
   subscribed: boolean
+  /** The region you picked, for its regional days (ADR-0033). */
+  region: string | null
+  /** Regions you can pick, when the country has any. */
+  regions: { code: string; name: string }[]
 }
 
 /** What a smart group matches; every filled-in rule must hold (ADR-0023). */

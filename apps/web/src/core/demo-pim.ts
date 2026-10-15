@@ -4,7 +4,7 @@
 // the Rust core does the real iCalendar and time-zone work.
 
 import type { CoreEvent } from "./client"
-import { HOLIDAY_COUNTRIES, INTERESTING, MOON, SPECIAL, dayKey, daysOf, holidayId, localMidnight, moonPhases, parseDay } from "./demo-interesting"
+import { HOLIDAY_COUNTRIES, INTERESTING, MOON, REGIONS, SPECIAL, dayKey, daysOf, holidayId, holidays, localMidnight, moonPhases, parseDay, regionName } from "./demo-interesting"
 import type {
   Address,
   Attendee,
@@ -285,15 +285,27 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     return out
   }
   // Interesting calendars: holidays and moon phases from rules (ADR-0024).
+  // Country code → picked region (ADR-0033).
+  const regions: Record<string, string> = {}
+  const countryOf = (cal: string) => HOLIDAY_COUNTRIES.find((c) => holidayId(c.code) === cal)
+  const holidayName = (c: { code: string; country: string }) => `Holidays in ${regionName(c.code, regions[c.code]) ?? c.country}`
   const catalog = (): InterestingCalendar[] => [
-    ...HOLIDAY_COUNTRIES.map((c) => ({ id: holidayId(c.code), name: `Holidays in ${c.country}`, group: "holidays" as const, country: c.code, subscribed: collections.some((x) => x.id === holidayId(c.code)) })),
-    { id: MOON, name: "Moon phases", group: "sky" as const, country: null, subscribed: collections.some((x) => x.id === MOON) },
+    ...HOLIDAY_COUNTRIES.map((c) => ({
+      id: holidayId(c.code),
+      name: holidayName(c),
+      group: "holidays" as const,
+      country: c.code,
+      subscribed: collections.some((x) => x.id === holidayId(c.code)),
+      region: regions[c.code] ?? null,
+      regions: REGIONS.filter((r) => r.country === c.code).map(({ code, name }) => ({ code, name })),
+    })),
+    { id: MOON, name: "Moon phases", group: "sky" as const, country: null, subscribed: collections.some((x) => x.id === MOON), region: null, regions: [] },
   ]
   const interesting = (from: number, to: number): Occurrence[] =>
     collections
       .filter((c) => c.id.startsWith(INTERESTING) && !c.hidden)
       .flatMap((c) =>
-        daysOf(c.id, from, to).map(([d, n, title]): Occurrence => {
+        daysOf(c.id, from, to, regions[countryOf(c.id)?.code ?? ""]).map(([d, n, title]): Occurrence => {
           const start = localMidnight(d)
           return { eventId: `${SPECIAL}${c.id}|${dayKey(d)}|${n}`, calendarId: c.id, title, location: null, start, end: localMidnight(d, 1), originalStart: start, allDay: true, recurring: false, meetingUrl: null, contactId: null }
         }),
@@ -305,14 +317,21 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     const col = collections.find((c) => c.id === cal)
     const o = col && interesting(localMidnight(d), localMidnight(d, 1)).find((x) => x.eventId === id)
     if (!col || !o || n == null) throw new Error("that calendar was removed")
-    const country = HOLIDAY_COUNTRIES.find((c) => holidayId(c.code) === cal)?.country
+    const c = countryOf(cal ?? "")
+    const country = c?.country
+    const place = c && regionName(c.code, regions[c.code])
+    const nationwide = c ? holidays(c.code, d[0]).some(([x, t]) => dayKey(x) === dayKey(d) && t === o.title) : true
     const at = moonPhases(o.start, o.end).find(([, p]) => p === o.title)?.[0]
     const notes =
       cal === MOON
         ? `${o.title} at ${new Date((at ?? o.start) * 1000).toTimeString().slice(0, 5)}.`
         : /\((observed|substitute day)\)$/.test(o.title)
-          ? `The day off for a holiday that falls on a weekend, in ${country}. From ${col.name}.`
-          : `A public holiday in ${country}. Regional holidays aren't included. From ${col.name}.`
+          ? `The day off for a holiday that falls on a weekend, in ${place ?? country}. From ${col.name}.`
+          : place && !nationwide
+            ? `A public holiday in ${place}, not across ${country}. From ${col.name}.`
+            : !place && REGIONS.some((r) => r.country === c?.code)
+              ? `A public holiday in ${country}. To see your region's days too, pick it in Add holidays and more. From ${col.name}.`
+              : `A public holiday in ${country}. From ${col.name}.`
     return { ...o, notes, repeat: "none", timeZone: null, organizer: null, attendees: [], url: null, writable: false, reminders: [] }
   }
   // Scheduling links (ADR-0026), on the device clock: free half hours inside
@@ -775,6 +794,16 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       if (!c) throw new Error("there's no such calendar to add")
       const color = id === MOON ? "#64748b" : HOLIDAY_COUNTRIES.find((x) => holidayId(x.code) === id)!.color
       if (!c.subscribed) collections.push({ id, accountId: null, kind: "calendar", name: c.name, color, writable: false, hidden: false, scheduling: false })
+      changed()
+    },
+    setHolidayRegion: async (id: string, region: string | null) => {
+      const c = countryOf(id)
+      if (!c) throw new Error("there's no such holiday calendar")
+      if (region && !regionName(c.code, region)) throw new Error(`“${region}” isn't a region of ${c.country} with its own holidays`)
+      if (region) regions[c.code] = region
+      else delete regions[c.code]
+      const col = collections.find((x) => x.id === id)
+      if (col) col.name = holidayName(c)
       changed()
     },
     removeInterestingCalendar: async (id: string) => {

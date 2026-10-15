@@ -339,6 +339,15 @@ async fn interesting_calendar_commands() {
     let occ = call("list_occurrences", json!({ "from": 1_796_083_200i64, "to": 1_798_761_600i64 })).await.unwrap();
     assert!(occ.as_array().unwrap().iter().any(|o| o["title"] == json!("Christmas Day") && o["calendarId"] == json!("interesting:holidays-us")));
     call("remove_interesting_calendar", json!({ "id": "interesting:holidays-us" })).await.unwrap();
+
+    // Regions (ADR-0033): pick one, see its name, go back to nationwide.
+    call("set_holiday_region", json!({ "id": "interesting:holidays-de", "region": "BY" })).await.unwrap();
+    let list = call("interesting_calendars", Value::Null).await.unwrap();
+    let de = list.as_array().unwrap().iter().find(|c| c["id"] == json!("interesting:holidays-de")).unwrap();
+    assert_eq!((&de["name"], &de["region"]), (&json!("Holidays in Bavaria"), &json!("BY")));
+    assert!(de["regions"].as_array().unwrap().iter().any(|r| r == &json!({ "code": "SN", "name": "Saxony" })));
+    assert!(call("set_holiday_region", json!({ "id": "interesting:holidays-de", "region": "QC" })).await.is_err());
+    call("set_holiday_region", json!({ "id": "interesting:holidays-de", "region": null })).await.unwrap();
     let _ = std::fs::remove_dir_all(dir);
 }
 

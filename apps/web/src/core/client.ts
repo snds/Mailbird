@@ -169,6 +169,8 @@ export interface CoreClient {
   setKeyBindings(bindings: KeyBindings): Promise<KeyBindings>
   addInterestingCalendar(id: string): Promise<void>
   removeInterestingCalendar(id: string): Promise<void>
+  /** Which region's days a holiday calendar shows; null for nationwide (ADR-0033). */
+  setHolidayRegion(id: string, region: string | null): Promise<void>
   /** Occurrences overlapping [from, to), in seconds. */
   listOccurrences(from: number, to: number): Promise<Occurrence[]>
   /** One event at the occurrence starting at `start` (or its first). */
@@ -339,6 +341,7 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     setKeyBindings: (bindings) => call("set_key_bindings", { bindings }),
     addInterestingCalendar: (id) => call("add_interesting_calendar", { id }),
     removeInterestingCalendar: (id) => call("remove_interesting_calendar", { id }),
+    setHolidayRegion: (id, region) => call("set_holiday_region", { id, region }),
     listOccurrences: (from, to) => call("list_occurrences", { from, to }),
     getEvent: (id, start) => call("get_event", { id, start: start ?? null }),
     createEvent: (input) => call("create_event", { input }),
