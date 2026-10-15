@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useAccounts, useCollections, useOccurrences, usePimAction } from "@/core/queries"
+import { useAccounts, useCollections, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
 import type { Collection, Occurrence } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
+import { ariaKey, commandFor } from "@/lib/keys"
 
 import { Agenda } from "./agenda"
 import { CalendarSets } from "./calendar-sets"
@@ -181,18 +182,24 @@ export function CalendarView() {
           : `${days[0]!.toLocaleDateString(undefined, { month: "short" })} – ${days[6]!.toLocaleDateString(undefined, { month: "short", year: "numeric" })}`
         : fmt.monthYear(focus)
 
-  // Keyboard: t today, d/w/a views, ←/→ page. Never while typing.
+  // Keyboard (ADR-0032): your keys for today, views, and paging. Never while typing.
+  const { data: keys } = useKeyBindings()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
       if (e.metaKey || e.ctrlKey || e.altKey || t.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return
-      if (e.key === "t") goToday()
-      else if (e.key === "d") setView("day")
-      else if (e.key === "w") setView("week")
-      else if (e.key === "a") setView("agenda")
-      else if (e.key === "m") setView("month")
-      else if (e.key === "ArrowLeft") step(-1)
-      else if (e.key === "ArrowRight") step(1)
+      const run: Record<string, () => void> = {
+        "calendar.today": goToday,
+        "calendar.day": () => setView("day"),
+        "calendar.week": () => setView("week"),
+        "calendar.agenda": () => setView("agenda"),
+        "calendar.month": () => setView("month"),
+        "calendar.previous": () => step(-1),
+        "calendar.next": () => step(1),
+      }
+      const command = commandFor(keys, "calendar", e.key)
+      if (command) run[command]?.()
+      else if (e.key === "?") useUi.getState().setGrammarOpen(true)
       else return
       e.preventDefault()
     }
@@ -239,7 +246,7 @@ export function CalendarView() {
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-1">
-            <Button variant="outline" size="sm" onClick={goToday} aria-keyshortcuts="t">
+            <Button variant="outline" size="sm" onClick={goToday} aria-keyshortcuts={ariaKey(keys?.["calendar.today"] ?? "t")}>
               Today
             </Button>
             <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view === "agenda" ? "days" : view}`} onClick={() => step(-1)}>
@@ -260,10 +267,10 @@ export function CalendarView() {
               className="order-last mt-1 w-full *:flex-1 md:order-none md:mt-0 md:ml-auto md:w-auto md:*:flex-none"
               aria-label="View"
             >
-              <ToggleGroupItem value="agenda" aria-keyshortcuts="a">Agenda</ToggleGroupItem>
-              <ToggleGroupItem value="day" aria-keyshortcuts="d">Day</ToggleGroupItem>
-              <ToggleGroupItem value="week" aria-keyshortcuts="w">Week</ToggleGroupItem>
-              <ToggleGroupItem value="month" aria-keyshortcuts="m">Month</ToggleGroupItem>
+              <ToggleGroupItem value="agenda" aria-keyshortcuts={ariaKey(keys?.["calendar.agenda"] ?? "a")}>Agenda</ToggleGroupItem>
+              <ToggleGroupItem value="day" aria-keyshortcuts={ariaKey(keys?.["calendar.day"] ?? "d")}>Day</ToggleGroupItem>
+              <ToggleGroupItem value="week" aria-keyshortcuts={ariaKey(keys?.["calendar.week"] ?? "w")}>Week</ToggleGroupItem>
+              <ToggleGroupItem value="month" aria-keyshortcuts={ariaKey(keys?.["calendar.month"] ?? "m")}>Month</ToggleGroupItem>
             </ToggleGroup>
           </div>
         </header>

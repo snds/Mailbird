@@ -52,6 +52,8 @@ pub const COMMANDS: &[&str] = &[
     "unarchive_bundle",
     "swipe_actions",
     "set_swipe_actions",
+    "key_bindings",
+    "set_key_bindings",
     "provider_capabilities",
     "list_accounts",
     "add_account",
@@ -372,6 +374,11 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "set_swipe_actions" => {
             args!(args, actions: pim_core::SwipeActions);
             Output::json(commands::set_swipe_actions(state, actions)?)
+        }
+        "key_bindings" => Output::json(commands::key_bindings(state)?),
+        "set_key_bindings" => {
+            args!(args, bindings: pim_core::KeyBindings);
+            Output::json(commands::set_key_bindings(state, bindings)?)
         }
         "save_split" => {
             args!(args, id: Option<String>, input: pim_core::SplitInput);

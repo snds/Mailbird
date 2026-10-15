@@ -5,8 +5,9 @@ import { useUi } from "@/app/ui-store"
 import { VERTICALS } from "@/app/verticals"
 import { Icon, type IconName } from "@/components/icon"
 import { Command, CommandDialog, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command"
-import { useScreener } from "@/core/queries"
+import { useKeyBindings, useScreener } from "@/core/queries"
 import { LANES } from "@/features/mail/lanes"
+import { keyLabel } from "@/lib/keys"
 
 const LANE_ICONS: Record<string, IconName> = {
   inbox: "inbox",
@@ -31,6 +32,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
   const [query, setQuery] = useState("")
   const { resolvedTheme, setTheme } = useTheme()
   const { data: screener } = useScreener()
+  const { data: keys } = useKeyBindings()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -62,7 +64,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
             <CommandItem onSelect={run(onCreate.mail)} keywords={["compose", "write", "email", "message"]}>
               <Icon name="edit_square" />
               New message
-              <CommandShortcut>C</CommandShortcut>
+              {keys?.["mail.compose"] && <CommandShortcut>{keyLabel(keys["mail.compose"])}</CommandShortcut>}
             </CommandItem>
             <CommandItem onSelect={run(onCreate.calendar)} keywords={["meeting", "appointment"]}>
               <Icon name="event" />

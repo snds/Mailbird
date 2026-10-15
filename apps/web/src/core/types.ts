@@ -640,6 +640,9 @@ export interface SwipeActions {
   leftLong: SwipeActionId
 }
 
+/** Command id → key (ADR-0032); "" for none. */
+export type KeyBindings = Record<string, string>
+
 /** A holiday or moon-phase calendar you can add (ADR-0024). */
 export interface InterestingCalendar {
   id: string
