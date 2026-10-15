@@ -105,6 +105,18 @@ async fn every_command_routes_and_works() {
     assert_eq!(cleared["color"], Value::Null);
     let prefs = json_of(dispatch(&app, &state, "set_notes_prefs", json!({ "prefs": { "sortChecked": true, "grid": true } })).await.unwrap());
     assert_eq!(prefs["grid"], true);
+    // Locked notes (ADR-0043): set a passphrase, lock, lock now, unlock, open.
+    let secret = json_of(dispatch(&app, &state, "create_note", json!({ "input": { "markdown": "Codes\nalarm 4242" } })).await.unwrap());
+    dispatch(&app, &state, "set_notes_passphrase", json!({ "passphrase": "lighthouse", "hint": null })).await.unwrap();
+    dispatch(&app, &state, "lock_note", json!({ "id": secret["id"] })).await.unwrap();
+    assert_eq!(json_of(dispatch(&app, &state, "get_note", json!({ "id": secret["id"] })).await.unwrap())["markdown"], "");
+    dispatch(&app, &state, "lock_notes_now", Value::Null).await.unwrap();
+    assert!(dispatch(&app, &state, "open_locked_note", json!({ "id": secret["id"] })).await.err().unwrap().contains("Enter your passphrase"));
+    assert!(dispatch(&app, &state, "unlock_notes", json!({ "passphrase": "nope-nope" })).await.is_err());
+    let info = json_of(dispatch(&app, &state, "unlock_notes", json!({ "passphrase": "lighthouse" })).await.unwrap());
+    assert_eq!(info["unlocked"], true);
+    assert_eq!(json_of(dispatch(&app, &state, "open_locked_note", json!({ "id": secret["id"] })).await.unwrap())["markdown"], "Codes\nalarm 4242");
+    assert!(json_of(dispatch(&app, &state, "notes_lock_setting", Value::Null).await.unwrap())["check"].is_string());
     // Smart folders (ADR-0042): one that matches, then gone.
     let folder = json_of(dispatch(&app, &state, "save_note_folder", json!({ "id": null, "input": { "name": "Greetings", "words": "hello" } })).await.unwrap());
     assert_eq!(folder["count"], 2, "the note and the one linking to it");

@@ -79,6 +79,7 @@ export function NotesView() {
         title={
           <span className="flex items-center gap-1.5">
             {n.pinned && <Icon name="keep" fill className="size-4 shrink-0 text-vertical-notes" label="Pinned" />}
+            {n.locked && <Icon name="lock" className="size-4 shrink-0 text-muted-foreground" />}
             {n.color && (
               <span
                 aria-hidden
@@ -90,11 +91,12 @@ export function NotesView() {
             <span className="truncate">{n.title || "New note"}</span>
             {/* After the title, so a row is read by its name first. */}
             {n.color && <span className="sr-only">, {NOTE_COLOR_LABEL[n.color]}</span>}
+            {n.locked && <span className="sr-only">, locked</span>}
           </span>
         }
         meta={shortTime(n.updated)}
         supporting={
-          n.snippet || n.tags.length || n.links.length || n.remindAt ? (
+          n.locked || n.snippet || n.tags.length || n.links.length || n.remindAt ? (
             <>
               {n.remindAt && (
                 <Icon
@@ -105,7 +107,7 @@ export function NotesView() {
                 />
               )}
               {n.links.length > 0 && <Icon name="link" className="mr-1 inline size-3.5 align-[-2px]" label={`${n.links.length} linked`} />}
-              {n.snippet || <span className="italic">No more text</span>}
+              {n.locked ? <span className="italic">Locked</span> : n.snippet || <span className="italic">No more text</span>}
             </>
           ) : undefined
         }
@@ -245,9 +247,14 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
       >
         <span className="flex items-start gap-1.5">
           <span className={cn("min-w-0 flex-1 font-semibold break-words", !n.title && "text-muted-foreground")}>{n.title || "New note"}</span>
+          {n.locked && <Icon name="lock" className="size-4 shrink-0 text-foreground/60" label="Locked" />}
           {n.pinned && <Icon name="keep" fill className="size-4 shrink-0 text-vertical-notes" label="Pinned" />}
         </span>
-        {n.snippet && <span className="line-clamp-6 text-sm break-words text-foreground/80">{n.snippet}</span>}
+        {n.locked ? (
+          <span className="text-sm text-foreground/60 italic">Locked</span>
+        ) : (
+          n.snippet && <span className="line-clamp-6 text-sm break-words text-foreground/80">{n.snippet}</span>
+        )}
         {(n.tags.length > 0 || n.links.length > 0 || n.remindAt) && (
           <span className="flex flex-wrap items-center gap-1 pt-0.5 text-xs text-foreground/70">
             {n.remindAt && (

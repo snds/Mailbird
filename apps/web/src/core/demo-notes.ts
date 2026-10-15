@@ -7,7 +7,7 @@ import { downloadNotes } from "@/lib/download"
 
 import type { CoreEvent } from "./client"
 import { NOTE_COLORS } from "./types"
-import type { ImportFile, ImportReport, NoteDetail, NoteFolder, NoteFolderInput, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
+import type { ImportFile, ImportReport, NoteDetail, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
 
 interface DemoNote extends NoteRecord {
   markdown: string
@@ -124,7 +124,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
   const DAY = 86_400
   let n = 0
   const note = (markdown: string, ago: number, extra: Partial<DemoNote> = {}): DemoNote => ({
-    id: `note-${++n}`, markdown, ydoc: null, pinned: false, archived: false, deleted: false, color: null, remindAt: null, tags: [], links: [],
+    id: `note-${++n}`, markdown, ydoc: null, pinned: false, archived: false, deleted: false, color: null, remindAt: null, locked: false, sealed: null, title: null, tags: [], links: [],
     created: t - ago - DAY, updated: t - ago, source: null, ...extra,
   })
   const event = (title: string) => links.byName("event", title)
@@ -170,16 +170,44 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
   }
   const summary = (x: DemoNote): NoteSummary => {
     const [title, snippet] = titleAndSnippet(x.markdown)
+    // A locked note shows its title only (ADR-0043).
+    if (x.locked) {
+      return {
+        id: x.id, title: x.title ?? "", snippet: "", pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, locked: true, tags: [...x.tags],
+        links: x.links.map((l) => ({ ...l, target: links.resolve(l) })), created: x.created, updated: x.updated,
+      }
+    }
     return {
-      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, tags: [...x.tags],
+      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, locked: false, tags: [...x.tags],
       links: x.links.map((l) => ({ ...l, target: links.resolve(l) })), created: x.created, updated: x.updated,
     }
   }
-  const detail = (x: DemoNote): NoteDetail => ({ ...summary(x), markdown: x.markdown, ydoc: x.ydoc })
+  const detail = (x: DemoNote): NoteDetail => ({ ...summary(x), markdown: x.locked ? "" : x.markdown, ydoc: x.locked ? null : x.ydoc })
+
+  // Locked notes (ADR-0043), as the core does them. The demo's "sealing" is
+  // only base64 and its passphrase setting carries the words themselves:
+  // there's nothing real to protect here (the core uses AES-256-GCM and
+  // PBKDF2), but the flow, the hint, auto-lock, and sync behave the same.
+  const AUTO_LOCK = 10 * 60
+  let lock: { passphrase: string; hint: string | null; updated: number } | null = null
+  let unlockedAt: number | null = null
+  const lockInfo = (): NotesLockInfo => ({ set: !!lock, hint: lock?.hint ?? null, unlocked: unlockedAt !== null && now() - unlockedAt < AUTO_LOCK })
+  const requireKey = () => {
+    if (!lockInfo().unlocked) {
+      unlockedAt = null
+      throw new Error("Locked notes are locked. Enter your passphrase to open them.")
+    }
+    unlockedAt = now()
+  }
+  const lockedText = new Map<string, string>()
+  const fakeSeal = (md: string) => `demo:${btoa(unescape(encodeURIComponent(md)))}`
+  const fakeOpen = (sealed: string | null | undefined) => (sealed?.startsWith("demo:") ? decodeURIComponent(escape(atob(sealed.slice(5)))) : "")
+  const textOf = (x: DemoNote) => lockedText.get(x.id) ?? fakeOpen(x.sealed)
   const record = ({ markdown: _m, ydoc: _y, source: _s, ...r }: DemoNote): NoteRecord => structuredClone(r)
   const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
   const matches = (x: DemoNote, search: string) => {
-    const hay = [...words(x.markdown), ...x.tags.flatMap(words)]
+    // A locked note is found by its title only, as the core's search does.
+    const hay = [...words(x.locked ? (x.title ?? "") : x.markdown), ...x.tags.flatMap(words)]
     return words(search).every((w) => hay.some((h) => h.startsWith(w)))
   }
   // Smart folders (ADR-0042), with the core's rules and checks.
@@ -244,7 +272,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     exportNotes: async () => {
       const taken = new Set<string>()
       const files = notes
-        .filter((x) => !x.deleted)
+        .filter((x) => !x.deleted && !x.locked)
         .sort((a, b) => a.created - b.created)
         .map((x) => {
           const title = titleAndSnippet(x.markdown)[0]
@@ -272,6 +300,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     saveNoteBody: async (id: string, markdown: string, ydoc: string | null, touch: boolean) => {
       const x = notes.find((k) => k.id === id)
       if (!x) throw new Error("that note is gone")
+      if (x.locked) throw new Error("that note is locked")
       if (touch && x.markdown !== markdown) bump(x)
       x.markdown = markdown
       if (ydoc) x.ydoc = ydoc
@@ -334,6 +363,74 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       }
       return later(out)
     },
+    notesLock: async () => later(lockInfo()),
+    setNotesPassphrase: async (passphrase: string, hint: string | null) => {
+      if ([...passphrase].length < 6) throw new Error("use at least 6 characters")
+      const h = hint?.trim() || null
+      if (h?.includes(passphrase)) throw new Error("the hint can't contain the passphrase")
+      if (lock && !lockInfo().unlocked) throw new Error("unlock your notes first to change the passphrase")
+      lock = { passphrase, hint: h, updated: now() }
+      unlockedAt = now()
+      changed()
+      return later(lockInfo())
+    },
+    unlockNotes: async (passphrase: string) => {
+      if (!lock) throw new Error("set a passphrase for locked notes first")
+      if (passphrase !== lock.passphrase) throw new Error("that passphrase isn't right")
+      unlockedAt = now()
+      return later(lockInfo())
+    },
+    lockNotesNow: async () => {
+      unlockedAt = null
+      changed()
+      return later(undefined)
+    },
+    lockNote: async (id: string) => {
+      requireKey()
+      const x = find(id)
+      if (x.locked) return later(undefined)
+      lockedText.set(id, x.markdown)
+      Object.assign(x, { locked: true, title: titleAndSnippet(x.markdown)[0], sealed: fakeSeal(x.markdown), markdown: "", ydoc: null })
+      bump(x)
+      changed()
+      return later(undefined)
+    },
+    removeNoteLock: async (id: string) => {
+      requireKey()
+      const x = find(id)
+      Object.assign(x, { locked: false, sealed: null, title: null, markdown: textOf(x) })
+      lockedText.delete(id)
+      bump(x)
+      changed()
+      return later(detail(x))
+    },
+    openLockedNote: async (id: string) => {
+      requireKey()
+      const x = find(id)
+      if (!x.locked) throw new Error("that locked note is gone")
+      return later({ ...summary(x), markdown: textOf(x), ydoc: null })
+    },
+    saveLockedNote: async (id: string, markdown: string, touch: boolean) => {
+      requireKey()
+      const x = find(id)
+      const before = textOf(x)
+      lockedText.set(id, markdown)
+      x.sealed = fakeSeal(markdown)
+      x.title = titleAndSnippet(markdown)[0]
+      if (touch && before !== markdown) {
+        bump(x)
+        changed()
+      }
+      return later(undefined)
+    },
+    notesLockSetting: async () => later(lock ? ({ ...lock } as NotesLockSetting) : null),
+    applyNotesLockSetting: async (s: NotesLockSetting) => {
+      if (lock && lock.updated >= s.updated) return later(false)
+      lock = { passphrase: String(s.passphrase), hint: (s.hint as string | null) ?? null, updated: s.updated }
+      unlockedAt = null
+      changed()
+      return later(true)
+    },
     noteFolders: async () => later(folders.map((f) => ({ ...f, count: folderCount(f) }))),
     saveNoteFolder: async (id: string | null, input: NoteFolderInput) => {
       const rule = checkFolder(input)
@@ -379,6 +476,12 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
         if (!x) notes.push({ ...clean, markdown: "", ydoc: null, source: null })
         else if (x.updated < r.updated) Object.assign(x, clean)
         else continue
+        // Locked elsewhere: only the sealed text and title stay (ADR-0043).
+        if (clean.locked) {
+          const y = notes.find((k) => k.id === r.id)!
+          Object.assign(y, { markdown: "", ydoc: null })
+          lockedText.delete(r.id)
+        }
         ids.push(r.id)
       }
       if (ids.length) changed()

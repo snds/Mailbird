@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Toggle } from "@/components/ui/toggle"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCoreClient } from "@/core/client"
-import { useNote, useNoteAction, useNoteBacklinks, useNoteTags } from "@/core/queries"
+import { useLockedNote, useNote, useNoteAction, useNoteBacklinks, useNotesLock, useNoteTags } from "@/core/queries"
 import type { NoteLink, NoteLinkKind, NoteMeta } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { longTime, reminderLabel } from "@/lib/time"
@@ -18,6 +18,8 @@ import { longTime, reminderLabel } from "@/lib/time"
 import { titleAndSnippet } from "@/core/demo-notes"
 
 import { LinkPicker } from "./link-picker"
+import { LockedPanel, PassphraseDialog } from "./lock"
+import { notesSync } from "./sync"
 import { noteFill } from "./note-color"
 import { NoteColorMenu } from "./note-color-menu"
 import { RemindMenu } from "./remind-menu"
@@ -37,6 +39,11 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   const [meta, setLocal] = useState<NoteMeta | null>(null)
   const [picking, setPicking] = useState(false)
   const markdownRef = useRef<string | null>(null)
+  // Locked notes (ADR-0043): the text comes from the core only while unlocked.
+  const { data: lockInfo } = useNotesLock()
+  const unlocked = !!lockInfo?.unlocked
+  const { data: openLocked, error: lockedError } = useLockedNote(id, !!note?.locked && unlocked)
+  const [askPassphrase, setAskPassphrase] = useState(false)
   const refresh = () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" })
 
   // Renames (ADR-0035): the title other notes' links use, and a pending
@@ -81,12 +88,12 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   }, [note])
   useEffect(
     () => () => {
-      if (fresh && markdownRef.current !== null && !markdownRef.current.trim())
+      if (fresh && !note?.locked && markdownRef.current !== null && !markdownRef.current.trim())
         void getCoreClient()
           .then((c) => c.deleteNote(id))
           .then(() => qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" }))
     },
-    [fresh, id, qc],
+    [fresh, id, qc, note?.locked],
   )
 
   if (isPending) {
@@ -137,9 +144,36 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
       toast.error(e instanceof Error ? e.message : String(e))
     }
   }
+  // Lock it now, or after the passphrase step: set one, or unlock with it.
+  const lockIt = async () => {
+    try {
+      await (await getCoreClient()).lockNote(id)
+      // Its shared copy on the relay is emptied, so only the sealed text remains.
+      void notesSync()?.blank(id)
+      refresh()
+      void qc.invalidateQueries({ queryKey: ["notes", "note", id] })
+      toast.success("Locked. Only its title shows until you unlock it.", { duration: 3000 })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+  const lock = () => (unlocked ? void lockIt() : setAskPassphrase(true))
+  const unlockForGood = async () => {
+    try {
+      await (await getCoreClient()).removeNoteLock(id)
+      void qc.invalidateQueries({ queryKey: ["notes"] })
+      toast.success("Lock removed", { duration: 2500 })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+  const lockNow = async () => {
+    await (await getCoreClient()).lockNotesNow()
+    void qc.invalidateQueries({ queryKey: ["notes"] })
+  }
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(markdownRef.current ?? note.markdown)
+      await navigator.clipboard.writeText(markdownRef.current ?? openLocked?.markdown ?? note.markdown)
       toast.success("Copied as Markdown", { duration: 2000 })
     } catch {
       toast.error("Couldn't reach the clipboard")
@@ -157,8 +191,17 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
       <article className="mx-auto flex h-full w-full max-w-3xl flex-col" aria-label="Note">
         <div className="flex shrink-0 items-center gap-1 px-3 pt-2 md:px-6 md:pt-4">
           <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground">
+            {note.locked && <Icon name="lock" className="mr-1 inline size-3.5 align-[-2px]" label="Locked" />}
             {current.archived ? "Archived · " : ""}Edited {longTime(note.updated)}
           </span>
+          {note.locked && unlocked && (
+            <Tooltip>
+              <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label="Lock now" onClick={() => void lockNow()} />}>
+                <Icon name="lock_open" className="size-5" />
+              </TooltipTrigger>
+              <TooltipContent>Lock now (locked notes close)</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={<Toggle size="sm" aria-label="Pin" pressed={current.pinned} onPressedChange={(pinned) => void update({ pinned })} />}
@@ -180,9 +223,22 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
               <DropdownMenuItem onClick={() => void archive()}>
                 <Icon name={current.archived ? "unarchive" : "archive"} /> {current.archived ? "Unarchive" : "Archive"}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void copy()}>
-                <Icon name="content_copy" /> Copy as Markdown
-              </DropdownMenuItem>
+              {(!note.locked || unlocked) && (
+                <DropdownMenuItem onClick={() => void copy()}>
+                  <Icon name="content_copy" /> Copy as Markdown
+                </DropdownMenuItem>
+              )}
+              {!note.locked ? (
+                <DropdownMenuItem onClick={lock}>
+                  <Icon name="lock" /> Lock note
+                </DropdownMenuItem>
+              ) : (
+                unlocked && (
+                  <DropdownMenuItem onClick={() => void unlockForGood()}>
+                    <Icon name="lock_open_right" /> Remove lock
+                  </DropdownMenuItem>
+                )
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => void del()}>
                 <Icon name="delete" /> Delete
@@ -211,10 +267,25 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             void update({ links: [...current.links, link] }).then(() => toast.success(`Linked to ${link.label}`, { duration: 2000 }))
           }}
         />
+        <PassphraseDialog
+          open={askPassphrase}
+          onOpenChange={setAskPassphrase}
+          onDone={() => {
+            setAskPassphrase(false)
+            void lockIt()
+          }}
+        />
         <LinkedFrom id={id} />
 
+        {note.locked && !unlocked ? (
+          <LockedPanel title={note.title} />
+        ) : note.locked && !openLocked ? (
+          lockedError ? <LockedPanel title={note.title} /> : <Skeleton className="mx-8 mt-4 h-24" />
+        ) : (
         <NoteEditor
-          note={note}
+          key={note.locked ? `${id}-locked` : id}
+          note={note.locked && openLocked ? openLocked : note}
+          locked={note.locked}
           autoFocus={fresh}
           onSaved={(md) => {
             markdownRef.current = md
@@ -225,6 +296,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             }
           }}
         />
+        )}
       </article>
     </div>
   )

@@ -31,7 +31,7 @@ const notMine = (origin: unknown) => origin === "load" || origin === "seed" || o
  * in live. Every change saves Markdown plus Yjs state to the core (after a
  * short pause, and when the note closes).
  */
-export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; autoFocus: boolean; onSaved: (markdown: string) => void }) {
+export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note: NoteDetail; autoFocus: boolean; onSaved: (markdown: string) => void; locked?: boolean }) {
   // One document per open note; the parent keys this component by note id.
   const [doc] = useState(() => {
     const d = loadDoc(note.ydoc)
@@ -39,16 +39,17 @@ export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; aut
     return d
   })
   // A note opened for the first time has new Yjs state to save right away.
-  const [seeded] = useState(() => note.ydoc === null && note.markdown.trim() !== "")
+  // A locked one has none to keep: only its sealed text is saved (ADR-0043).
+  const [seeded] = useState(() => !locked && note.ydoc === null && note.markdown.trim() !== "")
 
   const savedRef = useRef(onSaved)
   useEffect(() => {
     savedRef.current = onSaved
   }, [onSaved])
   useEffect(() => {
-    const saver = new NoteSaver(note.id, doc, seeded, (md) => savedRef.current(md))
+    const saver = new NoteSaver(note.id, doc, seeded, (md) => savedRef.current(md), locked)
     return () => saver.close()
-  }, [note.id, doc, seeded])
+  }, [note.id, doc, seeded, locked])
 
   // Loaded here; the editor reads the cached value on each check, so
   // turning it off applies to the open note too.
@@ -107,14 +108,15 @@ export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; aut
   // Live edits from other devices while this note is open.
   const syncing = useSyncStatus((s) => s.status !== "off")
   useEffect(() => {
-    if (!syncing) return
+    // A locked note never joins its shared document.
+    if (!syncing || locked) return
     try {
       return notesSync()?.attach(note.id, doc)
     } catch {
       // Live sync for this note failed to start; it still saves locally and syncs when closed.
       return undefined
     }
-  }, [syncing, note.id, doc])
+  }, [syncing, note.id, doc, locked])
 
   // What's typed after [[, and the choices for it.
   const q = useEditorState({ editor, selector: ({ editor: e }) => wikiQueryAt(e), equalityFn: (a, b) => a?.from === b?.from && a?.query === b?.query })
@@ -158,13 +160,15 @@ class NoteSaver {
   private id: string
   private doc: Y.Doc
   private onSaved: (markdown: string) => void
+  private locked: boolean
   /** The text as the editor writes it when the note opened. Opening alone
    *  can re-shape it (a trailing paragraph, list markers), which isn't an edit. */
   private last: string
 
-  constructor(id: string, doc: Y.Doc, seeded: boolean, onSaved: (markdown: string) => void) {
+  constructor(id: string, doc: Y.Doc, seeded: boolean, onSaved: (markdown: string) => void, locked: boolean) {
     this.id = id
     this.doc = doc
+    this.locked = locked
     this.last = markdownOf(doc)
     this.onSaved = onSaved
     this.dirty = seeded
@@ -187,8 +191,10 @@ class NoteSaver {
     this.last = md
     this.dirty = this.touch = false
     void getCoreClient()
-      .then((c) => c.saveNoteBody(this.id, md, stateOf(this.doc), touch))
+      .then((c) => (this.locked ? c.saveLockedNote(this.id, md, touch) : c.saveNoteBody(this.id, md, stateOf(this.doc), touch)))
       .then(() => this.onSaved(md))
+      // Locked again (by the timer or another window) mid-edit: it reopens behind the passphrase.
+      .catch(() => queryClient.invalidateQueries({ queryKey: ["notes"] }))
   }
 
   close() {

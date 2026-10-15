@@ -21,7 +21,6 @@ net = [
   "dep:webpki-roots",
   "dep:reqwest",
   "dep:quick-xml",
-  "dep:ring",
 ]
 
 [dependencies]
@@ -48,8 +47,9 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "que
 calcard = { version = "=0.3.14", default-features = false }
 # WebDAV multistatus parsing for CalDAV/CardDAV.
 quick-xml = { version = "0.42", optional = true }
-# PKCE (SHA-256) and OAuth state: the same ring that rustls already uses.
-ring = { version = "0.17", optional = true }
+# PKCE (SHA-256), OAuth state, and locked notes (AES-256-GCM, PBKDF2): the
+# same ring that rustls already uses. Not behind `net`: locking is store logic.
+ring = "0.17"
 chrono = { version = "0.4", default-features = false }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 

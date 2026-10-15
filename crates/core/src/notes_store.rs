@@ -63,6 +63,10 @@ pub(crate) const MIGRATE_V13: &str = "ALTER TABLE notes ADD COLUMN color TEXT;";
 pub(crate) const MIGRATE_V14: &str = "ALTER TABLE notes ADD COLUMN remind_at INTEGER;
 CREATE INDEX notes_remind ON notes (remind_at) WHERE remind_at IS NOT NULL;";
 
+/// Version 16: locked notes (ADR-0043). `sealed` is the text, encrypted.
+pub(crate) const MIGRATE_V16: &str = "ALTER TABLE notes ADD COLUMN locked INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE notes ADD COLUMN sealed TEXT;";
+
 /// A reminder time, or `None` for none (`0` or less clears one).
 fn clean_remind(t: Option<i64>) -> Option<i64> {
     t.filter(|t| *t > 0)
@@ -81,9 +85,9 @@ fn clean_color(c: Option<&str>) -> Option<String> {
 
 const SNIPPET_CHARS: usize = 140;
 
-const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color, n.remind_at";
+const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color, n.remind_at, n.locked";
 /// The first column a query selects after [`NOTE_COLS`].
-const AFTER_COLS: usize = 11;
+const AFTER_COLS: usize = 12;
 
 fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
     Ok(NoteSummary {
@@ -94,6 +98,7 @@ fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
         archived: r.get(4)?,
         color: r.get(9)?,
         remind_at: r.get(10)?,
+        locked: r.get(11)?,
         tags: from_json(r.get(5)?),
         links: from_json(r.get(6)?),
         created: r.get(7)?,
@@ -168,7 +173,7 @@ impl Store {
     /// Every note as a Markdown file with front matter, as Obsidian and
     /// this app's own importer read it (ADR-0034).
     pub fn export_notes(&self) -> Result<Vec<ExportedNote>> {
-        let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 ORDER BY n.created, n.rowid"))?;
+        let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 AND n.locked = 0 ORDER BY n.created, n.rowid"))?;
         let rows = st.query_map([], |r| Ok((summary_row(r)?, r.get::<_, String>(AFTER_COLS)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut taken = std::collections::HashSet::new();
         let mut out = Vec::new();
@@ -310,8 +315,12 @@ impl Store {
             .map(|b| base64::engine::general_purpose::STANDARD.decode(b).map_err(|_| Error::Invalid("the note's sync state is damaged".into())))
             .transpose()?;
         let (title, snippet) = title_and_snippet(markdown);
-        let old: Option<String> = self.db.query_row("SELECT body FROM notes WHERE id = ?1", [id], |r| r.get(0)).optional()?;
-        let Some(old) = old else { return Err(Error::NotFound("that note is gone".into())) };
+        let old: Option<(String, bool)> = self.db.query_row("SELECT body, locked FROM notes WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
+        let Some((old, locked)) = old else { return Err(Error::NotFound("that note is gone".into())) };
+        // A locked note's text only ever goes in sealed (ADR-0043).
+        if locked {
+            return Err(Error::Invalid("that note is locked".into()));
+        }
         // Opening a note writes its Yjs state without changing a word: that
         // isn't an edit, so it shouldn't jump to the top of the list.
         let touch = touch && old != markdown;
@@ -420,7 +429,7 @@ impl Store {
 
     /// Every note's record, tombstones included, for the sync index.
     pub fn note_records(&self) -> Result<Vec<NoteRecord>> {
-        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated, color, remind_at FROM notes")?;
+        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated, color, remind_at, locked, sealed, title FROM notes")?;
         Ok(st
             .query_map([], |r| {
                 Ok(NoteRecord {
@@ -434,6 +443,10 @@ impl Store {
                     links: from_json(r.get(5)?),
                     created: r.get(6)?,
                     updated: r.get(7)?,
+                    locked: r.get(10)?,
+                    sealed: r.get(11)?,
+                    // Only a locked note needs its title carried: others have it in their text.
+                    title: if r.get::<_, bool>(10)? { Some(r.get(12)?) } else { None },
                 })
             })?
             .collect::<rusqlite::Result<_>>()?)
@@ -454,6 +467,7 @@ impl Store {
                 if let Some(t) = clean_remind(rec.remind_at) {
                     self.db.execute("UPDATE notes SET remind_at = ?2 WHERE id = ?1", params![rec.id, t])?;
                 }
+                self.apply_lock(rec)?;
                 Ok(true)
             }
             Some(u) if u < rec.updated => {
@@ -461,10 +475,30 @@ impl Store {
                     "UPDATE notes SET pinned = ?2, archived = ?3, deleted = ?4, tags = ?5, links = ?6, updated = ?7, color = ?8, remind_at = ?9 WHERE id = ?1",
                     params![rec.id, rec.pinned, rec.archived, rec.deleted, json(&clean_tags(&rec.tags)), json(&links), rec.updated, clean_color(rec.color.as_deref()), clean_remind(rec.remind_at)],
                 )?;
+                self.apply_lock(rec)?;
                 Ok(true)
             }
             Some(_) => Ok(false),
         }
+    }
+
+    /// Locked on another device: take its sealed text and title, and empty
+    /// everything readable. Unlocked there: the text comes back through its
+    /// Yjs document; the sealed copy stays, unread, until then.
+    fn apply_lock(&self, rec: &NoteRecord) -> Result<()> {
+        match (rec.locked, rec.sealed.as_deref()) {
+            (true, Some(sealed)) => {
+                self.db.execute(
+                    "UPDATE notes SET locked = 1, sealed = ?2, title = coalesce(?3, title), body = '', snippet = '', ydoc = NULL WHERE id = ?1",
+                    params![rec.id, sealed, rec.title],
+                )?;
+            }
+            (false, _) => {
+                self.db.execute("UPDATE notes SET locked = 0 WHERE id = ?1 AND locked = 1", [&rec.id])?;
+            }
+            (true, None) => {}
+        }
+        Ok(())
     }
 
     // ── Settings ──────────────────────────────────────────────────────────
@@ -767,6 +801,9 @@ mod tests {
             deleted: false,
             color: None,
             remind_at: None,
+            locked: false,
+            sealed: None,
+            title: None,
             tags: vec![],
             links: vec![NoteLink { kind: NoteLinkKind::Contact, key: "nobody".into(), label: "Ada".into(), target: Some("bogus".into()) }],
             created: 1,
