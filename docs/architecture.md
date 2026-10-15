@@ -104,3 +104,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0024](decisions/0024-interesting-calendars.md) | Holidays (13 countries, observed and substitute days) and moon phases (Meeus) computed in the core as read-only device collections; no feeds fetched |
 | [0025](decisions/0025-one-action-grammar.md) | One mail action vocabulary for swipes, keys, toolbar, and ⌘K; four swipe slots (short/long) stored and validated in the core; Apple Mail defaults |
 | [0026](decisions/0026-scheduling-links.md) | Booking links in core settings with unguessable tokens; the gateway's only sessionless routes (`/api/book/{token}`: one read, one write, capped and CSRF-checked); free times recomputed on every booking |
+| [0027](decisions/0027-faces-and-sources.md) | Photos validated in the core and written per vCard version; copies across books by shared email/phone (linked, not merged); one email→photo map for mail avatars, never fetched remotely |

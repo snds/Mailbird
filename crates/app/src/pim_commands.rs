@@ -144,6 +144,16 @@ pub fn restore_contacts(app: AppHandle, state: &Shared, since: Option<i64>, afte
     Ok(done)
 }
 
+/// The same person's cards in other address books (ADR-0027).
+pub fn contact_copies(state: &Shared, id: String) -> Res<Vec<pim_core::ContactCopy>> {
+    with_store(state, |s| s.contact_copies(&id))
+}
+
+/// Contact photos by email address, for mail's avatars.
+pub fn contact_photos(state: &Shared) -> Res<std::collections::BTreeMap<String, String>> {
+    with_store(state, |s| s.contact_photos())
+}
+
 /// Every label in use, with counts (ADR-0020).
 pub fn contact_labels(state: &Shared) -> Res<Vec<pim_core::ContactLabel>> {
     with_store(state, |s| s.contact_labels())

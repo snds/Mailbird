@@ -906,7 +906,7 @@ async fn outlook_calendars_and_contacts() {
 
     // Contacts: create, edit, and a delete made in Outlook.
     let book = store.collections(CollectionKind::Contacts).unwrap().into_iter().find(|c| c.account_id.is_some()).unwrap().id;
-    let sam = ContactInput {
+    let sam = ContactInput { photo: None,
         book_id: book.clone(),
         full_name: "Sam Lee".into(),
         emails: vec![ContactField { label: Some("work".into()), value: "sam@contoso.com".into() }],
@@ -927,7 +927,7 @@ async fn outlook_calendars_and_contacts() {
     pim_pass(&store, &account, &pim).await;
     let sam_now = store.contacts(Some("Sam")).unwrap();
     assert_eq!(sam_now.len(), 1, "the server's copy replaced ours, no duplicate");
-    store.update_contact(&sam_now[0].id, &ContactInput { title: Some("Engineer".into()), ..sam.clone() }).unwrap();
+    store.update_contact(&sam_now[0].id, &ContactInput { photo: None, title: Some("Engineer".into()), ..sam.clone() }).unwrap();
     pim_pass(&store, &account, &pim).await;
     assert!(fake.lock().unwrap().contacts.values().any(|c| c["jobTitle"] == "Engineer"));
     let _ = created;

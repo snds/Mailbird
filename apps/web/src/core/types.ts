@@ -483,6 +483,15 @@ export interface ContactInput {
   birthday?: string | null
   /** Labels (vCard CATEGORIES). Leave out to keep the card's labels as they are. */
   labels?: string[] | null
+  /** A `data:image/…;base64` photo. Leave out to keep it; "" removes it. */
+  photo?: string | null
+}
+
+/** The same person's card in another address book (ADR-0027). */
+export interface ContactCopy {
+  id: string
+  bookId: string
+  fullName: string
 }
 
 export interface ContactSummary {

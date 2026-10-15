@@ -772,6 +772,10 @@ pub struct ContactInput {
     /// Labels (vCard CATEGORIES). None leaves a card's labels as they are.
     #[serde(default)]
     pub labels: Option<Vec<String>>,
+    /// A `data:image/…;base64` photo. None leaves the photo as it is; an
+    /// empty string removes it.
+    #[serde(default)]
+    pub photo: Option<String>,
 }
 
 // ── Calendar and contact collections ────────────────────────────────────────

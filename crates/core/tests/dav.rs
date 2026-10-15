@@ -182,7 +182,7 @@ async fn dav_round_trip() {
 
     // Contacts: create, edit, merge, delete.
     let book_a = first_writable(&a, CollectionKind::Contacts);
-    let person = |name: &str, email: &str| ContactInput {
+    let person = |name: &str, email: &str| ContactInput { photo: None,
         book_id: book_a.clone(),
         full_name: name.into(),
         emails: vec![ContactField { label: Some("work".into()), value: email.into() }],

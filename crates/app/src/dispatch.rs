@@ -96,6 +96,8 @@ pub const COMMANDS: &[&str] = &[
     "get_contact",
     "contact_activity",
     "contact_labels",
+    "contact_copies",
+    "contact_photos",
     "smart_groups",
     "interesting_calendars",
     "booking_links",
@@ -384,6 +386,11 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(commands::unarchive_bundle(app.clone(), state, keys)?)
         }
         "contact_labels" => Output::json(pim_commands::contact_labels(state)?),
+        "contact_copies" => {
+            args!(args, id: String);
+            Output::json(pim_commands::contact_copies(state, id)?)
+        }
+        "contact_photos" => Output::json(pim_commands::contact_photos(state)?),
         "deleted_contacts" => Output::json(pim_commands::deleted_contacts(state)?),
         "restore_contact" => {
             args!(args, id: String);

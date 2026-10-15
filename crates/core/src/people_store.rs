@@ -357,7 +357,7 @@ mod tests {
     }
 
     fn person(book: &str, name: &str, email: &str, org: Option<&str>, labels: &[&str]) -> ContactInput {
-        ContactInput {
+        ContactInput { photo: None,
             book_id: book.into(),
             full_name: name.into(),
             emails: vec![ContactField { label: None, value: email.into() }],

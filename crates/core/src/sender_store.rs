@@ -279,7 +279,7 @@ mod tests {
         // A contact, someone you wrote to, and a stranger write in.
         s.ensure_local_collections().unwrap();
         let book = s.collections(CollectionKind::Contacts).unwrap()[0].id.clone();
-        s.create_contact(&ContactInput {
+        s.create_contact(&ContactInput { photo: None,
             book_id: book,
             full_name: "Priya".into(),
             emails: vec![ContactField { label: None, value: "Priya@Studio.example".into() }],

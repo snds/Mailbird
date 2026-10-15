@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getCoreClient } from "@/core/client"
-import { useAccounts, useCollections, useContact, useContactActivity, usePimAction } from "@/core/queries"
+import { useAccounts, useCollections, useContact, useContactActivity, useContactCopies, usePimAction } from "@/core/queries"
 import type { ContactActivity, Occurrence } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { shortTime } from "@/lib/time"
@@ -56,6 +56,8 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
   const email = c?.emails[0]?.value ?? ""
   // Cross-vertical context: conversations and meetings with this person.
   const { data: activity } = useContactActivity(id)
+  // The same person's cards in other address books (ADR-0027).
+  const { data: copies = [] } = useContactCopies(id)
 
   if (isPending) {
     return (
@@ -68,6 +70,12 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
   if (error || !c) return <p className="p-6 text-sm text-muted-foreground">{error instanceof Error ? error.message : "That contact is gone."}</p>
 
   const book = books.find((b) => b.id === c.bookId)
+  // A book's name with its account, so two "Contacts" books tell apart.
+  const bookName = (id: string) => {
+    const b = books.find((x) => x.id === id)
+    const a = accounts.find((x) => x.id === b?.accountId)
+    return a ? (b && b.name !== a.displayName && b.name !== "Contacts" ? `${a.displayName} · ${b.name}` : a.displayName) : (b?.name ?? "On this device")
+  }
   const account = accounts.find((a) => a.id === book?.accountId)
   const phone = c.phones[0]?.value
   const del = async () => {
@@ -151,6 +159,19 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
           <dt className="text-xs text-muted-foreground">Saved in</dt>
           <dd>{account ? `${account.displayName}${book && book.name !== account.displayName ? ` · ${book.name}` : ""}` : "On this device (not synced)"}</dd>
         </div>
+        {copies.length > 0 && (
+          <div className="flex flex-col px-4 py-2.5">
+            <dt className="text-xs text-muted-foreground">Also in</dt>
+            <dd className="flex flex-wrap gap-1.5 pt-0.5">
+              {copies.map((k) => (
+                <Button key={k.id} size="xs" variant="outline" className="rounded-full" onClick={() => jumpTo({ kind: "contact", id: k.id })} aria-label={`Open ${k.fullName} in ${bookName(k.bookId)}`}>
+                  {bookName(k.bookId)}
+                  {k.fullName !== c.fullName && <span className="text-muted-foreground">as {k.fullName}</span>}
+                </Button>
+              ))}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {c.writable ? (
@@ -158,7 +179,7 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
           <Button
             variant="outline"
             onClick={() =>
-              openEditor({ contactId: c.id, initial: { bookId: c.bookId, fullName: c.fullName, org: c.org, title: c.title, emails: c.emails, phones: c.phones, birthday: c.birthday, note: c.note, labels: c.labels } })
+              openEditor({ contactId: c.id, initial: { bookId: c.bookId, fullName: c.fullName, org: c.org, title: c.title, emails: c.emails, phones: c.phones, birthday: c.birthday, note: c.note, labels: c.labels, photo: c.photo } })
             }
           >
             <Icon name="edit" data-icon="inline-start" /> Edit

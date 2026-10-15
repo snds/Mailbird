@@ -10,6 +10,8 @@ import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContactLabels, usePimAction } from "@/core/queries"
 import type { ContactField, ContactInput } from "@/core/types"
 
+import { PersonAvatar } from "./person"
+
 const EMAIL_LABELS = ["home", "work", "other"]
 const PHONE_LABELS = ["cell", "home", "work", "other"]
 
@@ -24,6 +26,46 @@ export function ContactEditor() {
 }
 
 const bare = "h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+
+/**
+ * A picked image as a square JPEG photo: centered crop, 256 px, quality 0.85.
+ * Small enough (tens of KB) to sync with the card to any server and phone.
+ */
+async function toPhoto(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error("That file isn't an image this browser can open")
+  })
+  const side = Math.min(bitmap.width, bitmap.height)
+  const canvas = document.createElement("canvas")
+  canvas.width = canvas.height = 256
+  canvas.getContext("2d")!.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 256, 256)
+  bitmap.close()
+  return canvas.toDataURL("image/jpeg", 0.85)
+}
+
+/** The card's photo: add, change, or remove. `undefined` means untouched. */
+function PhotoField({ name, value, onChange }: { name: string; value: string | null; onChange: (v: string | null) => void }) {
+  const pick = (files: FileList | null) => {
+    const f = files?.[0]
+    if (f) void toPhoto(f).then(onChange, (e: Error) => toast.error(e.message))
+  }
+  return (
+    <div className="flex items-center gap-4 border-b px-4 py-3" role="group" aria-label="Photo">
+      <PersonAvatar contact={{ fullName: name || "?", photo: value }} className="size-16 text-lg" />
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" render={<label />}>
+          <Icon name="add_a_photo" data-icon="inline-start" /> {value ? "Change photo" : "Add photo"}
+          <input type="file" accept="image/*" aria-label={value ? "Change photo" : "Add photo"} className="sr-only" onChange={(e) => (pick(e.target.files), (e.target.value = ""))} />
+        </Button>
+        {value && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
+            Remove photo
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 /** Labels as removable chips, plus a field that suggests labels already in use. */
 function LabelField({ values, onChange }: { values: string[]; onChange: (v: string[]) => void }) {
@@ -126,6 +168,8 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
   const [birthday, setBirthday] = useState(initial.birthday?.startsWith("--") ? "" : (initial.birthday ?? ""))
   const [note, setNote] = useState(initial.note ?? "")
   const [labels, setLabels] = useState<string[]>(initial.labels ?? [])
+  const [photo, setPhoto] = useState<string | null>(initial.photo ?? null)
+  const photoChanged = photo !== (initial.photo ?? null)
   const [pasting, setPasting] = useState(false)
   const [pasted, setPasted] = useState("")
   // Fills the form from a pasted signature; what you've typed stays unless the signature has it.
@@ -163,6 +207,8 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
       note: note.trim() || null,
       // An editor opened without the card's labels leaves them alone.
       labels: initial.labels !== undefined || labels.length ? labels : null,
+      // Only a changed photo is sent; "" removes it.
+      ...(photoChanged ? { photo: photo ?? "" } : {}),
     }
     try {
       await save.mutateAsync(input)
@@ -211,6 +257,7 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
               <Icon name="content_paste" className="size-4" /> Paste a signature to fill this in
             </button>
           ))}
+        <PhotoField name={fullName} value={photo} onChange={setPhoto} />
         <div className="border-b px-4 py-2">
           <input aria-label="Name" placeholder="Name" autoComplete="name" className="h-11 w-full bg-transparent text-lg font-medium outline-none placeholder:text-muted-foreground" value={fullName} onChange={(e) => setFullName(e.target.value)} data-editor-focus="" />
           <input aria-label="Company" placeholder="Company" autoComplete="organization" className={`${bare} w-full`} value={org} onChange={(e) => setOrg(e.target.value)} />
