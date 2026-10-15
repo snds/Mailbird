@@ -111,6 +111,7 @@ pub const COMMANDS: &[&str] = &[
     "change_booking",
     "add_interesting_calendar",
     "remove_interesting_calendar",
+    "set_holiday_region",
     "save_smart_group",
     "delete_smart_group",
     "contacts_restore_preview",
@@ -352,6 +353,10 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "remove_interesting_calendar" => {
             args!(args, id: String);
             Output::json(pim_commands::remove_interesting_calendar(app.clone(), state, id)?)
+        }
+        "set_holiday_region" => {
+            args!(args, id: String, region: Option<String>);
+            Output::json(pim_commands::set_holiday_region(app.clone(), state, id, region)?)
         }
         "save_smart_group" => {
             args!(args, id: Option<String>, input: pim_core::SmartGroupInput);

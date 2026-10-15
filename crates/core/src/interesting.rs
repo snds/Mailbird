@@ -25,6 +25,16 @@ pub struct InterestingCalendar {
     /// ISO 3166 country code, for holidays.
     pub country: Option<String>,
     pub subscribed: bool,
+    /// The region you picked, for its regional days (ADR-0033).
+    pub region: Option<String>,
+    /// Regions you can pick, when the country has any.
+    pub regions: Vec<RegionChoice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegionChoice {
+    pub code: String,
+    pub name: String,
 }
 
 struct Entry {
@@ -51,15 +61,175 @@ const HOLIDAYS: &[Entry] = &[
     Entry { code: "US", country: "the United States", color: "#2563eb" },
 ];
 
+/// A region with its own public holidays (ADR-0033).
+pub struct Region {
+    pub country: &'static str,
+    pub code: &'static str,
+    pub name: &'static str,
+}
+
+/// Only regions whose days follow fixed rules. Spain's, Italy's, Brazil's,
+/// and the US states' are set by decree or vary too much to compute.
+pub const REGIONS: &[Region] = &[
+    Region { country: "AU", code: "ACT", name: "the Australian Capital Territory" },
+    Region { country: "AU", code: "NSW", name: "New South Wales" },
+    Region { country: "AU", code: "NT", name: "the Northern Territory" },
+    Region { country: "AU", code: "QLD", name: "Queensland" },
+    Region { country: "AU", code: "SA", name: "South Australia" },
+    Region { country: "AU", code: "TAS", name: "Tasmania" },
+    Region { country: "AU", code: "VIC", name: "Victoria" },
+    Region { country: "AU", code: "WA", name: "Western Australia" },
+    Region { country: "CA", code: "AB", name: "Alberta" },
+    Region { country: "CA", code: "BC", name: "British Columbia" },
+    Region { country: "CA", code: "MB", name: "Manitoba" },
+    Region { country: "CA", code: "NB", name: "New Brunswick" },
+    Region { country: "CA", code: "NS", name: "Nova Scotia" },
+    Region { country: "CA", code: "ON", name: "Ontario" },
+    Region { country: "CA", code: "PE", name: "Prince Edward Island" },
+    Region { country: "CA", code: "QC", name: "Quebec" },
+    Region { country: "CA", code: "SK", name: "Saskatchewan" },
+    Region { country: "FR", code: "ALS", name: "Alsace and Moselle" },
+    Region { country: "DE", code: "BW", name: "Baden-Württemberg" },
+    Region { country: "DE", code: "BY", name: "Bavaria" },
+    Region { country: "DE", code: "BE", name: "Berlin" },
+    Region { country: "DE", code: "BB", name: "Brandenburg" },
+    Region { country: "DE", code: "HB", name: "Bremen" },
+    Region { country: "DE", code: "HH", name: "Hamburg" },
+    Region { country: "DE", code: "HE", name: "Hesse" },
+    Region { country: "DE", code: "NI", name: "Lower Saxony" },
+    Region { country: "DE", code: "MV", name: "Mecklenburg-Western Pomerania" },
+    Region { country: "DE", code: "NW", name: "North Rhine-Westphalia" },
+    Region { country: "DE", code: "RP", name: "Rhineland-Palatinate" },
+    Region { country: "DE", code: "SL", name: "Saarland" },
+    Region { country: "DE", code: "SN", name: "Saxony" },
+    Region { country: "DE", code: "ST", name: "Saxony-Anhalt" },
+    Region { country: "DE", code: "SH", name: "Schleswig-Holstein" },
+    Region { country: "DE", code: "TH", name: "Thuringia" },
+    Region { country: "PT", code: "AC", name: "the Azores" },
+    Region { country: "PT", code: "MA", name: "Madeira" },
+    Region { country: "GB", code: "ENG", name: "England" },
+    Region { country: "GB", code: "NIR", name: "Northern Ireland" },
+    Region { country: "GB", code: "SCT", name: "Scotland" },
+    Region { country: "GB", code: "WLS", name: "Wales" },
+];
+
+/// How a regional day falls in a year.
+enum Rule {
+    Fixed(u32, u32),
+    /// Days from Easter Sunday.
+    Easter(i64),
+    /// The nth weekday of a month; -1 is the last.
+    Nth(u32, Weekday, i32),
+    /// The first weekday on or after a date.
+    OnOrAfter(u32, u32, Weekday),
+    /// The last weekday before a date.
+    Before(u32, u32, Weekday),
+}
+
+impl Rule {
+    fn on(&self, y: i32, easter: NaiveDate) -> NaiveDate {
+        match *self {
+            Rule::Fixed(m, d) => date(y, m, d),
+            Rule::Easter(n) => easter + Duration::days(n),
+            Rule::Nth(m, wd, n) => nth(y, m, wd, n),
+            Rule::OnOrAfter(m, d, wd) => (0..7).map(|i| date(y, m, d) + Duration::days(i)).find(|x| x.weekday() == wd).expect("a week has every weekday"),
+            Rule::Before(m, d, wd) => (1..=7).map(|i| date(y, m, d) - Duration::days(i)).find(|x| x.weekday() == wd).expect("a week has every weekday"),
+        }
+    }
+}
+
+/// A regional public holiday: the country, the regions that keep it, when, and its name.
+struct Extra(&'static str, &'static [&'static str], Rule, &'static str);
+
+const EXTRAS: &[Extra] = {
+    use Rule::*;
+    use Weekday::*;
+    &[
+        // Australia: each state sets its own Labour Day and a few more.
+        Extra("AU", &["NSW", "VIC", "QLD", "SA", "ACT", "NT"], Easter(-1), "Easter Saturday"),
+        Extra("AU", &["NSW", "VIC", "QLD", "ACT", "WA"], Easter(0), "Easter Sunday"),
+        Extra("AU", &["NSW", "SA", "ACT"], Nth(10, Mon, 1), "Labour Day"),
+        Extra("AU", &["VIC"], Nth(3, Mon, 2), "Labour Day"),
+        Extra("AU", &["QLD"], Nth(5, Mon, 1), "Labour Day"),
+        Extra("AU", &["WA"], Nth(3, Mon, 1), "Labour Day"),
+        Extra("AU", &["TAS"], Nth(3, Mon, 2), "Eight Hours Day"),
+        Extra("AU", &["NT"], Nth(5, Mon, 1), "May Day"),
+        Extra("AU", &["QLD"], Nth(10, Mon, 1), "King’s Birthday"),
+        Extra("AU", &["VIC"], Nth(11, Tue, 1), "Melbourne Cup"),
+        Extra("AU", &["ACT"], Nth(3, Mon, 2), "Canberra Day"),
+        Extra("AU", &["ACT"], OnOrAfter(5, 27, Mon), "Reconciliation Day"),
+        Extra("AU", &["SA"], Nth(3, Mon, 2), "Adelaide Cup"),
+        Extra("AU", &["WA"], Nth(6, Mon, 1), "Western Australia Day"),
+        Extra("AU", &["NT"], Nth(8, Mon, 1), "Picnic Day"),
+        // Canada: the February long weekend goes by four names.
+        Extra("CA", &["AB", "BC", "NB", "ON", "SK"], Nth(2, Mon, 3), "Family Day"),
+        Extra("CA", &["MB"], Nth(2, Mon, 3), "Louis Riel Day"),
+        Extra("CA", &["PE"], Nth(2, Mon, 3), "Islander Day"),
+        Extra("CA", &["NS"], Nth(2, Mon, 3), "Heritage Day"),
+        Extra("CA", &["QC"], Fixed(6, 24), "Saint-Jean-Baptiste Day"),
+        Extra("CA", &["BC"], Nth(8, Mon, 1), "British Columbia Day"),
+        Extra("CA", &["NB"], Nth(8, Mon, 1), "New Brunswick Day"),
+        Extra("CA", &["SK"], Nth(8, Mon, 1), "Saskatchewan Day"),
+        Extra("CA", &["MB"], Nth(8, Mon, 1), "Terry Fox Day"),
+        // France: Alsace and Moselle keep two days from German law.
+        Extra("FR", &["ALS"], Easter(-2), "Good Friday"),
+        Extra("FR", &["ALS"], Fixed(12, 26), "St Stephen’s Day"),
+        // Germany: each Land adds its own.
+        Extra("DE", &["BW", "BY", "ST"], Fixed(1, 6), "Epiphany"),
+        Extra("DE", &["BE", "MV"], Fixed(3, 8), "International Women’s Day"),
+        Extra("DE", &["BB"], Easter(0), "Easter Sunday"),
+        Extra("DE", &["BB"], Easter(49), "Whit Sunday"),
+        Extra("DE", &["BW", "BY", "HE", "NW", "RP", "SL"], Easter(60), "Corpus Christi"),
+        Extra("DE", &["SL"], Fixed(8, 15), "Assumption Day"),
+        Extra("DE", &["TH"], Fixed(9, 20), "World Children’s Day"),
+        Extra("DE", &["BB", "HB", "HH", "MV", "NI", "SN", "ST", "SH", "TH"], Fixed(10, 31), "Reformation Day"),
+        Extra("DE", &["BW", "BY", "NW", "RP", "SL"], Fixed(11, 1), "All Saints’ Day"),
+        Extra("DE", &["SN"], Before(11, 23, Wed), "Day of Repentance and Prayer"),
+        // Portugal: the autonomous regions.
+        Extra("PT", &["AC"], Easter(50), "Azores Day"),
+        Extra("PT", &["MA"], Fixed(7, 1), "Madeira Day"),
+        Extra("PT", &["MA"], Fixed(12, 26), "Primeira Oitava"),
+        // The United Kingdom: Scotland and Northern Ireland differ.
+        Extra("GB", &["SCT"], Fixed(1, 2), "2 January"),
+        Extra("GB", &["SCT"], Nth(8, Mon, 1), "Summer bank holiday"),
+        Extra("GB", &["SCT"], Fixed(11, 30), "St Andrew’s Day"),
+        Extra("GB", &["NIR"], Fixed(3, 17), "St Patrick’s Day"),
+        Extra("GB", &["NIR"], Fixed(7, 12), "Battle of the Boyne"),
+    ]
+};
+
+/// National days a region doesn't keep: (country, regions, name).
+const DROPS: &[(&str, &[&str], &str)] = &[
+    // Scotland has no Easter Monday, and its summer holiday is in early August.
+    ("GB", &["SCT"], "Easter Monday"),
+    ("GB", &["SCT"], "Summer bank holiday"),
+    // Queensland's is in October; Western Australia's is proclaimed each year.
+    ("AU", &["QLD", "WA"], "King’s Birthday"),
+];
+
+/// The regions of a country, if it has any with their own days.
+pub fn regions_of(code: &str) -> impl Iterator<Item = &'static Region> + '_ {
+    REGIONS.iter().filter(move |r| r.country == code)
+}
+
+fn region_name(code: &str, region: &str) -> Option<&'static str> {
+    regions_of(code).find(|r| r.code == region).map(|r| r.name)
+}
+
+/// Settings key: country code → region code.
+const HOLIDAY_REGIONS: &str = "holiday_regions";
+
 fn holiday_id(code: &str) -> String {
     format!("{INTERESTING_PREFIX}holidays-{}", code.to_lowercase())
 }
 
-fn calendar_name(id: &str) -> Option<(String, &'static str)> {
+fn calendar_name(id: &str, region: Option<&str>) -> Option<(String, &'static str)> {
     if id == MOON {
         return Some(("Moon phases".into(), "#64748b"));
     }
-    HOLIDAYS.iter().find(|e| holiday_id(e.code) == id).map(|e| (format!("Holidays in {}", e.country), e.color))
+    let e = HOLIDAYS.iter().find(|e| holiday_id(e.code) == id)?;
+    let place = region.and_then(|r| region_name(e.code, r)).unwrap_or(e.country);
+    Some((format!("Holidays in {place}"), e.color))
 }
 
 // ── Holidays ─────────────────────────────────────────────────────────────
@@ -104,10 +274,15 @@ fn weekend(d: NaiveDate) -> bool {
     matches!(d.weekday(), Weekday::Sat | Weekday::Sun)
 }
 
-/// Public holidays for a country in a year: national ones only (regional
-/// days vary too much to guess), sorted by date. Where a holiday on a
-/// weekend moves the day off, the moved day is listed too.
+/// Public holidays for a country in a year, nationwide only.
 pub fn holidays(code: &str, y: i32) -> Vec<(NaiveDate, String)> {
+    holidays_in(code, None, y)
+}
+
+/// Public holidays for a country, or one of its regions (ADR-0033), in a
+/// year, sorted by date. Where a holiday on a weekend moves the day off,
+/// the moved day is listed too.
+pub fn holidays_in(code: &str, region: Option<&str>, y: i32) -> Vec<(NaiveDate, String)> {
     let e = easter(y);
     let ed = |days: i64| e + Duration::days(days);
     use Weekday::*;
@@ -274,6 +449,12 @@ pub fn holidays(code: &str, y: i32) -> Vec<(NaiveDate, String)> {
         ],
         _ => vec![],
     };
+    if let Some(r) = region {
+        out.retain(|(_, n)| !DROPS.iter().any(|(c, rs, name)| *c == code && rs.contains(&r) && name == n));
+        for Extra(_, _, rule, name) in EXTRAS.iter().filter(|Extra(c, rs, ..)| *c == code && rs.contains(&r)) {
+            out.push((rule.on(y, e), name));
+        }
+    }
     out.sort_by_key(|(d, _)| *d);
     let mut list: Vec<(NaiveDate, String)> = out.iter().map(|(d, n)| (*d, n.to_string())).collect();
     // Days off that move when the holiday falls on a weekend.
@@ -293,7 +474,19 @@ pub fn holidays(code: &str, y: i32) -> Vec<(NaiveDate, String)> {
         }
         // A substitute weekday, the next one not already a holiday.
         "GB" | "AU" | "CA" | "IE" => {
-            let movable = ["New Year’s Day", "Christmas Day", "Boxing Day", "St Stephen’s Day", "St Patrick’s Day", "Australia Day", "Canada Day"];
+            let movable = [
+                "New Year’s Day",
+                "Christmas Day",
+                "Boxing Day",
+                "St Stephen’s Day",
+                "St Patrick’s Day",
+                "Australia Day",
+                "Canada Day",
+                "2 January",
+                "St Andrew’s Day",
+                "Battle of the Boyne",
+                "Saint-Jean-Baptiste Day",
+            ];
             let mut taken: Vec<NaiveDate> = out.iter().map(|(d, _)| *d).filter(|d| !weekend(*d)).collect();
             for (d, n) in out.iter().filter(|(d, n)| weekend(*d) && movable.contains(n)) {
                 let mut m = *d + Duration::days(1);
@@ -412,26 +605,67 @@ pub fn moon_phases(from: i64, to: i64) -> Vec<(i64, Phase)> {
 // ── The calendars ────────────────────────────────────────────────────────
 
 impl Store {
+    fn holiday_regions(&self) -> Result<std::collections::BTreeMap<String, String>> {
+        Ok(self.setting(HOLIDAY_REGIONS)?.map(crate::store::from_json).unwrap_or_default())
+    }
+
+    fn region_for(&self, code: &str) -> Result<Option<String>> {
+        Ok(self.holiday_regions()?.remove(code).filter(|r| region_name(code, r).is_some()))
+    }
+
+    /// Picks the region whose days a holiday calendar shows, or none for
+    /// nationwide only (ADR-0033). An added calendar is renamed to match.
+    pub fn set_holiday_region(&self, id: &str, region: Option<&str>) -> Result<()> {
+        let e = HOLIDAYS.iter().find(|e| holiday_id(e.code) == id).ok_or_else(|| Error::NotFound("there's no such holiday calendar".into()))?;
+        if let Some(r) = region
+            && region_name(e.code, r).is_none()
+        {
+            return Err(Error::Invalid(format!("“{r}” isn't a region of {} with its own holidays", e.country)));
+        }
+        let mut all = self.holiday_regions()?;
+        match region {
+            Some(r) => all.insert(e.code.into(), r.into()),
+            None => all.remove(e.code),
+        };
+        let stored = (!all.is_empty()).then(|| crate::store::json(&all));
+        self.set_setting(HOLIDAY_REGIONS, stored.as_deref())?;
+        let (name, _) = calendar_name(id, region).expect("a listed country has a name");
+        self.db.execute("UPDATE collections SET name = ?2 WHERE id = ?1", params![id, name])?;
+        Ok(())
+    }
+
     /// Every interesting calendar, and which ones you've added.
     pub fn interesting_calendars(&self) -> Result<Vec<InterestingCalendar>> {
         let have: Vec<String> = {
             let mut st = self.db.prepare("SELECT id FROM collections WHERE id LIKE 'interesting:%'")?;
             st.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?
         };
+        let regions = self.holiday_regions()?;
         let mut out: Vec<InterestingCalendar> = HOLIDAYS
             .iter()
             .map(|e| {
                 let id = holiday_id(e.code);
-                InterestingCalendar { subscribed: have.contains(&id), id, name: format!("Holidays in {}", e.country), group: "holidays".into(), country: Some(e.code.into()) }
+                let region = regions.get(e.code).filter(|r| region_name(e.code, r).is_some()).cloned();
+                InterestingCalendar {
+                    subscribed: have.contains(&id),
+                    name: calendar_name(&id, region.as_deref()).expect("a listed country has a name").0,
+                    id,
+                    group: "holidays".into(),
+                    country: Some(e.code.into()),
+                    region,
+                    regions: regions_of(e.code).map(|r| RegionChoice { code: r.code.into(), name: r.name.into() }).collect(),
+                }
             })
             .collect();
-        out.push(InterestingCalendar { id: MOON.into(), name: "Moon phases".into(), group: "sky".into(), country: None, subscribed: have.iter().any(|h| h == MOON) });
+        out.push(InterestingCalendar { id: MOON.into(), name: "Moon phases".into(), group: "sky".into(), country: None, subscribed: have.iter().any(|h| h == MOON), region: None, regions: vec![] });
         Ok(out)
     }
 
     /// Adds an interesting calendar: a read-only calendar on this device.
     pub fn add_interesting_calendar(&self, id: &str) -> Result<()> {
-        let (name, color) = calendar_name(id).ok_or_else(|| Error::NotFound("there's no such calendar to add".into()))?;
+        let code = HOLIDAYS.iter().find(|e| holiday_id(e.code) == id).map(|e| e.code);
+        let region = code.map(|c| self.region_for(c)).transpose()?.flatten();
+        let (name, color) = calendar_name(id, region.as_deref()).ok_or_else(|| Error::NotFound("there's no such calendar to add".into()))?;
         self.db.execute("INSERT OR IGNORE INTO collections (id, account_id, kind, name, color, writable) VALUES (?1, NULL, 'calendar', ?2, ?3, 0)", params![id, name, color])?;
         Ok(())
     }
@@ -496,9 +730,10 @@ impl Store {
                 push(&mut out, ical::local_date(t, tz), p.name().into());
             }
         } else if let Some(e) = HOLIDAYS.iter().find(|e| holiday_id(e.code) == cal) {
+            let region = self.region_for(e.code).ok().flatten();
             let (y0, y1) = (ical::local_date(from - 86400, tz).year(), ical::local_date(to + 86400, tz).year());
             for y in y0..=y1 {
-                for (day, title) in holidays(e.code, y) {
+                for (day, title) in holidays_in(e.code, region.as_deref(), y) {
                     push(&mut out, day, title);
                 }
             }
@@ -522,11 +757,18 @@ impl Store {
         let notes = if cal == MOON {
             moon_phases(from, to).into_iter().find(|(_, p)| p.name() == title).map(|(t, _)| format!("{title} at {} ({tz}).", &ical::local_input(t, &tz)[11..]))
         } else {
-            let country = HOLIDAYS.iter().find(|e| holiday_id(e.code) == cal).map(|e| e.country).unwrap_or_default();
+            let e = HOLIDAYS.iter().find(|e| holiday_id(e.code) == cal).ok_or_else(gone)?;
+            let region = self.region_for(e.code)?;
+            let place = region.as_deref().and_then(|r| region_name(e.code, r));
+            let nationwide = holidays(e.code, day.year()).iter().any(|(d, t)| *d == day && *t == title);
             Some(if title.ends_with("(observed)") || title.ends_with("(substitute day)") {
-                format!("The day off for a holiday that falls on a weekend, in {country}. From {name}.")
+                format!("The day off for a holiday that falls on a weekend, in {}. From {name}.", place.unwrap_or(e.country))
+            } else if let (Some(place), false) = (place, nationwide) {
+                format!("A public holiday in {place}, not across {}. From {name}.", e.country)
+            } else if place.is_none() && regions_of(e.code).next().is_some() {
+                format!("A public holiday in {}. To see your region's days too, pick it in Add holidays and more. From {name}.", e.country)
             } else {
-                format!("A public holiday in {country}. Regional holidays aren't included. From {name}.")
+                format!("A public holiday in {}. From {name}.", e.country)
             })
         };
         let occurrence = Occurrence {
@@ -648,5 +890,89 @@ mod tests {
         assert!(s.remove_interesting_calendar("birthdays").is_err());
         s.ensure_local_collections().unwrap();
         assert!(s.collections(crate::CollectionKind::Calendar).unwrap().iter().any(|c| c.writable && c.account_id.is_none()));
+    }
+
+    #[test]
+    fn regional_rules() {
+        let find = |l: &[(NaiveDate, String)], n: &str| l.iter().find(|(_, t)| t == n).map(|(d, _)| *d);
+        // Bavaria 2026: Corpus Christi 4 June, All Saints' 1 November, Epiphany.
+        let by = holidays_in("DE", Some("BY"), 2026);
+        assert_eq!(find(&by, "Corpus Christi"), Some(date(2026, 6, 4)));
+        assert_eq!(find(&by, "Epiphany"), Some(date(2026, 1, 6)));
+        assert_eq!(find(&by, "Whit Monday"), Some(date(2026, 5, 25)), "national days stay");
+        assert_eq!(find(&holidays("DE", 2026), "Corpus Christi"), None, "not nationwide");
+        // Saxony's Day of Repentance and Prayer: the Wednesday before 23 November.
+        for (y, d) in [(2024, 20), (2025, 19), (2026, 18), (2028, 22)] {
+            assert_eq!(find(&holidays_in("DE", Some("SN"), y), "Day of Repentance and Prayer"), Some(date(y, 11, d)), "{y}");
+        }
+        assert_eq!(find(&holidays_in("DE", Some("TH"), 2026), "World Children’s Day"), Some(date(2026, 9, 20)));
+        // Scotland: 2 January, early-August summer holiday, no Easter Monday.
+        let sct = holidays_in("GB", Some("SCT"), 2026);
+        assert_eq!(find(&sct, "2 January"), Some(date(2026, 1, 2)));
+        assert_eq!(find(&sct, "Summer bank holiday"), Some(date(2026, 8, 3)));
+        assert_eq!(find(&sct, "Easter Monday"), None);
+        assert_eq!(find(&sct, "St Andrew’s Day"), Some(date(2026, 11, 30)));
+        // 2022: 1 Jan Saturday, 2 Jan Sunday → Mon 3 and Tue 4 off in Scotland.
+        let sct22 = holidays_in("GB", Some("SCT"), 2022);
+        assert_eq!(find(&sct22, "New Year’s Day (substitute day)"), Some(date(2022, 1, 3)));
+        assert_eq!(find(&sct22, "2 January (substitute day)"), Some(date(2022, 1, 4)));
+        // Northern Ireland: the Boyne on 12 July (Sunday in 2026 → Monday 13).
+        let nir = holidays_in("GB", Some("NIR"), 2026);
+        assert_eq!(find(&nir, "Battle of the Boyne (substitute day)"), Some(date(2026, 7, 13)));
+        assert_eq!(find(&nir, "Easter Monday"), Some(date(2026, 4, 6)));
+        // Australia: Victoria's Melbourne Cup and Labour Day; Queensland's King's Birthday.
+        let vic = holidays_in("AU", Some("VIC"), 2026);
+        assert_eq!(find(&vic, "Melbourne Cup"), Some(date(2026, 11, 3)));
+        assert_eq!(find(&vic, "Labour Day"), Some(date(2026, 3, 9)));
+        let qld = holidays_in("AU", Some("QLD"), 2026);
+        assert_eq!(find(&qld, "King’s Birthday"), Some(date(2026, 10, 5)));
+        assert_eq!(qld.iter().filter(|(_, t)| t == "King’s Birthday").count(), 1, "the June one is dropped");
+        assert_eq!(find(&holidays_in("AU", Some("ACT"), 2026), "Reconciliation Day"), Some(date(2026, 6, 1)));
+        // Canada: Family Day in Ontario, Saint-Jean-Baptiste in Quebec.
+        assert_eq!(find(&holidays_in("CA", Some("ON"), 2026), "Family Day"), Some(date(2026, 2, 16)));
+        assert_eq!(find(&holidays_in("CA", Some("QC"), 2026), "Saint-Jean-Baptiste Day"), Some(date(2026, 6, 24)));
+        assert_eq!(find(&holidays_in("FR", Some("ALS"), 2026), "Good Friday"), Some(date(2026, 4, 3)));
+        assert_eq!(find(&holidays_in("PT", Some("AC"), 2026), "Azores Day"), Some(date(2026, 5, 25)));
+        // Every region's list stays sorted, and an unknown region is just the nation.
+        for r in REGIONS {
+            let l = holidays_in(r.country, Some(r.code), 2026);
+            assert!(l.windows(2).all(|w| w[0].0 <= w[1].0), "{}-{}", r.country, r.code);
+        }
+        assert_eq!(holidays_in("DE", Some("XX"), 2026), holidays("DE", 2026));
+    }
+
+    #[test]
+    fn picking_a_region_adds_its_days() {
+        let s = Store::open_in_memory().unwrap();
+        s.ensure_local_collections().unwrap();
+        s.set_time_zone("Europe/Berlin").unwrap();
+        let de = "interesting:holidays-de";
+        // Picked before adding: the calendar is named for the region.
+        s.set_holiday_region(de, Some("BY")).unwrap();
+        s.add_interesting_calendar(de).unwrap();
+        let cat = s.interesting_calendars().unwrap().into_iter().find(|c| c.id == de).unwrap();
+        assert_eq!((cat.name.as_str(), cat.region.as_deref(), cat.regions.len()), ("Holidays in Bavaria", Some("BY"), 16));
+        let cal = s.collections(crate::CollectionKind::Calendar).unwrap().into_iter().find(|c| c.id == de).unwrap();
+        assert_eq!(cal.name, "Holidays in Bavaria");
+        let june = s.occurrences(utc(2026, 6, 1, 0, 0), utc(2026, 6, 30, 0, 0)).unwrap();
+        let cc = june.iter().find(|o| o.title == "Corpus Christi").unwrap();
+        assert!(s.event(&cc.event_id, None).unwrap().notes.unwrap().contains("in Bavaria, not across Germany"));
+        let may = s.occurrences(utc(2026, 5, 20, 0, 0), utc(2026, 5, 31, 0, 0)).unwrap();
+        let whit = may.iter().find(|o| o.title == "Whit Monday").unwrap();
+        assert!(s.event(&whit.event_id, None).unwrap().notes.unwrap().starts_with("A public holiday in Germany."));
+
+        // Back to nationwide: the regional day goes, and the name follows.
+        s.set_holiday_region(de, None).unwrap();
+        assert!(!s.occurrences(utc(2026, 6, 1, 0, 0), utc(2026, 6, 30, 0, 0)).unwrap().iter().any(|o| o.title == "Corpus Christi"));
+        assert_eq!(s.collections(crate::CollectionKind::Calendar).unwrap().into_iter().find(|c| c.id == de).unwrap().name, "Holidays in Germany");
+        let whit = s.event(&whit.event_id, None).unwrap();
+        assert!(whit.notes.unwrap().contains("pick it in Add holidays and more"));
+
+        // Refusals change nothing.
+        assert!(s.set_holiday_region(de, Some("SCT")).unwrap_err().to_string().contains("isn't a region of Germany"));
+        assert!(s.set_holiday_region("interesting:moon", None).is_err());
+        assert_eq!(s.interesting_calendars().unwrap().into_iter().find(|c| c.id == de).unwrap().region, None);
+        let us = s.interesting_calendars().unwrap().into_iter().find(|c| c.id == "interesting:holidays-us").unwrap();
+        assert!(us.regions.is_empty(), "no computable regions");
     }
 }

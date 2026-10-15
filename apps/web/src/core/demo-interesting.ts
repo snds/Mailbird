@@ -24,6 +24,22 @@ export const HOLIDAY_COUNTRIES: { code: string; country: string; color: string }
   { code: "US", country: "the United States", color: "#2563eb" },
 ]
 
+/** Regions with their own days, as the core lists them (ADR-0033). */
+export const REGIONS: { country: string; code: string; name: string }[] = [
+  ["AU", "ACT", "the Australian Capital Territory"], ["AU", "NSW", "New South Wales"], ["AU", "NT", "the Northern Territory"], ["AU", "QLD", "Queensland"],
+  ["AU", "SA", "South Australia"], ["AU", "TAS", "Tasmania"], ["AU", "VIC", "Victoria"], ["AU", "WA", "Western Australia"],
+  ["CA", "AB", "Alberta"], ["CA", "BC", "British Columbia"], ["CA", "MB", "Manitoba"], ["CA", "NB", "New Brunswick"], ["CA", "NS", "Nova Scotia"],
+  ["CA", "ON", "Ontario"], ["CA", "PE", "Prince Edward Island"], ["CA", "QC", "Quebec"], ["CA", "SK", "Saskatchewan"],
+  ["FR", "ALS", "Alsace and Moselle"],
+  ["DE", "BW", "Baden-Württemberg"], ["DE", "BY", "Bavaria"], ["DE", "BE", "Berlin"], ["DE", "BB", "Brandenburg"], ["DE", "HB", "Bremen"], ["DE", "HH", "Hamburg"],
+  ["DE", "HE", "Hesse"], ["DE", "NI", "Lower Saxony"], ["DE", "MV", "Mecklenburg-Western Pomerania"], ["DE", "NW", "North Rhine-Westphalia"],
+  ["DE", "RP", "Rhineland-Palatinate"], ["DE", "SL", "Saarland"], ["DE", "SN", "Saxony"], ["DE", "ST", "Saxony-Anhalt"], ["DE", "SH", "Schleswig-Holstein"], ["DE", "TH", "Thuringia"],
+  ["PT", "AC", "the Azores"], ["PT", "MA", "Madeira"],
+  ["GB", "ENG", "England"], ["GB", "NIR", "Northern Ireland"], ["GB", "SCT", "Scotland"], ["GB", "WLS", "Wales"],
+].map(([country, code, name]) => ({ country: country!, code: code!, name: name! }))
+
+export const regionName = (country: string, region: string | null | undefined) => REGIONS.find((r) => r.country === country && r.code === region)?.name
+
 export const holidayId = (code: string) => `${INTERESTING}holidays-${code.toLowerCase()}`
 
 const utcDay = (d: Day) => new Date(Date.UTC(d[0], d[1] - 1, d[2]))
@@ -53,7 +69,65 @@ const nth = (y: number, m: number, wd: number, n: number): Day => {
 const MON = 1, THU = 4, FRI = 5, SUN = 0
 const weekend = (d: Day) => dow(d) === 0 || dow(d) === 6
 
-export function holidays(code: string, y: number): [Day, string][] {
+type Rule = ["fixed", number, number] | ["easter", number] | ["nth", number, number, number] | ["onOrAfter", number, number, number] | ["before", number, number, number]
+const TUE = 2, WED = 3
+
+/** Regional days: country, regions, rule, name. Mirrors `EXTRAS` in the core. */
+const EXTRAS: [string, string[], Rule, string][] = [
+  ["AU", ["NSW", "VIC", "QLD", "SA", "ACT", "NT"], ["easter", -1], "Easter Saturday"],
+  ["AU", ["NSW", "VIC", "QLD", "ACT", "WA"], ["easter", 0], "Easter Sunday"],
+  ["AU", ["NSW", "SA", "ACT"], ["nth", 10, MON, 1], "Labour Day"],
+  ["AU", ["VIC"], ["nth", 3, MON, 2], "Labour Day"],
+  ["AU", ["QLD"], ["nth", 5, MON, 1], "Labour Day"],
+  ["AU", ["WA"], ["nth", 3, MON, 1], "Labour Day"],
+  ["AU", ["TAS"], ["nth", 3, MON, 2], "Eight Hours Day"],
+  ["AU", ["NT"], ["nth", 5, MON, 1], "May Day"],
+  ["AU", ["QLD"], ["nth", 10, MON, 1], "King’s Birthday"],
+  ["AU", ["VIC"], ["nth", 11, TUE, 1], "Melbourne Cup"],
+  ["AU", ["ACT"], ["nth", 3, MON, 2], "Canberra Day"],
+  ["AU", ["ACT"], ["onOrAfter", 5, 27, MON], "Reconciliation Day"],
+  ["AU", ["SA"], ["nth", 3, MON, 2], "Adelaide Cup"],
+  ["AU", ["WA"], ["nth", 6, MON, 1], "Western Australia Day"],
+  ["AU", ["NT"], ["nth", 8, MON, 1], "Picnic Day"],
+  ["CA", ["AB", "BC", "NB", "ON", "SK"], ["nth", 2, MON, 3], "Family Day"],
+  ["CA", ["MB"], ["nth", 2, MON, 3], "Louis Riel Day"],
+  ["CA", ["PE"], ["nth", 2, MON, 3], "Islander Day"],
+  ["CA", ["NS"], ["nth", 2, MON, 3], "Heritage Day"],
+  ["CA", ["QC"], ["fixed", 6, 24], "Saint-Jean-Baptiste Day"],
+  ["CA", ["BC"], ["nth", 8, MON, 1], "British Columbia Day"],
+  ["CA", ["NB"], ["nth", 8, MON, 1], "New Brunswick Day"],
+  ["CA", ["SK"], ["nth", 8, MON, 1], "Saskatchewan Day"],
+  ["CA", ["MB"], ["nth", 8, MON, 1], "Terry Fox Day"],
+  ["FR", ["ALS"], ["easter", -2], "Good Friday"],
+  ["FR", ["ALS"], ["fixed", 12, 26], "St Stephen’s Day"],
+  ["DE", ["BW", "BY", "ST"], ["fixed", 1, 6], "Epiphany"],
+  ["DE", ["BE", "MV"], ["fixed", 3, 8], "International Women’s Day"],
+  ["DE", ["BB"], ["easter", 0], "Easter Sunday"],
+  ["DE", ["BB"], ["easter", 49], "Whit Sunday"],
+  ["DE", ["BW", "BY", "HE", "NW", "RP", "SL"], ["easter", 60], "Corpus Christi"],
+  ["DE", ["SL"], ["fixed", 8, 15], "Assumption Day"],
+  ["DE", ["TH"], ["fixed", 9, 20], "World Children’s Day"],
+  ["DE", ["BB", "HB", "HH", "MV", "NI", "SN", "ST", "SH", "TH"], ["fixed", 10, 31], "Reformation Day"],
+  ["DE", ["BW", "BY", "NW", "RP", "SL"], ["fixed", 11, 1], "All Saints’ Day"],
+  ["DE", ["SN"], ["before", 11, 23, WED], "Day of Repentance and Prayer"],
+  ["PT", ["AC"], ["easter", 50], "Azores Day"],
+  ["PT", ["MA"], ["fixed", 7, 1], "Madeira Day"],
+  ["PT", ["MA"], ["fixed", 12, 26], "Primeira Oitava"],
+  ["GB", ["SCT"], ["fixed", 1, 2], "2 January"],
+  ["GB", ["SCT"], ["nth", 8, MON, 1], "Summer bank holiday"],
+  ["GB", ["SCT"], ["fixed", 11, 30], "St Andrew’s Day"],
+  ["GB", ["NIR"], ["fixed", 3, 17], "St Patrick’s Day"],
+  ["GB", ["NIR"], ["fixed", 7, 12], "Battle of the Boyne"],
+]
+
+/** National days a region doesn't keep. */
+const DROPS: [string, string[], string][] = [
+  ["GB", ["SCT"], "Easter Monday"],
+  ["GB", ["SCT"], "Summer bank holiday"],
+  ["AU", ["QLD", "WA"], "King’s Birthday"],
+]
+
+export function holidays(code: string, y: number, region?: string | null): [Day, string][] {
   const e = easter(y)
   const ed = (n: number) => add(e, n)
   const D = (m: number, d: number): Day => [y, m, d]
@@ -72,7 +146,21 @@ export function holidays(code: string, y: number): [Day, string][] {
     PT: [[D(1, 1), "New Year’s Day"], [ed(-2), "Good Friday"], [ed(0), "Easter Sunday"], [D(4, 25), "Freedom Day"], [D(5, 1), "Labour Day"], [ed(60), "Corpus Christi"], [D(6, 10), "Portugal Day"], [D(8, 15), "Assumption Day"], [D(10, 5), "Republic Day"], [D(11, 1), "All Saints’ Day"], [D(12, 1), "Restoration of Independence"], [D(12, 8), "Immaculate Conception"], [D(12, 25), "Christmas Day"]],
     AU: [[D(1, 1), "New Year’s Day"], [D(1, 26), "Australia Day"], [ed(-2), "Good Friday"], [ed(1), "Easter Monday"], [D(4, 25), "Anzac Day"], [nth(y, 6, MON, 2), "King’s Birthday"], [D(12, 25), "Christmas Day"], [D(12, 26), "Boxing Day"]],
   }
-  const base = (lists[code] ?? []).sort((a, b) => key(a[0]).localeCompare(key(b[0])))
+  let list = lists[code] ?? []
+  if (region) {
+    list = list.filter(([, n]) => !DROPS.some(([c, rs, name]) => c === code && rs.includes(region) && name === n))
+    for (const [c, rs, rule, name] of EXTRAS) {
+      if (c !== code || !rs.includes(region)) continue
+      const on: Day =
+        rule[0] === "fixed" ? D(rule[1], rule[2])
+        : rule[0] === "easter" ? ed(rule[1])
+        : rule[0] === "nth" ? nth(y, rule[1], rule[2], rule[3])
+        : rule[0] === "onOrAfter" ? add(D(rule[1], rule[2]), (rule[3] - dow(D(rule[1], rule[2])) + 7) % 7)
+        : add(D(rule[1], rule[2]), -(((dow(D(rule[1], rule[2])) - rule[3] + 7) % 7) || 7))
+      list.push([on, name])
+    }
+  }
+  const base = list.sort((a, b) => key(a[0]).localeCompare(key(b[0])))
   const out = [...base]
   if (code === "US") {
     for (const [d, n] of base) {
@@ -80,7 +168,7 @@ export function holidays(code: string, y: number): [Day, string][] {
       if (dow(d) === 0) out.push([add(d, 1), `${n} (observed)`])
     }
   } else if (["GB", "AU", "CA", "IE"].includes(code)) {
-    const movable = ["New Year’s Day", "Christmas Day", "Boxing Day", "St Stephen’s Day", "St Patrick’s Day", "Australia Day", "Canada Day"]
+    const movable = ["New Year’s Day", "Christmas Day", "Boxing Day", "St Stephen’s Day", "St Patrick’s Day", "Australia Day", "Canada Day", "2 January", "St Andrew’s Day", "Battle of the Boyne", "Saint-Jean-Baptiste Day"]
     const taken = base.map(([d]) => key(d)).filter((_, i) => !weekend(base[i]![0]))
     for (const [d, n] of base.filter(([d, n]) => weekend(d) && movable.includes(n))) {
       let m = add(d, 1)
@@ -131,7 +219,7 @@ export function moonPhases(from: number, to: number): [number, Phase][] {
 }
 
 /** (local date, index on that date, title) in [from, to), with a day's slack. */
-export function daysOf(cal: string, from: number, to: number): [Day, number, string][] {
+export function daysOf(cal: string, from: number, to: number, region?: string | null): [Day, number, string][] {
   const out: [Day, number, string][] = []
   const push = (d: Day, title: string) => out.push([d, out.filter(([x]) => key(x) === key(d)).length, title])
   if (cal === MOON) {
@@ -143,7 +231,7 @@ export function daysOf(cal: string, from: number, to: number): [Day, number, str
     const c = HOLIDAY_COUNTRIES.find((x) => holidayId(x.code) === cal)
     if (c) {
       for (let y = new Date((from - 86400) * 1000).getFullYear(); y <= new Date((to + 86400) * 1000).getFullYear(); y++) {
-        for (const [d, n] of holidays(c.code, y)) push(d, n)
+        for (const [d, n] of holidays(c.code, y, region)) push(d, n)
       }
     }
   }

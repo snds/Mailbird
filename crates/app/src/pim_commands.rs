@@ -128,6 +128,13 @@ pub fn add_interesting_calendar(app: AppHandle, state: &Shared, id: String) -> R
     Ok(())
 }
 
+/// Picks the region whose holidays a country's calendar shows (ADR-0033).
+pub fn set_holiday_region(app: AppHandle, state: &Shared, id: String, region: Option<String>) -> Res<()> {
+    with_store(state, |s| s.set_holiday_region(&id, region.as_deref()))?;
+    let _ = app.emit(events::PIM_CHANGED, ());
+    Ok(())
+}
+
 pub fn remove_interesting_calendar(app: AppHandle, state: &Shared, id: String) -> Res<()> {
     with_store(state, |s| s.remove_interesting_calendar(&id))?;
     let _ = app.emit(events::PIM_CHANGED, ());

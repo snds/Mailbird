@@ -100,6 +100,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **20 · Meeting services** ✅ | Calls read from the invitation (Zoom, Meet, Teams, Webex, and more: link, meeting ID, passcode, one-tap dial-in), Join in the service's app or the browser, Calendly and Cal.com reschedule and cancel links, Add video call (Jitsi) ([ADR-0030](docs/decisions/0030-meeting-services.md)) |
 | **21 · Change a booking** ✅ | Everyone who books gets a private link to pick a new time or cancel (on the confirmation, and in the invitation when the gateway knows its address); the event moves or goes, and the guest's invitation follows ([ADR-0031](docs/decisions/0031-change-a-booking.md)) |
 | **22 · Your keys** ✅ | Every single-key shortcut in Mail and Calendar can be changed (press the key, then the new one); a key that's taken swaps, swipe-only actions can get keys, and your keys follow you to every device ([ADR-0032](docs/decisions/0032-your-keys.md)) |
+| **23 · Regional holidays** ✅ | Pick a region of an added country (40 across Germany, the UK, Canada, Australia, France, and Portugal) to see its own days too, still computed on the device; the calendar takes the region's name, and each day says whether it's regional ([ADR-0033](docs/decisions/0033-regional-holidays.md)) |
 
 ## License
 
