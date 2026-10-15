@@ -1,6 +1,5 @@
 import { useUi } from "@/app/ui-store"
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
+import { Icon, Button } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLinkedNotes } from "@/core/queries"
 import type { NoteTarget } from "@/core/types"

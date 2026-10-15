@@ -3,12 +3,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import { toast } from "sonner"
 
 import { useUi, type Jump } from "@/app/ui-store"
-import { Icon, type IconName } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Toggle } from "@/components/ui/toggle"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Icon, type IconName, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLockedNote, useNote, useNoteAction, useNoteBacklinks, useNotesLock, useNoteTags } from "@/core/queries"
 import type { NoteLink, NoteLinkKind, NoteMeta } from "@/core/types"

@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
+import { Icon, Button } from "@unicron/ui"
 import { visitorBook, visitorBooking, visitorChange, visitorManaged } from "@/core/client"
 import type { Booked, ManagedBooking, TimeSlot } from "@/core/types"
 

@@ -1,10 +1,7 @@
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName } from "@/components/icon"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Icon, type IconName, Badge, Button, Skeleton } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContact, useContactActivity, useContactCopies, usePimAction } from "@/core/queries"
 import type { ContactActivity, MessageSummary, Occurrence } from "@/core/types"

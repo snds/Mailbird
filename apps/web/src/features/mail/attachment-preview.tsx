@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Spinner } from "@/components/ui/spinner"
+import { Icon, Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Spinner } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { AttachmentInfo } from "@/core/types"
 

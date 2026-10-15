@@ -2,8 +2,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
+import { Icon, Button } from "@unicron/ui"
 import { useMailAction } from "@/core/queries"
 import type { Invite } from "@/core/types"
 

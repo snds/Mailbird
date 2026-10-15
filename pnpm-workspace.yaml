@@ -2,6 +2,13 @@ packages:
   - "apps/*"
   - "packages/*"
   - "tools/notes-relay"
+  # The shared design system (unicron), as a pinned submodule: its two
+  # packages link into this workspace, so `workspace:*` between them resolves.
+  - "vendor/unicron/packages/*"
+
+# @snds/dsa is a git dependency; its `prepare` script compiles TypeScript on install.
+onlyBuiltDependencies:
+  - "@snds/dsa"
 
 # Tiptap packages move in lockstep; keep transitive ones (menus) on the same
 # release as the direct ones, and off releases younger than two weeks.

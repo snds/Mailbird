@@ -1,8 +1,6 @@
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
+import { Icon, Button, Switch } from "@unicron/ui"
 import { useMailAction, useScreener, useSenders } from "@/core/queries"
 import type { Category, Sender } from "@/core/types"
 import { CATEGORIES } from "@/features/mail/lanes"

@@ -1,11 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { Switch } from "@/components/ui/switch"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch } from "@unicron/ui"
 import { useBookingLinks, useCollections, useCore, usePimAction } from "@/core/queries"
 import type { BookingLink, BookingLinkInput } from "@/core/types"
 

@@ -1,8 +1,6 @@
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@unicron/ui"
 import { useCollections, useDeletedContacts, usePimAction } from "@/core/queries"
 import { shortTime } from "@/lib/time"
 

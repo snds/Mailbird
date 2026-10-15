@@ -1,7 +1,6 @@
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Icon, Button, buttonVariants } from "@unicron/ui"
 import { useCore } from "@/core/queries"
 import type { ManageLink, MeetingInfo } from "@/core/types"
 import { cn } from "@/lib/utils"

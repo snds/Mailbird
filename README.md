@@ -25,7 +25,7 @@ Full research: [competitive analysis](docs/research/competitive-analysis.md).
 
 | Layer | Choice |
 |---|---|
-| UI | React 19 · Vite 8 · Tailwind CSS v4 · **shadcn/ui** (Base UI, Nova) |
+| UI | React 19 · Vite 8 · Tailwind CSS v4 · **shadcn/ui** (Base UI, Nova) through **unicron**, the shared design system ([ADR-0047](docs/decisions/0047-unicron.md)) |
 | Icons | **Google Material Symbols** (Rounded variable font, live axes) |
 | Shells | **Tauri 2** (desktop now, mobile spike) · PWA for the web |
 | Core | Rust `pim-core`: IMAP/SMTP, Gmail API, Graph, JMAP, CalDAV/CardDAV, SQLite, Tantivy |
@@ -57,16 +57,20 @@ cargo test -p pim-core --test jmap -- --ignored
 
 The desktop shell needs [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/): WebView2 on Windows, Xcode CLT on macOS, and WebKitGTK plus libdbus on Linux (for the keychain).
 
-### Adding shadcn components
+### The design system (unicron)
 
-The shadcn CLI can't install Material Symbols, so components come through a local transform:
+Primitives and core tokens come from [unicron](https://github.com/snds/unicron), a submodule at `vendor/unicron`. Clone with `--recurse-submodules`, or run `git submodule update --init` in an existing checkout. Mailbird's own roles are in `apps/web/src/styles/app-extension.css`. A new or changed primitive goes to unicron first, then a submodule bump here.
+
+The shadcn CLI can't install Material Symbols, so components come through a local transform. `--alias-mode package` writes the imports unicron's package uses:
 
 ```bash
 git clone --depth 1 https://github.com/shadcn-ui/ui /tmp/shadcn
-node tools/shadcn-material/transform.mjs /tmp/shadcn apps/web/src/components/ui calendar command drawer
+node tools/shadcn-material/transform.mjs --alias-mode package /tmp/shadcn vendor/unicron/packages/ui/src/components/ui calendar
 ```
 
 If a component uses a Lucide icon that isn't mapped yet, the script stops. Add the mapping to `tools/shadcn-material/icon-map.json`.
+
+Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratchet` (CI fails if misuse of unicron components grows past `.dsa/baseline.json`).
 
 ## Roadmap
 

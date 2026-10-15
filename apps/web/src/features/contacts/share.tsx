@@ -1,10 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { ContactDetail } from "@/core/types"
 

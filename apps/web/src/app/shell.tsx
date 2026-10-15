@@ -1,8 +1,6 @@
 import type { ReactNode } from "react"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Icon, Button, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 import { useUi } from "./ui-store"

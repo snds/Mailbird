@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle } from "@/components/ui/sheet"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Icon, Button, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
 import { findPage, FULL, loadPhoto, type Pt, type Quad, type ScanLook, straighten, toJpeg } from "@/lib/scan"
 import { IMAGE_SIDE } from "@/lib/image"
 

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react"
 
-import { Icon } from "@/components/icon"
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { Icon, InputGroup, InputGroupAddon, InputGroupInput } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 /**

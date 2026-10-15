@@ -1,7 +1,4 @@
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 import { NOTE_COLORS, type NoteColor } from "@/core/types"
 import { cn } from "@/lib/utils"
 

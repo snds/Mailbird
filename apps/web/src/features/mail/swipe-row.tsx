@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react"
 
-import { Icon, type IconName } from "@/components/icon"
+import { Icon, type IconName } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 interface SwipeAction {

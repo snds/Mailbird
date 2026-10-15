@@ -2,11 +2,19 @@
 #   docker build -f apps/gateway/Dockerfile -t mailbird-gateway .
 FROM node:22-slim AS web
 WORKDIR /src
+# git: pnpm clones the dsa dev tool (a git dependency) while installing.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY tools/notes-relay/package.json ./tools/notes-relay/
-RUN pnpm install --frozen-lockfile --filter web
+# The shared design system (a submodule; check out with --recurse-submodules).
+COPY vendor/unicron/packages/tokens/package.json ./vendor/unicron/packages/tokens/
+COPY vendor/unicron/packages/ui/package.json ./vendor/unicron/packages/ui/
+RUN pnpm install --frozen-lockfile --filter "web..."
+COPY vendor/unicron/packages ./vendor/unicron/packages
+COPY vendor/unicron/tsconfig.base.json ./vendor/unicron/
 COPY apps/web ./apps/web
 RUN pnpm --filter web build
 
