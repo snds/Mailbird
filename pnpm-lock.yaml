@@ -704,7 +704,7 @@ packages:
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
   '@snds/dsa@git+https://git@github.com:snds/dsa.git#cc4cb051cf6097f7810eacc770ebaaba3feb97ea':
-    resolution: {commit: cc4cb051cf6097f7810eacc770ebaaba3feb97ea, repo: git@github.com:snds/dsa.git, type: git}
+    resolution: {commit: cc4cb051cf6097f7810eacc770ebaaba3feb97ea, repo: https://github.com/snds/dsa.git, type: git}
     version: 0.1.0
     engines: {node: '>=22'}
     hasBin: true
