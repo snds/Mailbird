@@ -17,6 +17,7 @@ import type {
   ContactExport,
   ContactLabel,
   ContactsRestore,
+  InterestingCalendar,
   ContactsRestored,
   SmartGroup,
   SmartGroupInput,
@@ -138,6 +139,9 @@ export interface CoreClient {
   setTimeZone(tz: string): Promise<void>
   listCollections(kind: CollectionKind): Promise<Collection[]>
   setCollectionHidden(id: string, hidden: boolean): Promise<void>
+  interestingCalendars(): Promise<InterestingCalendar[]>
+  addInterestingCalendar(id: string): Promise<void>
+  removeInterestingCalendar(id: string): Promise<void>
   /** Occurrences overlapping [from, to), in seconds. */
   listOccurrences(from: number, to: number): Promise<Occurrence[]>
   /** One event at the occurrence starting at `start` (or its first). */
@@ -283,6 +287,9 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     setTimeZone: (tz) => call("set_time_zone", { tz }),
     listCollections: (kind) => call("list_collections", { kind }),
     setCollectionHidden: (id, hidden) => call("set_collection_hidden", { id, hidden }),
+    interestingCalendars: () => call("interesting_calendars"),
+    addInterestingCalendar: (id) => call("add_interesting_calendar", { id }),
+    removeInterestingCalendar: (id) => call("remove_interesting_calendar", { id }),
     listOccurrences: (from, to) => call("list_occurrences", { from, to }),
     getEvent: (id, start) => call("get_event", { id, start: start ?? null }),
     createEvent: (input) => call("create_event", { input }),

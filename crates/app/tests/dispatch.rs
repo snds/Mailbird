@@ -319,3 +319,25 @@ async fn smart_group_and_restore_commands() {
 fn chrono_free_now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64
 }
+
+#[tokio::test]
+async fn interesting_calendar_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-interesting-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let app = AppHandle::new(TestHost::default());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+    let list = call("interesting_calendars", Value::Null).await.unwrap();
+    let us = list.as_array().unwrap().iter().find(|c| c["country"] == json!("US")).unwrap();
+    assert_eq!((us["name"].as_str(), us["subscribed"].as_bool()), (Some("Holidays in the United States"), Some(false)));
+    call("add_interesting_calendar", json!({ "id": "interesting:holidays-us" })).await.unwrap();
+    assert!(call("add_interesting_calendar", json!({ "id": "nope" })).await.is_err());
+    // 1–31 December 2026 (UTC).
+    let occ = call("list_occurrences", json!({ "from": 1_796_083_200i64, "to": 1_798_761_600i64 })).await.unwrap();
+    assert!(occ.as_array().unwrap().iter().any(|o| o["title"] == json!("Christmas Day") && o["calendarId"] == json!("interesting:holidays-us")));
+    call("remove_interesting_calendar", json!({ "id": "interesting:holidays-us" })).await.unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}

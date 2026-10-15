@@ -177,7 +177,7 @@ impl Store {
     pub fn ensure_local_collections(&self) -> Result<()> {
         for (kind, name) in [(CollectionKind::Calendar, "On this device"), (CollectionKind::Contacts, "On this device")] {
             let exists: bool = self.db.query_row(
-                "SELECT EXISTS (SELECT 1 FROM collections WHERE account_id IS NULL AND kind = ?1 AND id <> 'birthdays')",
+                "SELECT EXISTS (SELECT 1 FROM collections WHERE account_id IS NULL AND kind = ?1 AND id <> 'birthdays' AND id NOT LIKE 'interesting:%')",
                 [kind.as_str()],
                 |r| r.get(0),
             )?;
@@ -193,7 +193,7 @@ impl Store {
 
     pub fn collections(&self, kind: CollectionKind) -> Result<Vec<Collection>> {
         let mut st = self.db.prepare(&format!(
-            "SELECT {COLLECTION_COLS} FROM collections WHERE kind = ?1 ORDER BY account_id IS NULL, id = 'birthdays', account_id, name COLLATE NOCASE"
+            "SELECT {COLLECTION_COLS} FROM collections WHERE kind = ?1 ORDER BY account_id IS NULL, id = 'birthdays' OR id LIKE 'interesting:%', account_id, name COLLATE NOCASE"
         ))?;
         Ok(st.query_map([kind.as_str()], collection_row)?.collect::<rusqlite::Result<_>>()?)
     }
@@ -280,6 +280,7 @@ impl Store {
             }
         }
         out.extend(self.birthdays(from, to)?);
+        out.extend(self.interesting_occurrences(from, to)?);
         out.sort_by(|a, b| (b.all_day, a.start, &a.title).cmp(&(a.all_day, b.start, &b.title)));
         Ok(out)
     }
@@ -288,6 +289,9 @@ impl Store {
     pub fn event(&self, id: &str, start: Option<i64>) -> Result<EventDetail> {
         if let Some(contact) = id.strip_prefix(crate::connected_store::BIRTHDAY_PREFIX) {
             return self.birthday_event(contact, start);
+        }
+        if id.starts_with(crate::interesting::SPECIAL_PREFIX) {
+            return self.special_event(id);
         }
         let (calendar_id, ics): (String, String) = self
             .db

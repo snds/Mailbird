@@ -64,6 +64,23 @@ pub fn list_contacts(state: &Shared, search: Option<String>, label: Option<Strin
     with_store(state, |s| s.contacts_in(search.as_deref(), label.as_deref(), group.as_deref()))
 }
 
+/// Holidays and moon phases you can add (ADR-0024).
+pub fn interesting_calendars(state: &Shared) -> Res<Vec<pim_core::InterestingCalendar>> {
+    with_store(state, |s| s.interesting_calendars())
+}
+
+pub fn add_interesting_calendar(app: AppHandle, state: &Shared, id: String) -> Res<()> {
+    with_store(state, |s| s.add_interesting_calendar(&id))?;
+    let _ = app.emit(events::PIM_CHANGED, ());
+    Ok(())
+}
+
+pub fn remove_interesting_calendar(app: AppHandle, state: &Shared, id: String) -> Res<()> {
+    with_store(state, |s| s.remove_interesting_calendar(&id))?;
+    let _ = app.emit(events::PIM_CHANGED, ());
+    Ok(())
+}
+
 /// Smart groups with their member counts (ADR-0023).
 pub fn smart_groups(state: &Shared) -> Res<Vec<pim_core::SmartGroup>> {
     with_store(state, |s| s.smart_groups())

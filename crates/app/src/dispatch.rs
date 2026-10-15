@@ -95,6 +95,9 @@ pub const COMMANDS: &[&str] = &[
     "contact_activity",
     "contact_labels",
     "smart_groups",
+    "interesting_calendars",
+    "add_interesting_calendar",
+    "remove_interesting_calendar",
     "save_smart_group",
     "delete_smart_group",
     "contacts_restore_preview",
@@ -297,6 +300,15 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(pim_commands::list_contacts(state, search, label, group)?)
         }
         "smart_groups" => Output::json(pim_commands::smart_groups(state)?),
+        "interesting_calendars" => Output::json(pim_commands::interesting_calendars(state)?),
+        "add_interesting_calendar" => {
+            args!(args, id: String);
+            Output::json(pim_commands::add_interesting_calendar(app.clone(), state, id)?)
+        }
+        "remove_interesting_calendar" => {
+            args!(args, id: String);
+            Output::json(pim_commands::remove_interesting_calendar(app.clone(), state, id)?)
+        }
         "save_smart_group" => {
             args!(args, id: Option<String>, input: pim_core::SmartGroupInput);
             Output::json(pim_commands::save_smart_group(app.clone(), state, id, input)?)
