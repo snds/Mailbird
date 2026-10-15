@@ -18,6 +18,7 @@ import { EventEditor } from "@/features/calendar/event-editor"
 import { ReminderWatcher } from "@/features/calendar/reminder-watcher"
 import { ContactEditor } from "@/features/contacts/contact-editor"
 import { GrammarDialog } from "@/features/grammar"
+import { QuickNote } from "@/features/notes/quick-note"
 import { SplitEditor } from "@/features/mail/splits"
 import { MailView } from "@/features/mail"
 import { Composer, OutboxWatcher } from "@/features/mail/composer"
@@ -64,6 +65,7 @@ function Root() {
       <ContactEditor />
       <SplitEditor />
       <GrammarDialog />
+      <QuickNote />
       <AccountsDialog />
       <WritingDialog />
       <CommandPalette

@@ -55,6 +55,7 @@ const NAMED: Record<string, string> = {
 export const FIXED_KEYS: { area: KeyArea | "everywhere"; keys: string[]; does: string }[] = [
   { area: "mail", keys: ["Esc"], does: "Close the conversation" },
   { area: "everywhere", keys: ["⌘K"], does: "Commands and search" },
+  { area: "everywhere", keys: ["⌥N"], does: "Quick note, linked to what's open" },
   { area: "everywhere", keys: ["?"], does: "This list" },
 ]
 

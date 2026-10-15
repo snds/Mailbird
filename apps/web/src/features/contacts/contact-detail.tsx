@@ -14,6 +14,7 @@ import { shortTime } from "@/lib/time"
 import { dayLabel, fromSecs, rangeLabel } from "../calendar/dates"
 import { JoinButton } from "../calendar/join-button"
 import { LinkedNotes } from "../notes/linked-notes"
+import { useQuickContext } from "../notes/use-quick-context"
 import { PersonAvatar } from "./person"
 import { ShareContact } from "./share"
 
@@ -47,6 +48,8 @@ export function Action({ icon, label, href, onClick, disabled }: { icon: IconNam
 
 export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const { data: c, error, isPending } = useContact(id)
+  // Quick Note links to the person that's open (ADR-0037).
+  useQuickContext(c ? { kind: "contact", id, label: c.fullName } : null)
   const { data: books = [] } = useCollections("contacts")
   const { data: accounts = [] } = useAccounts()
   const openComposer = useUi((s) => s.openComposer)
