@@ -91,6 +91,8 @@ async fn every_command_routes_and_works() {
     let back = json_of(dispatch(&app, &state, "note_backlinks", json!({ "id": note["id"] })).await.unwrap());
     assert_eq!(back[0]["id"], other["id"]);
     assert_eq!(json_of(dispatch(&app, &state, "find_note", json!({ "title": "HELLO" })).await.unwrap()), note["id"]);
+    let linking = json_of(dispatch(&app, &state, "notes_linking_to", json!({ "title": "Hello", "except": note["id"] })).await.unwrap());
+    assert_eq!(linking[0]["id"], other["id"]);
     let files = json_of(dispatch(&app, &state, "export_notes", Value::Null).await.unwrap());
     let mut paths: Vec<&str> = files.as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
     paths.sort();

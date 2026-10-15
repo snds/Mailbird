@@ -79,7 +79,7 @@ On the **desktop**, the export is a new folder in Downloads (**Notes**, then **N
 
 ## Consequences
 
-- **Renaming a note doesn't update links to it.** Obsidian rewrites them. Here, notes edit as Yjs documents, so the core can't safely rewrite another note's text behind an open editor. Old links then open a new note with the old title. A later phase can rewrite links through each note's own Yjs document.
+- **Renaming a note doesn't update links to it.** Obsidian rewrites them. Here, notes edit as Yjs documents, so the core can't safely rewrite another note's text behind an open editor. Old links then open a new note with the old title. A later phase can rewrite links through each note's own Yjs document. *(Done in [ADR-0035](0035-links-that-keep-up.md).)*
 - **Links name titles, not ids.** That's what keeps them portable. Two notes with the same title open the most recently changed one.
-- **Linking an existing note to an event, contact, or conversation from the note itself** is still a follow-up from ADR-0012.
+- **Linking an existing note to an event, contact, or conversation from the note itself** is still a follow-up from ADR-0012. *(Done in [ADR-0035](0035-links-that-keep-up.md).)*
 - **Graph and canvas views** (Obsidian) can now be built on the same links. They aren't in this phase.

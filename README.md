@@ -102,6 +102,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **22 · Your keys** ✅ | Every single-key shortcut in Mail and Calendar can be changed (press the key, then the new one); a key that's taken swaps, swipe-only actions can get keys, and your keys follow you to every device ([ADR-0032](docs/decisions/0032-your-keys.md)) |
 | **23 · Regional holidays** ✅ | Pick a region of an added country (40 across Germany, the UK, Canada, Australia, France, and Portugal) to see its own days too, still computed on the device; the calendar takes the region's name, and each day says whether it's regional ([ADR-0033](docs/decisions/0033-regional-holidays.md)) |
 | **24 · Connected notes** ✅ | `[[Links]]` between notes (type `[[` to pick one, or link a note that doesn't exist yet), "Linked from" on every note, and every note exported as Markdown files with front matter that Obsidian opens as-is ([ADR-0034](docs/decisions/0034-connected-notes.md)) |
+| **25 · Links that keep up** ✅ | Rename a note and it offers to update every `[[link]]` to it (through each note's own sync document, so edits merge); link a note to an event, person, or conversation from the note itself ([ADR-0035](docs/decisions/0035-links-that-keep-up.md)) |
 
 ## License
 

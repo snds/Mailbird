@@ -160,6 +160,14 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
     const hay = [...words(x.markdown), ...x.tags.flatMap(words)]
     return words(search).every((w) => hay.some((h) => h.startsWith(w)))
   }
+  const linkingTo = (title: string, except: string | null) => {
+    const t = title.trim().toLowerCase()
+    if (!t) return []
+    return notes
+      .filter((x) => !x.deleted && x.id !== except && wikilinks(x.markdown).some((w) => w.toLowerCase() === t))
+      .sort((a, b) => b.updated - a.updated)
+      .map(summary)
+  }
   const bump = (x: DemoNote) => (x.updated = Math.max(now(), x.updated + 1))
 
   return {
@@ -180,15 +188,8 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
     },
     getNote: async (id: string) => later(detail(find(id))),
     // Connected notes (ADR-0034), as the core does them.
-    noteBacklinks: async (id: string) => {
-      const title = titleAndSnippet(find(id).markdown)[0].toLowerCase()
-      if (!title.trim()) return later([])
-      const out = notes
-        .filter((x) => !x.deleted && x.id !== id && wikilinks(x.markdown).some((t) => t.toLowerCase() === title))
-        .sort((a, b) => b.updated - a.updated)
-        .map(summary)
-      return later(out)
-    },
+    noteBacklinks: async (id: string) => later(linkingTo(titleAndSnippet(find(id).markdown)[0], id)),
+    notesLinkingTo: async (title: string, except: string | null) => later(linkingTo(title, except)),
     findNote: async (title: string) => {
       const t = title.split("#")[0]!.trim().toLowerCase()
       const hit = t ? notes.filter((x) => !x.deleted && titleAndSnippet(x.markdown)[0].toLowerCase() === t).sort((a, b) => b.updated - a.updated)[0] : undefined
