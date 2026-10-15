@@ -16,6 +16,10 @@ import type {
   TimeSlot,
   ContactExport,
   ContactLabel,
+  ContactsRestore,
+  ContactsRestored,
+  SmartGroup,
+  SmartGroupInput,
   ContactSuggestion,
   DeletedContact,
   SignatureCard,
@@ -147,7 +151,13 @@ export interface CoreClient {
   respondToInvite(messageId: string, response: InviteResponse, calendarId?: string | null): Promise<Invite>
   /** Applies a cancellation or a guest's reply. */
   applyInviteUpdate(messageId: string): Promise<Invite>
-  listContacts(search?: string | null, label?: string | null): Promise<ContactSummary[]>
+  listContacts(search?: string | null, label?: string | null, group?: string | null): Promise<ContactSummary[]>
+  smartGroups(): Promise<SmartGroup[]>
+  saveSmartGroup(id: string | null, input: SmartGroupInput): Promise<SmartGroup>
+  deleteSmartGroup(id: string): Promise<void>
+  /** `since` (Unix seconds) or `after` (a restore's mark, to undo it). */
+  contactsRestorePreview(point: { since?: number; after?: number }): Promise<ContactsRestore>
+  restoreContacts(point: { since?: number; after?: number }): Promise<ContactsRestored>
   contactLabels(): Promise<ContactLabel[]>
   /** Recently deleted, newest first (30 days). */
   deletedContacts(): Promise<DeletedContact[]>
@@ -281,7 +291,12 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     eventGuests: (id) => call("event_guests", { id }),
     respondToInvite: (messageId, response, calendarId) => call("respond_to_invite", { messageId, response, calendarId: calendarId ?? null }),
     applyInviteUpdate: (messageId) => call("apply_invite_update", { messageId }),
-    listContacts: (search, label) => call("list_contacts", { search: search ?? null, label: label ?? null }),
+    listContacts: (search, label, group) => call("list_contacts", { search: search ?? null, label: label ?? null, group: group ?? null }),
+    smartGroups: () => call("smart_groups"),
+    saveSmartGroup: (id, input) => call("save_smart_group", { id, input }),
+    deleteSmartGroup: (id) => call("delete_smart_group", { id }),
+    contactsRestorePreview: (point) => call("contacts_restore_preview", { since: point.since ?? null, after: point.after ?? null }),
+    restoreContacts: (point) => call("restore_contacts", { since: point.since ?? null, after: point.after ?? null }),
     contactLabels: () => call("contact_labels"),
     deletedContacts: () => call("deleted_contacts"),
     restoreContact: (id) => call("restore_contact", { id }),

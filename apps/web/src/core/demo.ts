@@ -352,7 +352,16 @@ export function createDemoClient(): CoreClient {
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
-  const { noteLinks, suggestFor, ...pimApi } = pim
+  const { noteLinks, suggestFor, setMailSource, ...pimApi } = pim
+  // Smart groups' "in touch": anyone you've had mail from, or sent mail to.
+  setMailSource((since) => {
+    const out = new Set<string>()
+    for (const m of state.messages.filter((m) => m.date >= since)) {
+      if (m.mailbox === SENT) for (const a of [...m.to, ...m.cc]) out.add(a.email.trim().toLowerCase())
+      else out.add(m.from.email.trim().toLowerCase())
+    }
+    return out
+  })
   const notes = createDemoNotes(emit, later, {
     linkFor: (t) => {
       if (t.kind === "event") {

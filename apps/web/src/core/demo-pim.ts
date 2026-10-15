@@ -13,6 +13,10 @@ import type {
   ContactField,
   ContactInput,
   ContactLabel,
+  ContactsRestore,
+  ContactsRestored,
+  SmartGroup,
+  SmartGroupInput,
   ContactSummary,
   DeletedContact,
   DueReminder,
@@ -337,6 +341,53 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   const trash: (DeletedContact & { card: DemoContact })[] = []
   const toTrash = (x: DemoContact) =>
     trash.unshift({ id: `tr-${++c}`, bookId: x.bookId, fullName: x.fullName, emails: x.emails, deletedAt: Math.floor(Date.now() / 1000), card: structuredClone(x) })
+  // Restore to a point in time: a snapshot before every contact change, like
+  // the core's history (which records each card instead).
+  let seq = 0
+  const history: { seq: number; at: number; snap: DemoContact[] }[] = []
+  const record = () => history.push({ seq: ++seq, at: Math.floor(Date.now() / 1000), snap: structuredClone(contacts) })
+  const restorePlan = (point: { since?: number; after?: number }) => {
+    const h = history.find((x) => (point.after != null ? x.seq > point.after : x.at >= (point.since ?? Infinity)))
+    if (!h) return { added: [], edited: [], deleted: [], snap: [] as DemoContact[] }
+    const same = (a: DemoContact, b: DemoContact) => JSON.stringify(a) === JSON.stringify(b)
+    return {
+      added: contacts.filter((x) => !h.snap.some((y) => y.id === x.id)),
+      deleted: h.snap.filter((y) => !contacts.some((x) => x.id === y.id)),
+      edited: h.snap.filter((y) => contacts.some((x) => x.id === y.id && !same(x, y))),
+      snap: h.snap,
+    }
+  }
+  // Smart groups; "in touch" asks the demo's mail who you've written with.
+  let groups: SmartGroup[] = []
+  let mailSince: (since: number) => Set<string> = () => new Set()
+  const groupMatch = (r: SmartGroupInput) => {
+    const seen = r.inTouchDays ? mailSince(Math.floor(Date.now() / 1000) - r.inTouchDays * 86_400) : null
+    return (x: DemoContact) => {
+      const emails = x.emails.map((e) => normEmail(e.value))
+      return (
+        (!r.labels.length || x.labels.some((l) => r.labels.some((w) => w.toLowerCase() === l.toLowerCase()))) &&
+        (!r.company || (x.org ?? "").toLowerCase().includes(r.company.toLowerCase())) &&
+        (!r.domain || emails.some((e) => { const h = e.split("@")[1] ?? ""; return h === r.domain || h.endsWith(`.${r.domain}`) })) &&
+        (!r.hasPhone || x.phones.length > 0) &&
+        (!r.hasBirthday || !!x.birthday) &&
+        (!seen || emails.some((e) => seen.has(e)))
+      )
+    }
+  }
+  const checkGroup = (input: SmartGroupInput): SmartGroupInput => {
+    const name = input.name.trim()
+    if (!name) throw new Error("give the group a name")
+    const labels = input.labels.map((l) => l.trim()).filter(Boolean)
+    const company = input.company?.trim() || null
+    const domain = input.domain?.trim().replace(/^@/, "").toLowerCase() || null
+    if (domain && (!domain.includes(".") || /[@\s]/.test(domain))) throw new Error(`“${domain}” isn't a domain like example.com`)
+    const inTouchDays = input.inTouchDays && input.inTouchDays > 0 ? input.inTouchDays : null
+    if (!labels.length && !company && !domain && !input.hasPhone && !input.hasBirthday && !inTouchDays) {
+      throw new Error("say who belongs in it: a label, a company, a domain, or one of the checks")
+    }
+    return { name, labels, company, domain, hasPhone: input.hasPhone, hasBirthday: input.hasBirthday, inTouchDays }
+  }
+  const counted = (g: SmartGroup): SmartGroup => ({ ...g, count: contacts.filter((x) => visible(x.bookId)).filter(groupMatch(g)).length })
   const vcardOf = (x: DemoContact, short = false) => {
     const esc = (v: string) => v.replace(/\\/g, "\\\\").replace(/[;,]/g, (m) => `\\${m}`).replace(/\n/g, "\\n")
     const parts = x.fullName.trim().split(/\s+/)
@@ -592,11 +643,14 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       return later(e.attendees.filter((a) => !e.organizer || normEmail(a.email) !== normEmail(e.organizer.email)).map(({ name, email }) => ({ name, email })))
     },
 
-    listContacts: (search?: string | null, label?: string | null) => {
+    listContacts: (search?: string | null, label?: string | null, group?: string | null) => {
       const q = search?.trim().toLowerCase()
       const l = label?.trim().toLowerCase()
+      const g = group ? groups.find((x) => x.id === group) : null
+      if (group && !g) throw new Error("that smart group was deleted")
       const list = contacts
         .filter((x) => visible(x.bookId))
+        .filter((x) => !g || groupMatch(g)(x))
         .filter((x) => !l || x.labels.some((y) => y.toLowerCase() === l))
         .filter((x) => !q || [x.fullName, x.org ?? "", ...x.emails.map((e) => e.value), ...x.phones.map((p) => p.value)].some((f) => f.toLowerCase().includes(q)))
         .sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
@@ -622,6 +676,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     },
     createContact: async (input: ContactInput) => {
       writable(input.bookId)
+      record()
       const x = fromInput(person(input.bookId, ""), input)
       contacts.push(x)
       changed()
@@ -631,6 +686,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       const x = contact(id)
       writable(x.bookId)
       writable(input.bookId)
+      record()
       fromInput(x, input)
       changed()
       return later(x)
@@ -638,6 +694,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     deleteContact: async (id: string) => {
       const x = contact(id)
       writable(x.bookId)
+      record()
       toTrash(x)
       contacts.splice(contacts.indexOf(x), 1)
       changed()
@@ -653,6 +710,42 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       }
       return later([...counts.values()].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())))
     },
+    smartGroups: async () => later(groups.map(counted)),
+    saveSmartGroup: async (id: string | null, input: SmartGroupInput) => {
+      const rule = checkGroup(input)
+      if (id && !groups.some((g) => g.id === id)) throw new Error("that smart group was deleted")
+      const g: SmartGroup = { id: id ?? `sg-${++c}`, ...rule, count: 0 }
+      groups = id ? groups.map((x) => (x.id === id ? g : x)) : [...groups, g]
+      changed()
+      return later(counted(g))
+    },
+    deleteSmartGroup: async (id: string) => {
+      groups = groups.filter((g) => g.id !== id)
+      changed()
+    },
+    contactsRestorePreview: async (point: { since?: number; after?: number }): Promise<ContactsRestore> => {
+      const p = restorePlan(point)
+      const names = (l: DemoContact[]) => l.map((x) => x.fullName).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+      return later({ added: names(p.added), edited: names(p.edited), deleted: names(p.deleted), readOnly: 0 })
+    },
+    restoreContacts: async (point: { since?: number; after?: number }): Promise<ContactsRestored> => {
+      const p = restorePlan(point)
+      const mark = seq
+      record()
+      for (const x of p.added) {
+        toTrash(x)
+        contacts.splice(contacts.indexOf(x), 1)
+      }
+      for (const y of p.edited) Object.assign(contacts.find((x) => x.id === y.id)!, structuredClone(y))
+      for (const y of p.deleted) {
+        contacts.push(structuredClone(y))
+        trash.splice(0, trash.length, ...trash.filter((t) => t.card.id !== y.id))
+      }
+      changed()
+      return later({ changed: p.added.length + p.edited.length + p.deleted.length, mark })
+    },
+    /** The demo's mail tells smart groups who you've exchanged mail with. */
+    setMailSource: (fn: (since: number) => Set<string>) => void (mailSince = fn),
     deletedContacts: async () => {
       const cutoff = Math.floor(Date.now() / 1000) - 30 * 86_400
       trash.splice(0, trash.length, ...trash.filter((t) => t.deletedAt >= cutoff))
@@ -663,6 +756,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       if (!t) throw new Error("that contact is no longer in Recently deleted")
       const book = collections.find((b) => b.id === t.bookId && b.writable) ?? collections.find((b) => b.kind === "contacts" && !b.accountId)!
       const x = { ...t.card, bookId: book.id, writable: true }
+      record()
       if (!contacts.some((k) => k.id === x.id)) contacts.push(x)
       trash.splice(trash.indexOf(t), 1)
       changed()
@@ -734,6 +828,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     mergeContacts: async (primary: string, others: string[]) => {
       const p = contact(primary)
       writable(p.bookId)
+      record()
       for (const id of others.filter((o) => o !== primary)) {
         const o = contact(id)
         writable(o.bookId)
