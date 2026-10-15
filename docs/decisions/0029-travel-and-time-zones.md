@@ -64,7 +64,7 @@ Editing an event now opens it **in the zone it was written in**. Before this, th
   - One occurrence with its own travel time.
   - "Time to leave" with no reminders set; one alert, not two, when a reminder fires at the same moment; a two-hour lead found across midnight.
   - Find a time skips the hour spent travelling.
-- **Browser, demo (`phase19`, 20 checks):**
+- **Browser, demo (`phase19`, 17 checks):**
   - The band above the ferry ends where the event begins; the event's name and page say it.
   - Editing travel updates the page and the editor's alert time.
   - A Tokyo 9 AM call shows at 1 AM on a Lisbon clock, its page says the Tokyo time, and editing opens it in Tokyo time and saves it unchanged.
