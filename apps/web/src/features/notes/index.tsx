@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCoreClient } from "@/core/client"
-import { useNoteAction, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
+import { useNoteAction, useNoteFolders, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
 import type { NoteSummary, NotesPrefs } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { reminderLabel, shortTime } from "@/lib/time"
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils"
 import { ImportDialog } from "./import-dialog"
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
 import { NoteDetailPane } from "./note-detail"
+import { NoteFolderChips } from "./note-folders"
 import { RelayDialog } from "./relay-dialog"
 import { useSyncStatus } from "./sync"
 
@@ -30,11 +31,15 @@ export function NotesView() {
   const setSelected = useUi((s) => s.setOpenNote)
   const [search, setSearch] = useState("")
   const [tag, setTag] = useState<string | null>(null)
+  const [folder, setFolder] = useState<string | null>(null)
+  const { data: folders = [] } = useNoteFolders()
+  // A folder deleted elsewhere just stops filtering.
+  const activeFolder = folders.find((f) => f.id === folder) ?? null
   const [archived, setArchived] = useState(false)
   const [importing, setImporting] = useState(false)
   const [relayOpen, setRelayOpen] = useState(false)
   const query = useDeferredValue(search.trim())
-  const { data: notes = [], isPending } = useNotes({ search: query || null, tag, archived })
+  const { data: notes = [], isPending } = useNotes({ search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) })
   const { data: tags = [] } = useNoteTags()
   const sync = useSyncStatus()
   const { data: prefs } = useNotesPrefs()
@@ -57,7 +62,13 @@ export function NotesView() {
   const due = archived ? [] : notes.filter(isDue).sort((a, b) => a.remindAt! - b.remindAt!)
   const pinned = notes.filter((n) => n.pinned && !due.includes(n))
   const rest = notes.filter((n) => !n.pinned && !due.includes(n))
-  const empty = archived ? "Archived notes show up here." : query || tag ? "No notes match." : "No notes yet. Start one, or import from Apple Notes, Keep, or a Markdown folder."
+  const empty = archived
+    ? "Archived notes show up here."
+    : activeFolder && !query && !tag
+      ? "No notes in this folder yet. They join by themselves when they match."
+      : query || tag || activeFolder
+        ? "No notes match."
+        : "No notes yet. Start one, or import from Apple Notes, Keep, or a Markdown folder."
 
   const open = (n: NoteSummary) => setSelected({ id: n.id, fresh: false })
   const row = (n: NoteSummary) => (
@@ -115,7 +126,7 @@ export function NotesView() {
         onBack={() => setSelected(null)}
         header={
           <>
-            <PaneHeader title={archived ? "Archive" : "Notes"}>
+            <PaneHeader title={archived ? "Archive" : (activeFolder?.name ?? "Notes")}>
               <Tooltip>
                 <TooltipTrigger
                   render={<Button variant="ghost" size="icon" aria-label={grid ? "Show as a list" : "Show as cards"} onClick={() => setPrefs.mutate({ grid: !grid })} />}
@@ -158,7 +169,8 @@ export function NotesView() {
               </DropdownMenu>
             </PaneHeader>
             <div className="flex flex-col gap-2 px-4 pb-3">
-              <SearchField placeholder="Search notes" value={search} onChange={setSearch} />
+              <SearchField placeholder={activeFolder ? `Search ${activeFolder.name}` : "Search notes"} value={search} onChange={setSearch} />
+              {!archived && <NoteFolderChips active={activeFolder?.id ?? null} onPick={(id) => (setFolder(id), setSelected(null))} />}
               {tags.length > 0 && !archived && (
                 <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4" role="group" aria-label="Filter by tag">
                   {tags.map((t) => (

@@ -42,6 +42,7 @@ const keys = {
   // Tasks read notes and their linked events: they refresh with both.
   noteTasks: (done: boolean) => ["notes", "tasks", done] as const,
   notesPrefs: ["notes", "prefs"] as const,
+  noteFolders: ["notes", "folders"] as const,
   noteLink: (t: NoteTarget) => ["notes", "link", t.kind, t.id] as const,
   relay: ["notes", "relay"] as const,
   // Templates and signatures refresh together on "compose:changed".
@@ -326,6 +327,11 @@ export function useNoteTasks(done = false) {
 
 export function useMeetingPrefs() {
   return useQuery({ queryKey: ["pim", "meeting-prefs"], queryFn: () => call((c) => c.meetingPrefs()), staleTime: Infinity })
+}
+
+/** Smart folders with live counts (ADR-0042); refresh with notes. */
+export function useNoteFolders() {
+  return useQuery({ queryKey: keys.noteFolders, queryFn: () => call((c) => c.noteFolders()) })
 }
 
 export function useNotesPrefs() {

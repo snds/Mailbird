@@ -64,6 +64,8 @@ import type {
   BookingChange,
   MeetingPrefs,
   NotesPrefs,
+  NoteFolder,
+  NoteFolderInput,
   NoteTarget,
   RelayConfig,
   TagCount,
@@ -275,6 +277,10 @@ export interface CoreClient {
   setMeetingPrefs(prefs: MeetingPrefs): Promise<MeetingPrefs>
   openMeeting(url: string): Promise<void>
   notesPrefs(): Promise<NotesPrefs>
+  /** Smart folders (ADR-0042), each with its count. */
+  noteFolders(): Promise<NoteFolder[]>
+  saveNoteFolder(id: string | null, input: NoteFolderInput): Promise<NoteFolder>
+  deleteNoteFolder(id: string): Promise<void>
   setNotesPrefs(prefs: NotesPrefs): Promise<NotesPrefs>
   /** The link to put on a note for something on this device. */
   noteLinkFor(target: NoteTarget): Promise<NoteLink | null>
@@ -427,6 +433,9 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     setMeetingPrefs: (prefs) => call("set_meeting_prefs", { prefs }),
     openMeeting: (url) => call("open_meeting", { url }),
     notesPrefs: () => call("notes_prefs"),
+    noteFolders: () => call("note_folders"),
+    saveNoteFolder: (id, input) => call("save_note_folder", { id, input }),
+    deleteNoteFolder: (id) => call("delete_note_folder", { id }),
     setNotesPrefs: (prefs) => call("set_notes_prefs", { prefs }),
     noteLinkFor: (target) => call("note_link_for", { target }),
     importNotes: (files) => call("import_notes", { files }),

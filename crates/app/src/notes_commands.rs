@@ -64,6 +64,23 @@ pub fn note_tasks(state: &Shared, done: bool) -> Res<Vec<pim_core::NoteTask>> {
     with_store(state, |s| s.note_tasks(done))
 }
 
+/// Smart folders (ADR-0042), each with how many notes are in it.
+pub fn note_folders(state: &Shared) -> Res<Vec<pim_core::NoteFolder>> {
+    with_store(state, |s| s.note_folders())
+}
+
+pub fn save_note_folder(app: AppHandle, state: &Shared, id: Option<String>, input: pim_core::NoteFolderInput) -> Res<pim_core::NoteFolder> {
+    let f = with_store(state, |s| s.save_note_folder(id.as_deref(), &input))?;
+    let _ = app.emit(events::NOTES_CHANGED, ());
+    Ok(f)
+}
+
+pub fn delete_note_folder(app: AppHandle, state: &Shared, id: String) -> Res<()> {
+    with_store(state, |s| s.delete_note_folder(&id))?;
+    let _ = app.emit(events::NOTES_CHANGED, ());
+    Ok(())
+}
+
 pub fn notes_prefs(state: &Shared) -> Res<pim_core::NotesPrefs> {
     with_store(state, |s| s.notes_prefs())
 }

@@ -109,6 +109,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **29 · Note reminders** ✅ | "Remind me" on any note (Later today, Tomorrow, or any time): a notification when it's due, even if Mailbird was closed, and the note waits at the top of Notes until you mark it done ([ADR-0039](docs/decisions/0039-note-reminders.md)) |
 | **30 · Their local time** ✅ | The sender profile shows what time it is for them, live, with how far ahead or behind you they are and a word when it's night or the weekend there, read from the time zone on their own mail (never a newsletter's) ([ADR-0040](docs/decisions/0040-sender-local-time.md)) |
 | **31 · Their time when you write** ✅ | Writing to someone where it's night or the weekend, the composer says so and offers to send at 9:00 AM their time (their next workday); Send later lists their morning too, with your time beside it ([ADR-0041](docs/decisions/0041-their-time.md)) |
+| **32 · Smart folders** ✅ | Saved searches in Notes (tags, words, links, color, a reminder, to-dos left) that fill and empty themselves, with live counts; searching inside one narrows it, and deleting one leaves its notes ([ADR-0042](docs/decisions/0042-smart-folders.md)) |
 
 ## License
 
