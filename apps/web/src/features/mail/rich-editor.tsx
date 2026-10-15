@@ -30,7 +30,7 @@ export function Mark({ icon, label, shortcut, pressed, onPressedChange }: { icon
 const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"
 
 /** `notes` adds what notes need beyond mail: headings, checklists, and code. */
-export function FormatBar({ editor, notes = false }: { editor: Editor; notes?: boolean }) {
+export function FormatBar({ editor, notes = false, onAddImage }: { editor: Editor; notes?: boolean; onAddImage?: () => void }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -117,6 +117,7 @@ export function FormatBar({ editor, notes = false }: { editor: Editor; notes?: b
             <Mark icon="checklist" label="Checklist" pressed={state.task} onPressedChange={() => chain().toggleTaskList().run()} />
             {/* Starts [[ so the note picker opens: easier than finding brackets on a phone keyboard. */}
             <Mark icon="add_link" label="Link to a note" pressed={false} onPressedChange={() => chain().insertContent("[[").run()} />
+            {onAddImage && <Mark icon="add_photo_alternate" label="Add image" pressed={false} onPressedChange={onAddImage} />}
             <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
           </>
         )}

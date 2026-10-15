@@ -111,6 +111,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **31 · Their time when you write** ✅ | Writing to someone where it's night or the weekend, the composer says so and offers to send at 9:00 AM their time (their next workday); Send later lists their morning too, with your time beside it ([ADR-0041](docs/decisions/0041-their-time.md)) |
 | **32 · Smart folders** ✅ | Saved searches in Notes (tags, words, links, color, a reminder, to-dos left) that fill and empty themselves, with live counts; searching inside one narrows it, and deleting one leaves its notes ([ADR-0042](docs/decisions/0042-smart-folders.md)) |
 | **33 · Locked notes** ✅ | One passphrase (never stored) seals a note's text with AES-256-GCM on the device and in sync, and the relay keeps no readable copy; the title stays visible, search and export skip the text, and notes lock again after 10 idle minutes ([ADR-0043](docs/decisions/0043-locked-notes.md)) |
+| **34 · Images in notes** ✅ | Add, paste, or drop photos into a note (shrunk to 2048 px), describe them for screen readers, and see the first one on its card; they sync on their own, seal with locked notes, come along from Obsidian, Bear, Apple Notes, and Keep imports, and export to `attachments/`; web images load only when asked ([ADR-0044](docs/decisions/0044-images-in-notes.md)) |
 
 ## License
 

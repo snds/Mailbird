@@ -85,9 +85,12 @@ fn clean_color(c: Option<&str>) -> Option<String> {
 
 const SNIPPET_CHARS: usize = 140;
 
-const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color, n.remind_at, n.locked";
+/// The last column is the cover: the first `(note-file:` id in the text. Image
+/// ids are UUIDs, so 36 characters; a locked note's text is empty, so it has none.
+const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color, n.remind_at, n.locked,
+  CASE WHEN instr(n.body, '(note-file:') > 0 THEN substr(n.body, instr(n.body, '(note-file:') + 11, 36) END";
 /// The first column a query selects after [`NOTE_COLS`].
-const AFTER_COLS: usize = 12;
+const AFTER_COLS: usize = 13;
 
 fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
     Ok(NoteSummary {
@@ -99,6 +102,7 @@ fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
         color: r.get(9)?,
         remind_at: r.get(10)?,
         locked: r.get(11)?,
+        cover: r.get(12)?,
         tags: from_json(r.get(5)?),
         links: from_json(r.get(6)?),
         created: r.get(7)?,
@@ -113,6 +117,10 @@ pub struct ExportedNote {
     /// so `[[Title]]` links keep working there.
     pub path: String,
     pub contents: String,
+    /// An image's bytes (base64), for `attachments/…` files (ADR-0044). Its
+    /// `contents` is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_base64: Option<String>,
 }
 
 /// A title as a file name: characters no file system allows become spaces.
@@ -203,7 +211,17 @@ impl Store {
                 fm.push_str(&format!("color: {c}\n"));
             }
             fm.push_str("---\n");
-            out.push(ExportedNote { path, contents: format!("{fm}{}\n", body.trim_end()) });
+            // Images go in attachments/, and the text points there, as Obsidian and Bear expect.
+            let mut body = body.trim_end().to_string();
+            for id in crate::note_file_ids(&body) {
+                let Ok(f) = self.note_file(&id, None) else { continue };
+                let file = format!("attachments/{id}.{}", crate::mime_ext(&f.mime));
+                body = body.replace(&format!("{}{id}", crate::NOTE_FILE_SCHEME), &file);
+                if taken.insert(file.clone()) {
+                    out.push(ExportedNote { path: file, contents: String::new(), data_base64: Some(f.data_base64) });
+                }
+            }
+            out.push(ExportedNote { path, contents: format!("{fm}{body}\n"), data_base64: None });
         }
         Ok(out)
     }
@@ -531,6 +549,9 @@ impl Store {
             }
             let id = uuid::Uuid::new_v4().to_string();
             self.insert_note(&id, &n.markdown, n.pinned, n.archived, n.color.as_deref(), &clean_tags(&n.tags), &[], Some(&n.source), n.created, n.updated)?;
+            for img in &n.images {
+                self.insert_note_file(&img.id, &id, img.mime, &img.data, n.created)?;
+            }
             report.imported += 1;
         }
         tx.commit()?;
@@ -866,8 +887,8 @@ mod tests {
         assert_eq!(s.note("n9").unwrap().summary.color.as_deref(), Some("green"));
         // Imports carry theirs: Keep's names, and front matter.
         let files = vec![
-            ImportFile { path: "Takeout/Keep/a.json".into(), contents: r#"{"color":"CERULEAN","isTrashed":false,"isPinned":false,"isArchived":false,"title":"Sky","textContent":"x","userEditedTimestampUsec":1000000,"createdTimestampUsec":1000000}"#.into(), modified: None },
-            ImportFile { path: "Vault/b.md".into(), contents: "---\ntitle: Sun\ncolor: yellow\n---\nSun".into(), modified: Some(5) },
+            ImportFile { path: "Takeout/Keep/a.json".into(), contents: r#"{"color":"CERULEAN","isTrashed":false,"isPinned":false,"isArchived":false,"title":"Sky","textContent":"x","userEditedTimestampUsec":1000000,"createdTimestampUsec":1000000}"#.into(), modified: None, data_base64: None },
+            ImportFile { path: "Vault/b.md".into(), contents: "---\ntitle: Sun\ncolor: yellow\n---\nSun".into(), modified: Some(5), data_base64: None },
         ];
         s.import_notes(&files).unwrap();
         let all = s.notes(&NoteQuery::default()).unwrap();
@@ -914,7 +935,7 @@ mod tests {
     #[test]
     fn import_twice_adds_nothing() {
         let s = store();
-        let files = vec![ImportFile { path: "Vault/Ideas/one.md".into(), contents: "# One\n\nBody #idea".into(), modified: Some(100) }];
+        let files = vec![ImportFile { path: "Vault/Ideas/one.md".into(), contents: "# One\n\nBody #idea".into(), modified: Some(100), data_base64: None }];
         let r = s.import_notes(&files).unwrap();
         assert_eq!(r.imported, 1);
         let r = s.import_notes(&files).unwrap();
@@ -979,7 +1000,7 @@ mod tests {
         assert!(files[2].contents.contains("archived: true"));
 
         let other = Store::open_in_memory().unwrap();
-        let picked: Vec<ImportFile> = files.iter().map(|f| ImportFile { path: format!("Mailbird notes/{}", f.path), contents: f.contents.clone(), modified: None }).collect();
+        let picked: Vec<ImportFile> = files.iter().map(|f| ImportFile { path: format!("Mailbird notes/{}", f.path), contents: f.contents.clone(), modified: None, data_base64: f.data_base64.clone() }).collect();
         assert_eq!(other.import_notes(&picked).unwrap().imported, 4);
         let back = other.notes(&NoteQuery { search: Some("Lisbon".into()), ..Default::default() }).unwrap();
         let n = &back[0];

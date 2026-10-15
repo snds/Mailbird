@@ -672,6 +672,29 @@ export interface SwipeActions {
 export interface ExportedNote {
   path: string
   contents: string
+  /** An image under attachments/ (ADR-0044); its contents are empty. */
+  dataBase64?: string | null
+}
+
+/** An image in a note (ADR-0044): its facts, without its bytes. */
+export interface NoteFile {
+  id: string
+  noteId: string
+  mime: string
+  width: number | null
+  height: number | null
+  size: number
+  /** Sealed with the notes passphrase: its note is locked. */
+  sealed: boolean
+  created: number
+  updated: number
+}
+
+/** An image's bytes to show. */
+export interface NoteFileData {
+  id: string
+  mime: string
+  dataBase64: string
 }
 
 /** Command id → key (ADR-0032); "" for none. */
@@ -820,6 +843,8 @@ export interface NoteSummary {
   remindAt: number | null
   /** Its text is sealed with the notes passphrase (ADR-0043); only the title shows. */
   locked: boolean
+  /** The first image the text shows, for a card's thumbnail (ADR-0044). */
+  cover?: string | null
   tags: string[]
   links: NoteLink[]
   created: number
@@ -895,6 +920,8 @@ export interface ImportFile {
   path: string
   contents: string
   modified?: number | null
+  /** An image's bytes, for the images notes show (ADR-0044). */
+  dataBase64?: string | null
 }
 
 export interface ImportReport {

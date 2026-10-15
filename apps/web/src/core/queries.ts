@@ -1,6 +1,8 @@
 import { QueryClient, keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect } from "react"
 
+import { fromBase64 } from "@/lib/base64"
+
 import { getCoreClient, type CoreClient } from "./client"
 import type { CollectionKind, KeyBindings, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
 
@@ -9,6 +11,15 @@ export const queryClient = new QueryClient({
     // The core pushes change events, so polling and refetch-on-focus are unnecessary.
     queries: { staleTime: Infinity, refetchOnWindowFocus: false, retry: false },
   },
+})
+
+// Note images are blob URLs (ADR-0044): freed when their query leaves the cache.
+queryClient.getQueryCache().subscribe((e) => {
+  const k = e.query.queryKey
+  if (e.type === "removed" && k[0] === "notes" && k[1] === "file") {
+    const url = (e.query.state.data as { url?: string } | undefined)?.url
+    if (url) URL.revokeObjectURL(url)
+  }
 })
 
 const keys = {
@@ -45,6 +56,7 @@ const keys = {
   noteFolders: ["notes", "folders"] as const,
   notesLock: ["notes", "lock"] as const,
   lockedNote: (id: string) => ["notes", "locked", id] as const,
+  noteFile: (id: string) => ["notes", "file", id] as const,
   noteLink: (t: NoteTarget) => ["notes", "link", t.kind, t.id] as const,
   relay: ["notes", "relay"] as const,
   // Templates and signatures refresh together on "compose:changed".
@@ -334,6 +346,23 @@ export function useMeetingPrefs() {
 /** Whether locked notes have a passphrase and are open now (ADR-0043). */
 export function useNotesLock() {
   return useQuery({ queryKey: keys.notesLock, queryFn: () => call((c) => c.notesLock()) })
+}
+
+/**
+ * An image in a note, as a blob URL (ADR-0044). Images don't change once
+ * stored, but a sealed one reads again when notes lock or unlock.
+ */
+export function useNoteFile(id: string | null) {
+  return useQuery({
+    queryKey: keys.noteFile(id ?? ""),
+    queryFn: async () => {
+      const f = await call((c) => c.noteFile(id!))
+      return { mime: f.mime, url: URL.createObjectURL(new Blob([fromBase64(f.dataBase64)], { type: f.mime })) }
+    },
+    enabled: !!id,
+    staleTime: Infinity,
+    retry: false,
+  })
 }
 
 /** A locked note's text while notes are unlocked; null while they're locked. */

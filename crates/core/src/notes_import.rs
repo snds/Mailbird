@@ -10,9 +10,24 @@
 //!   `#tags` in the text are collected as tags; the folders under the one
 //!   you picked become a tag (`Work/Clients`).
 //!
-//! Images, audio, and drawings aren't imported yet; the report counts them.
+//! Images come along (ADR-0044): Markdown `![alt](path)` and Obsidian
+//! `![[name]]` embeds, and Keep's attachments, when the picker sent the
+//! file's bytes. Audio, PDFs, and drawings aren't imported; the report
+//! counts them, and any image it couldn't find.
 
+use std::collections::HashMap;
+
+use base64::Engine;
+
+use crate::note_files::{MAX_NOTE_FILE, ext_mime, sniff_mime};
 use crate::{ImportFile, ImportReport};
+
+/// An image for an imported note, its id already in the note's Markdown.
+pub(crate) struct ImportedImage {
+    pub id: String,
+    pub mime: &'static str,
+    pub data: Vec<u8>,
+}
 
 pub(crate) struct ImportedNote {
     /// `{format}:{path}`, so importing the same export twice adds nothing.
@@ -25,6 +40,7 @@ pub(crate) struct ImportedNote {
     pub color: Option<String>,
     pub created: i64,
     pub updated: i64,
+    pub images: Vec<ImportedImage>,
 }
 
 const MEDIA: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "heic", "svg", "pdf", "m4a", "mp3", "3gp", "awb", "wav", "mp4", "mov"];
@@ -33,6 +49,7 @@ pub(crate) fn parse(files: &[ImportFile]) -> (Vec<ImportedNote>, ImportReport) {
     let mut notes = Vec::new();
     let mut report = ImportReport::default();
     let json_stems: std::collections::HashSet<&str> = files.iter().filter_map(|f| f.path.strip_suffix(".json")).collect();
+    let media = Media::new(files);
     for f in files {
         let path = f.path.replace('\\', "/");
         let segments: Vec<&str> = path.split('/').collect();
@@ -45,7 +62,7 @@ pub(crate) fn parse(files: &[ImportFile]) -> (Vec<ImportedNote>, ImportReport) {
             continue; // Keep's list of label names
         }
         match ext.as_str() {
-            "json" => match keep_note(&path, &f.contents) {
+            "json" => match keep_note(&path, &f.contents, &media) {
                 Some(Keep::Note(n, dropped)) => {
                     report.attachments_dropped += dropped;
                     notes.push(n);
@@ -53,8 +70,14 @@ pub(crate) fn parse(files: &[ImportFile]) -> (Vec<ImportedNote>, ImportReport) {
                 Some(Keep::Trashed) => report.trashed += 1,
                 None => report.skipped.push(path),
             },
-            "md" | "markdown" | "txt" => notes.push(markdown_note(&segments, &f.contents, f.modified)),
+            "md" | "markdown" | "txt" => {
+                let (n, missing) = markdown_note(&segments, &f.contents, f.modified, &media);
+                report.attachments_dropped += missing;
+                notes.push(n);
+            }
             "html" if json_stems.contains(path.trim_end_matches(".html")) => {}
+            // Images come in with the notes that show them; the rest can't yet.
+            e if ext_mime(name).is_some() && MEDIA.contains(&e) => {}
             e if MEDIA.contains(&e) => report.attachments_dropped += 1,
             _ => report.skipped.push(path),
         }
@@ -67,7 +90,7 @@ enum Keep {
     Trashed,
 }
 
-fn keep_note(path: &str, contents: &str) -> Option<Keep> {
+fn keep_note(path: &str, contents: &str, media: &Media) -> Option<Keep> {
     let v: serde_json::Value = serde_json::from_str(contents).ok()?;
     let o = v.as_object()?;
     // Keep's own fields; any other JSON file isn't a note.
@@ -117,7 +140,19 @@ fn keep_note(path: &str, contents: &str) -> Option<Keep> {
         .and_then(|l| l.as_array())
         .map(|l| l.iter().filter_map(|x| x.get("name")?.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
-    let dropped = o.get("attachments").and_then(|a| a.as_array()).map(|a| a.len() as u32).unwrap_or(0);
+    // Keep's attachments sit next to the note's JSON; images go at the end.
+    let dir = path.rsplit_once('/').map(|(d, _)| d).unwrap_or_default();
+    let mut images = Vec::new();
+    let mut dropped = 0;
+    for a in o.get("attachments").and_then(|a| a.as_array()).into_iter().flatten() {
+        match a.get("filePath").and_then(|p| p.as_str()).and_then(|p| media.take(dir, p)) {
+            Some(img) => {
+                md.push_str(&format!("\n![]({}{})\n", crate::NOTE_FILE_SCHEME, img.id));
+                images.push(img);
+            }
+            None => dropped += 1,
+        }
+    }
     let updated = secs("userEditedTimestampUsec");
     let created = Some(secs("createdTimestampUsec")).filter(|c| *c > 0).unwrap_or(updated);
     Some(Keep::Note(
@@ -130,6 +165,7 @@ fn keep_note(path: &str, contents: &str) -> Option<Keep> {
             color: o.get("color").and_then(|c| c.as_str()).and_then(keep_color),
             created,
             updated,
+            images,
         },
         dropped,
     ))
@@ -145,8 +181,10 @@ fn keep_color(c: &str) -> Option<String> {
     }
 }
 
-fn markdown_note(segments: &[&str], contents: &str, modified: Option<i64>) -> ImportedNote {
+fn markdown_note(segments: &[&str], contents: &str, modified: Option<i64>, media: &Media) -> (ImportedNote, u32) {
     let contents = contents.replace("\r\n", "\n");
+    let dir = segments[..segments.len().saturating_sub(1)].join("/");
+    let (contents, images, missing) = take_images(&contents, &dir, media);
     let (front, body) = front_matter(&contents);
     let get = |k: &str| front.iter().find(|(key, _)| key.eq_ignore_ascii_case(k)).map(|(_, v)| v.clone());
     let mut tags: Vec<String> = Vec::new();
@@ -178,7 +216,7 @@ fn markdown_note(segments: &[&str], contents: &str, modified: Option<i64>) -> Im
     };
     let updated = date("updated").or_else(|| date("modified")).or(modified).unwrap_or(0);
     let created = date("created").or_else(|| date("date")).unwrap_or(updated);
-    ImportedNote {
+    let note = ImportedNote {
         source: format!("md:{}", segments.join("/")),
         markdown: markdown.trim_end().to_string(),
         tags,
@@ -190,7 +228,150 @@ fn markdown_note(segments: &[&str], contents: &str, modified: Option<i64>) -> Im
         },
         created,
         updated: updated.max(created),
+        images,
+    };
+    (note, missing)
+}
+
+/// The image files the picker sent, by path and by file name.
+struct Media<'a> {
+    by_path: HashMap<String, (&'static str, &'a str)>,
+    /// Lowercased file name → paths, shortest first (Obsidian's rule for `![[name]]`).
+    by_name: HashMap<String, Vec<String>>,
+}
+
+impl<'a> Media<'a> {
+    fn new(files: &'a [ImportFile]) -> Self {
+        let mut by_path = HashMap::new();
+        let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
+        for f in files {
+            let (Some(mime), Some(data)) = (ext_mime(&f.path), f.data_base64.as_deref().filter(|d| !d.is_empty())) else { continue };
+            let path = f.path.replace('\\', "/");
+            let name = path.rsplit('/').next().unwrap_or_default().to_lowercase();
+            by_name.entry(name).or_default().push(path.clone());
+            by_path.insert(path, (mime, data));
+        }
+        for v in by_name.values_mut() {
+            v.sort_by_key(|p| (p.matches('/').count(), p.clone()));
+        }
+        Self { by_path, by_name }
     }
+
+    /// The image a note in `dir` points at as `target`, with a fresh id.
+    fn take(&self, dir: &str, target: &str) -> Option<ImportedImage> {
+        let target = percent_decode(target.trim());
+        let joined = normalize(&if dir.is_empty() { target.clone() } else { format!("{dir}/{target}") });
+        let (mime, data) = self.by_path.get(&joined).or_else(|| {
+            let name = target.rsplit('/').next()?.to_lowercase();
+            self.by_path.get(self.by_name.get(&name)?.first()?)
+        })?;
+        let data = base64::engine::general_purpose::STANDARD.decode(data).ok().filter(|d| !d.is_empty() && d.len() <= MAX_NOTE_FILE)?;
+        let mime = sniff_mime(&data).unwrap_or(mime);
+        Some(ImportedImage { id: uuid::Uuid::new_v4().to_string(), mime, data })
+    }
+}
+
+/// Points a note's local images at its own copies. Returns the new text, the
+/// images, and how many it couldn't find. Web images and code are left alone.
+fn take_images(md: &str, dir: &str, media: &Media) -> (String, Vec<ImportedImage>, u32) {
+    let mut out = String::with_capacity(md.len());
+    let mut images = Vec::new();
+    let mut missing = 0;
+    let mut fenced = false;
+    for line in md.split_inclusive('\n') {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+        }
+        if fenced || !line.contains("![") {
+            out.push_str(line);
+            continue;
+        }
+        let mut rest = line;
+        while let Some(i) = rest.find("![") {
+            out.push_str(&rest[..i]);
+            let tail = &rest[i..];
+            if let Some(inner) = tail.strip_prefix("![[").and_then(|t| t.split_once("]]")) {
+                // Obsidian embed: `![[photo.png|300]]`. Only images; a note embed stays as text.
+                let name = inner.0.split('|').next().unwrap_or_default();
+                let alt = name.rsplit('/').next().unwrap_or_default().rsplit_once('.').map(|(s, _)| s).unwrap_or(name);
+                if ext_mime(name).is_some() {
+                    match media.take(dir, name) {
+                        Some(img) => {
+                            out.push_str(&format!("![{alt}]({}{})", crate::NOTE_FILE_SCHEME, img.id));
+                            images.push(img);
+                        }
+                        None => {
+                            missing += 1;
+                            out.push_str(&tail[..inner.0.len() + 5]);
+                        }
+                    }
+                    rest = inner.1;
+                    continue;
+                }
+            } else if let Some((alt, after)) = tail[2..].split_once("](")
+                && let Some(end) = after.find(')')
+            {
+                let raw = after[..end].trim();
+                // `<path with spaces>` and an optional "title".
+                let target = raw.strip_prefix('<').and_then(|r| r.split_once('>')).map(|(t, _)| t).unwrap_or_else(|| raw.split(" \"").next().unwrap_or(raw));
+                let local = !target.contains("://") && !target.starts_with("data:") && !target.starts_with(crate::NOTE_FILE_SCHEME);
+                if local && !alt.contains('\n') {
+                    match media.take(dir, target) {
+                        Some(img) => {
+                            out.push_str(&format!("![{alt}]({}{})", crate::NOTE_FILE_SCHEME, img.id));
+                            images.push(img);
+                        }
+                        None => {
+                            missing += 1;
+                            out.push_str(&tail[..2 + alt.len() + 2 + end + 1]);
+                        }
+                    }
+                    rest = &after[end + 1..];
+                    continue;
+                }
+            }
+            out.push_str("![");
+            rest = &tail[2..];
+        }
+        out.push_str(rest);
+    }
+    (out, images, missing)
+}
+
+/// `a/./b/../c` → `a/c`.
+fn normalize(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for p in path.split('/') {
+        match p {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            p => parts.push(p),
+        }
+    }
+    parts.join("/")
+}
+
+/// `My%20Photo.png` → `My Photo.png`. Bad escapes stay as they are.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2]))
+        {
+            out.push((h * 16 + l) as u8);
+            i += 3;
+            continue;
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
 }
 
 #[derive(Clone)]
@@ -282,7 +463,7 @@ mod tests {
     use super::*;
 
     fn file(path: &str, contents: &str) -> ImportFile {
-        ImportFile { path: path.into(), contents: contents.into(), modified: None }
+        ImportFile { path: path.into(), contents: contents.into(), modified: None, data_base64: None }
     }
 
     #[test]
@@ -312,7 +493,8 @@ mod tests {
         assert_eq!(notes[1].markdown, "- [ ] Oat milk\n- [x] Lemons");
         assert!(notes[1].archived);
         assert_eq!(notes[1].created, notes[1].updated);
-        assert_eq!((r.trashed, r.attachments_dropped), (1, 2));
+        // a.png came without its bytes: counted, not shown.
+        assert_eq!((r.trashed, r.attachments_dropped), (1, 1));
         assert_eq!(r.skipped, ["Takeout/archive_browser.html"]);
     }
 
@@ -341,9 +523,46 @@ mod tests {
 
     #[test]
     fn apple_notes_export_keeps_its_first_line_title() {
-        let (notes, _) = parse(&[ImportFile { path: "Notes/iCloud/Trip.md".into(), contents: "Trip\r\n\r\nPack the charger".into(), modified: Some(42) }]);
+        let (notes, _) = parse(&[ImportFile { path: "Notes/iCloud/Trip.md".into(), contents: "Trip\r\n\r\nPack the charger".into(), modified: Some(42), data_base64: None }]);
         assert_eq!(notes[0].markdown, "Trip\n\nPack the charger");
         assert_eq!(notes[0].tags, ["iCloud"]);
         assert_eq!((notes[0].created, notes[0].updated), (42, 42));
+    }
+
+    fn image(path: &str) -> ImportFile {
+        ImportFile { path: path.into(), contents: String::new(), modified: None, data_base64: Some(base64::engine::general_purpose::STANDARD.encode(b"img")) }
+    }
+
+    #[test]
+    fn images_come_with_their_notes() {
+        let md = "Board\n\n![Swatch](attachments/My%20Swatch.png \"title\")\n![[sketch.jpg|300]] ![[Other note]]\n![web](https://x.test/a.png) ![gone](nope.png)\n```\n![code](attachments/My Swatch.png)\n```";
+        let keep = r#"{"textContent":"Photo","userEditedTimestampUsec":1,"attachments":[{"filePath":"p.jpeg","mimetype":"image/jpeg"}]}"#;
+        let (notes, r) = parse(&[
+            file("Vault/Design/board.md", md),
+            image("Vault/Design/attachments/My Swatch.png"),
+            image("Vault/files/deep/sketch.jpg"),
+            image("Vault/unused.webp"),
+            file("Vault/voice.m4a", ""),
+            file("Keep/p.json", keep),
+            image("Keep/p.jpeg"),
+        ]);
+        let n = &notes[0];
+        assert_eq!(n.images.len(), 2);
+        let (a, b) = (&n.images[0].id, &n.images[1].id);
+        assert_eq!(
+            n.markdown,
+            format!("Board\n\n![Swatch](note-file:{a})\n![sketch](note-file:{b}) ![[Other note]]\n![web](https://x.test/a.png) ![gone](nope.png)\n```\n![code](attachments/My Swatch.png)\n```")
+        );
+        assert_eq!((n.images[0].mime, n.images[0].data.as_slice()), ("image/png", &b"img"[..]));
+        assert_eq!(notes[1].markdown, format!("Photo\n\n![](note-file:{})", notes[1].images[0].id));
+        // nope.png and the recording; the unused image isn't any note's.
+        assert_eq!(r.attachments_dropped, 2);
+        assert!(r.skipped.is_empty());
+        assert_eq!(normalize("a/./b/../c"), "a/c");
+        assert_eq!(percent_decode("My%20Photo%zz%2"), "My Photo%zz%2");
+        // A PNG the app saved as JPEG keeps its name but says what it is.
+        let jpeg = ImportFile { data_base64: Some(base64::engine::general_purpose::STANDARD.encode(b"\xFF\xD8\xFFjpeg")), ..image("V/big.png") };
+        let (n, _) = parse(&[file("V/a.md", "![](big.png)"), jpeg]);
+        assert_eq!(n[0].images[0].mime, "image/jpeg");
     }
 }

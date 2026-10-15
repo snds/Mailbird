@@ -2,17 +2,21 @@ import { HocuspocusProvider } from "@hocuspocus/provider"
 import Collaboration from "@tiptap/extension-collaboration"
 import { Placeholder } from "@tiptap/extensions"
 import { NodeSelection } from "@tiptap/pm/state"
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
+import { type Editor, EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import type * as Y from "yjs"
 
 import { getCoreClient } from "@/core/client"
 import { queryClient, useNotesPrefs } from "@/core/queries"
 import type { NoteDetail, NotesPrefs } from "@/core/types"
 
+import { prepareImage } from "@/lib/image"
+
 import { FormatBar } from "../mail/rich-editor"
 import { SortChecked } from "./checklists"
 import { noteExtensions } from "./extensions"
+import { NOTE_FILE } from "./note-src"
 import { notesSync, useSyncStatus } from "./sync"
 import { type Choice, openWikiLink, pickChoice, useWikiChoices, wikiQueryAt } from "./wiki-links"
 import { WikiSuggest } from "./wiki-suggest"
@@ -79,6 +83,21 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
           void openWikiLink(node.attrs.target as string)
           return true
         },
+        // Pasted or dropped images become the note's own (ADR-0044).
+        handlePaste: (_view, event) => {
+          const files = imagesIn(event.clipboardData)
+          if (!files.length) return false
+          void addImages(editorRef.current, note.id, files)
+          return true
+        },
+        handleDrop: (view, event) => {
+          const files = imagesIn((event as DragEvent).dataTransfer)
+          if (!files.length) return false
+          event.preventDefault()
+          const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+          void addImages(editorRef.current, note.id, files, at)
+          return true
+        },
         handleKeyDown: (view, event) => {
           const s = suggest.current
           if (s.open) {
@@ -104,6 +123,11 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
     },
     [doc],
   )
+  const editorRef = useRef(editor)
+  useEffect(() => {
+    editorRef.current = editor
+  }, [editor])
+  const picker = useRef<HTMLInputElement>(null)
 
   // Live edits from other devices while this note is open.
   const syncing = useSyncStatus((s) => s.status !== "off")
@@ -146,10 +170,46 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
       <EditorContent editor={editor} className="min-h-0 flex-1 overflow-y-auto [&>div]:min-h-full" />
       {live && <WikiSuggest editor={editor} q={live} choices={choices} active={active} onPick={choose} />}
       <div className="sticky bottom-0 bg-(--note-surface,var(--background)) transition-colors">
-        <FormatBar editor={editor} notes />
+        <FormatBar editor={editor} notes onAddImage={() => picker.current?.click()} />
+        <input
+          ref={picker}
+          type="file"
+          accept="image/*"
+          multiple
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])]
+            e.target.value = ""
+            void addImages(editor, note.id, files)
+          }}
+        />
       </div>
     </div>
   )
+}
+
+const imagesIn = (data: DataTransfer | null) => [...(data?.files ?? [])].filter((f) => f.type.startsWith("image/"))
+
+/**
+ * Shrinks each image, stores it with the note, and puts it in the text at
+ * `at` (or the cursor). A failed one says why; the rest still go in.
+ */
+async function addImages(editor: Editor, noteId: string, files: File[], at?: number) {
+  const core = await getCoreClient()
+  for (const f of files) {
+    try {
+      const img = await prepareImage(f)
+      const stored = await core.addNoteFile(noteId, img.mime, img.dataBase64, img.width, img.height)
+      const node = { type: "noteImage", attrs: { src: `${NOTE_FILE}${stored.id}`, alt: "" } }
+      const chain = editor.chain().focus()
+      ;(at === undefined ? chain : chain.setTextSelection(at)).insertContent(node).run()
+      at = undefined
+    } catch (e) {
+      toast.error(`${f.name || "Image"}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 }
 
 /** Debounced save of Markdown + Yjs state; marks the note edited only for this person's changes. */

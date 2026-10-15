@@ -6,8 +6,9 @@
 import { downloadNotes } from "@/lib/download"
 
 import type { CoreEvent } from "./client"
+import { createDemoFiles, type Media, mediaOf, mimeExt, NOTE_FILE, noteFileIds, sampleSwatches, takeImages } from "./demo-note-files"
 import { NOTE_COLORS } from "./types"
-import type { ImportFile, ImportReport, NoteDetail, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
+import type { ImportFile, ImportReport, NoteDetail, NoteFile, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
 
 interface DemoNote extends NoteRecord {
   markdown: string
@@ -139,7 +140,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     note("Gift ideas for Marcus\n\n- A good hand grinder\n- *Wingspan* expansion", 3 * DAY, {
       color: "yellow", tags: ["home"], links: [links.byName("contact", "Marcus Lee")].filter((l): l is NoteLink => !!l),
     }),
-    note("Old color experiments\n\nOKLCH ramps with a fixed chroma cap.", 40 * DAY, { archived: true, tags: ["design"] }),
+    note(`Old color experiments\n\nOKLCH ramps with a fixed chroma cap.\n\n![Six hue ramps, light to dark](${NOTE_FILE}demo-swatches)`, 40 * DAY, { archived: true, tags: ["design"] }),
   ]
   let prefs: NotesPrefs = { sortChecked: true, grid: false }
   let relay: RelayConfig | null = null
@@ -178,7 +179,8 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       }
     }
     return {
-      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, locked: false, tags: [...x.tags],
+      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, locked: false,
+      cover: /\(note-file:([A-Za-z0-9-]+)/.exec(x.markdown)?.[1] ?? null, tags: [...x.tags],
       links: x.links.map((l) => ({ ...l, target: links.resolve(l) })), created: x.created, updated: x.updated,
     }
   }
@@ -200,6 +202,12 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     unlockedAt = now()
   }
   const lockedText = new Map<string, string>()
+  // Images in notes (ADR-0044); the sample one is drawn when first shown.
+  const files = createDemoFiles((id) => notes.some((x) => x.id === id && x.locked), () => lockInfo().unlocked)
+  const fileOf = async (id: string) => {
+    if (id === "demo-swatches" && !files.records().some((f) => f.id === id)) files.put("note-5", "image/png", await sampleSwatches(), 960, 540, id, t - 40 * DAY)
+    return files.get(id)
+  }
   const fakeSeal = (md: string) => `demo:${btoa(unescape(encodeURIComponent(md)))}`
   const fakeOpen = (sealed: string | null | undefined) => (sealed?.startsWith("demo:") ? decodeURIComponent(escape(atob(sealed.slice(5)))) : "")
   const textOf = (x: DemoNote) => lockedText.get(x.id) ?? fakeOpen(x.sealed)
@@ -271,7 +279,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     },
     exportNotes: async () => {
       const taken = new Set<string>()
-      const files = notes
+      const docs = notes
         .filter((x) => !x.deleted && !x.locked)
         .sort((a, b) => a.created - b.created)
         .map((x) => {
@@ -288,7 +296,19 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
           if (x.color) fm += `color: ${x.color}\n`
           return { path, contents: `${fm}---\n${x.markdown.trimEnd()}\n` }
         })
-      return downloadNotes(files)
+      // Images go in attachments/, and the text points there (ADR-0044).
+      const out: { path: string; contents: string; dataBase64?: string }[] = []
+      for (const f of docs) {
+        for (const id of noteFileIds(f.contents)) {
+          const img = await fileOf(id).catch(() => null)
+          if (!img) continue
+          const at = `attachments/${id}.${mimeExt(img.mime)}`
+          f.contents = f.contents.replaceAll(`${NOTE_FILE}${id}`, at)
+          if (!out.some((o) => o.path === at)) out.push({ path: at, contents: "", dataBase64: img.dataBase64 })
+        }
+        out.push(f)
+      }
+      return downloadNotes(out)
     },
     createNote: async (input: NoteInput) => {
       // Random ids, like the core's UUIDs: two devices never mint the same one.
@@ -391,6 +411,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       if (x.locked) return later(undefined)
       lockedText.set(id, x.markdown)
       Object.assign(x, { locked: true, title: titleAndSnippet(x.markdown)[0], sealed: fakeSeal(x.markdown), markdown: "", ydoc: null })
+      files.reseal(id, true)
       bump(x)
       changed()
       return later(undefined)
@@ -400,6 +421,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       const x = find(id)
       Object.assign(x, { locked: false, sealed: null, title: null, markdown: textOf(x) })
       lockedText.delete(id)
+      files.reseal(id, false)
       bump(x)
       changed()
       return later(detail(x))
@@ -431,6 +453,21 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       changed()
       return later(true)
     },
+    addNoteFile: async (noteId: string, mime: string, dataBase64: string, width: number | null, height: number | null) => {
+      find(noteId)
+      const f = files.add(noteId, mime, dataBase64, width, height)
+      changed()
+      return later(f)
+    },
+    noteFile: async (id: string) => later(await fileOf(id)),
+    noteFiles: async (noteId: string) => later(files.of(noteId)),
+    noteFileRecords: async () => later(files.records()),
+    noteFileRaw: async (id: string) => later(files.raw(id)),
+    putNoteFile: async (f: NoteFile, raw: string) => {
+      const kept = files.apply(f, raw)
+      if (kept) changed()
+      return later(kept)
+    },
     noteFolders: async () => later(folders.map((f) => ({ ...f, count: folderCount(f) }))),
     saveNoteFolder: async (id: string | null, input: NoteFolderInput) => {
       const rule = checkFolder(input)
@@ -454,14 +491,17 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       return later({ ...prefs })
     },
     noteLinkFor: async (target: NoteTarget) => later(links.linkFor(target)),
-    importNotes: async (files: ImportFile[]) => {
-      const { parsed, report } = parseImport(files)
+    importNotes: async (picked: ImportFile[]) => {
+      const { parsed, report } = parseImport(picked)
       for (const p of parsed) {
         if (notes.some((x) => x.source === p.source)) {
           report.duplicates++
           continue
         }
-        notes.push(note(p.markdown, 0, { ...p, id: crypto.randomUUID(), tags: cleanTags(p.tags) }))
+        const id = crypto.randomUUID()
+        const { images, ...rest } = p
+        notes.push(note(p.markdown, 0, { ...rest, id, tags: cleanTags(p.tags) }))
+        for (const img of images) files.put(id, img.mime, img.data, null, null, img.id, p.created || now())
         report.imported++
       }
       changed()
@@ -511,6 +551,7 @@ interface Parsed {
   color: NoteColor | null
   created: number
   updated: number
+  images: { id: string; mime: string; data: string }[]
 }
 
 const MEDIA = new Set(["png", "jpg", "jpeg", "gif", "webp", "heic", "svg", "pdf", "m4a", "mp3", "3gp", "awb", "wav", "mp4", "mov"])
@@ -519,6 +560,7 @@ function parseImport(files: ImportFile[]): { parsed: Parsed[]; report: ImportRep
   const report: ImportReport = { imported: 0, duplicates: 0, trashed: 0, attachmentsDropped: 0, skipped: [] }
   const parsed: Parsed[] = []
   const jsonStems = new Set(files.filter((f) => f.path.endsWith(".json")).map((f) => f.path.slice(0, -5)))
+  const media = mediaOf(files)
   for (const f of files) {
     const path = f.path.replaceAll("\\", "/")
     const segs = path.split("/")
@@ -527,22 +569,27 @@ function parseImport(files: ImportFile[]): { parsed: Parsed[]; report: ImportRep
     const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : ""
     if (name === "Labels.txt" && segs.includes("Keep")) continue
     if (ext === "json") {
-      const k = keep(path, f.contents)
+      const k = keep(path, f.contents, media)
       if (k === "trashed") report.trashed++
       else if (!k) report.skipped.push(path)
       else {
         report.attachmentsDropped += k.dropped
         parsed.push(k.note)
       }
-    } else if (ext === "md" || ext === "markdown" || ext === "txt") parsed.push(markdownNote(segs, f.contents, f.modified ?? null))
-    else if (ext === "html" && jsonStems.has(path.slice(0, -5))) continue
+    } else if (ext === "md" || ext === "markdown" || ext === "txt") {
+      const { note, missing } = markdownNote(segs, f.contents, f.modified ?? null, media)
+      report.attachmentsDropped += missing
+      parsed.push(note)
+    } else if (ext === "html" && jsonStems.has(path.slice(0, -5))) continue
+    // Images come in with the notes that show them (ADR-0044).
+    else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) continue
     else if (MEDIA.has(ext)) report.attachmentsDropped++
     else report.skipped.push(path)
   }
   return { parsed, report }
 }
 
-function keep(path: string, contents: string): { note: Parsed; dropped: number } | "trashed" | null {
+function keep(path: string, contents: string, media: Media): { note: Parsed; dropped: number } | "trashed" | null {
   let o: Record<string, unknown>
   try {
     o = JSON.parse(contents) as Record<string, unknown>
@@ -566,12 +613,23 @@ function keep(path: string, contents: string): { note: Parsed; dropped: number }
   if (linkLines.length) md += `\n${linkLines.join("\n")}\n`
   const labels = Array.isArray(o.labels) ? (o.labels as { name?: string }[]).map((l) => l.name ?? "").filter(Boolean) : []
   const updated = secs("userEditedTimestampUsec")
+  const dir = path.split("/").slice(0, -1).join("/")
+  const images: Parsed["images"] = []
+  let dropped = 0
+  for (const a of Array.isArray(o.attachments) ? (o.attachments as { filePath?: string }[]) : []) {
+    const img = a.filePath ? media.take(dir, a.filePath) : null
+    if (!img) dropped++
+    else {
+      md += `\n![](${NOTE_FILE}${img.id})\n`
+      images.push(img)
+    }
+  }
   return {
     note: {
       source: `keep:${path}`, markdown: md.trimEnd(), tags: labels, pinned: o.isPinned === true, archived: o.isArchived === true, color: keepColor(o.color),
-      created: secs("createdTimestampUsec") || updated, updated,
+      created: secs("createdTimestampUsec") || updated, updated, images,
     },
-    dropped: Array.isArray(o.attachments) ? o.attachments.length : 0,
+    dropped,
   }
 }
 
@@ -597,8 +655,9 @@ function parseDate(s: string): number | null {
   return Number.isNaN(ms) ? null : Math.floor(ms / 1000)
 }
 
-function markdownNote(segs: string[], raw: string, modified: number | null): Parsed {
-  const contents = raw.replace(/\r\n/g, "\n")
+function markdownNote(segs: string[], raw: string, modified: number | null, media: Media): { note: Parsed; missing: number } {
+  const taken = takeImages(raw.replace(/\r\n/g, "\n"), segs.slice(0, -1).join("/"), media)
+  const contents = taken.markdown
   const front = new Map<string, string | string[]>()
   let body = contents
   const fm = /^---\n([\s\S]*?)\n---\n?/.exec(contents)
@@ -634,5 +693,8 @@ function markdownNote(segs: string[], raw: string, modified: number | null): Par
   const date = (k: string) => (str(k) ? parseDate(str(k)!) : null)
   const updated = date("updated") ?? date("modified") ?? modified ?? 0
   const created = date("created") ?? date("date") ?? updated
-  return { source: `md:${segs.join("/")}`, markdown: markdown.trimEnd(), tags, pinned: str("pinned") === "true", archived: false, color: cleanColor(str("color")), created, updated: Math.max(updated, created) }
+  return {
+    note: { source: `md:${segs.join("/")}`, markdown: markdown.trimEnd(), tags, pinned: str("pinned") === "true", archived: false, color: cleanColor(str("color")), created, updated: Math.max(updated, created), images: taken.images },
+    missing: taken.missing,
+  }
 }

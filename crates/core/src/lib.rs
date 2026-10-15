@@ -44,6 +44,8 @@ mod notes_import;
 mod notes_store;
 mod note_folders;
 mod notes_lock;
+mod note_files;
+pub use note_files::{MAX_NOTE_FILE, NOTE_FILE_SCHEME, NoteFile, NoteFileData, mime_ext, note_file_ids};
 pub use notes_store::{ExportedNote, NOTE_COLORS, wikilinks};
 pub use note_folders::{NoteFolder, NoteFolderInput};
 pub use notes_lock::{NotesKey, NotesLockInfo, NotesLockSetting};

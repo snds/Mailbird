@@ -7,10 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getCoreClient } from "@/core/client"
 import type { ImportFile, ImportReport } from "@/core/types"
+import { prepareImage } from "@/lib/image"
 
 const TEXT = /\.(md|markdown|txt|json|html)$/i
+const IMAGE = /\.(jpe?g|png|webp|gif)$/i
 /** Bigger "notes" are almost certainly not notes; skip reading them. */
 const MAX_BYTES = 2_000_000
+/** What one import call carries, so a big vault goes in several (ADR-0044). */
+const BATCH_BYTES = 8_000_000
 
 const SOURCES = [
   { icon: "laptop_mac", name: "Apple Notes", how: "Export your notes as Markdown on a Mac, then choose that folder." },
@@ -18,17 +22,66 @@ const SOURCES = [
   { icon: "folder", name: "Obsidian, Bear, or any Markdown", how: "Choose a vault or export folder. Folders and #tags become tags." },
 ] as const
 
-async function read(list: FileList): Promise<ImportFile[]> {
-  const files = await Promise.all(
-    [...list].map(async (f) => ({
-      path: f.webkitRelativePath || f.name,
-      // Media is only counted, never read.
-      contents: TEXT.test(f.name) && f.size <= MAX_BYTES ? await f.text() : "",
-      modified: Math.floor(f.lastModified / 1000),
-    })),
+const pathOf = (f: File) => f.webkitRelativePath || f.name
+
+/**
+ * The picked files, in batches. Each note travels with the images it names
+ * (by file name, as Markdown, Obsidian, and Keep write them), shrunk the way
+ * the editor shrinks them. Other media is only counted, never read.
+ */
+async function read(list: FileList): Promise<ImportFile[][]> {
+  const all = [...list]
+  const texts: ImportFile[] = await Promise.all(
+    all
+      .filter((f) => !IMAGE.test(f.name))
+      .map(async (f) => ({ path: pathOf(f), contents: TEXT.test(f.name) && f.size <= MAX_BYTES ? await f.text() : "", modified: Math.floor(f.lastModified / 1000) })),
   )
-  return files
+  const images = all.filter((f) => IMAGE.test(f.name))
+  const named = (text: string, f: File) => {
+    const t = text.toLowerCase()
+    const n = f.name.toLowerCase()
+    return t.includes(n) || t.includes(encodeURI(n))
+  }
+  const ready = new Map<File, ImportFile | null>()
+  const prepared = async (f: File) => {
+    if (!ready.has(f)) {
+      // One that won't open (HEIC, say) is left out; the report counts it.
+      const img = await prepareImage(f).catch(() => null)
+      ready.set(f, img && { path: pathOf(f), contents: "", dataBase64: img.dataBase64 })
+    }
+    return ready.get(f) ?? null
+  }
+  const batches: ImportFile[][] = []
+  let batch: ImportFile[] = []
+  let size = 0
+  for (const t of texts) {
+    const own: ImportFile[] = []
+    for (const f of t.contents ? images.filter((i) => named(t.contents, i)) : []) {
+      const img = await prepared(f)
+      if (img) own.push(img)
+    }
+    const cost = t.contents.length + own.reduce((n, i) => n + (i.dataBase64?.length ?? 0), 0)
+    if (batch.length && size + cost > BATCH_BYTES) {
+      batches.push(batch)
+      batch = []
+      size = 0
+    }
+    batch.push(t, ...own.filter((i) => !batch.includes(i)))
+    size += cost
+  }
+  if (batch.length) batches.push(batch)
+  return batches
 }
+
+/** One report for every batch. */
+const total = (rs: ImportReport[]): ImportReport =>
+  rs.reduce((a, r) => ({
+    imported: a.imported + r.imported,
+    duplicates: a.duplicates + r.duplicates,
+    trashed: a.trashed + r.trashed,
+    attachmentsDropped: a.attachmentsDropped + r.attachmentsDropped,
+    skipped: [...a.skipped, ...r.skipped],
+  }))
 
 export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [busy, setBusy] = useState(false)
@@ -41,8 +94,10 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     if (!list?.length) return
     setBusy(true)
     try {
-      const r = await (await getCoreClient()).importNotes(await read(list))
-      setReport(r)
+      const core = await getCoreClient()
+      const reports: ImportReport[] = []
+      for (const batch of await read(list)) reports.push(await core.importNotes(batch))
+      setReport(total(reports))
       void qc.invalidateQueries({ queryKey: ["notes"] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
@@ -58,7 +113,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Import notes</DialogTitle>
-          <DialogDescription>Notes are copied in as Markdown. Nothing changes in the app they came from.</DialogDescription>
+          <DialogDescription>Notes are copied in as Markdown, with their images. Nothing changes in the app they came from.</DialogDescription>
         </DialogHeader>
 
         {report ? (
@@ -70,7 +125,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <ul className="flex flex-col gap-1 pl-7 text-muted-foreground">
               {report.duplicates > 0 && <li>{report.duplicates} already imported before, left as they are</li>}
               {report.trashed > 0 && <li>{report.trashed} in the trash, skipped</li>}
-              {report.attachmentsDropped > 0 && <li>{report.attachmentsDropped} images or recordings not brought over yet</li>}
+              {report.attachmentsDropped > 0 && <li>{report.attachmentsDropped === 1 ? "1 image or recording" : `${report.attachmentsDropped} images or recordings`} not brought over: missing, or a kind notes can't show yet</li>}
               {report.skipped.length > 0 && <li title={report.skipped.join("\n")}>{report.skipped.length} files that weren’t notes</li>}
             </ul>
           </div>
@@ -88,7 +143,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </ul>
         )}
 
-        <input ref={filesRef} type="file" multiple hidden accept=".md,.markdown,.txt,.json,.html" onChange={(e) => void run(e.target.files)} />
+        <input ref={filesRef} type="file" multiple hidden accept=".md,.markdown,.txt,.json,.html,.jpg,.jpeg,.png,.webp,.gif" onChange={(e) => void run(e.target.files)} />
         {/* webkitdirectory: every engine we ship in supports picking a folder. */}
         <input ref={folderRef} type="file" hidden {...{ webkitdirectory: "" }} onChange={(e) => void run(e.target.files)} />
 

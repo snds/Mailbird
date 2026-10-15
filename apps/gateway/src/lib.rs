@@ -267,7 +267,8 @@ pub fn router(gw: Gw) -> Router {
         .route_service("/index.html", page)
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/session", get(get_session).post(sign_in).delete(sign_out))
-        .route("/api/core/{name}", post(core))
+        // Note images arrive as base64 (up to 10 MB each, ADR-0044); axum's 2 MB default is too small.
+        .route("/api/core/{name}", post(core).layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024)))
         .route("/api/events", get(events))
         .route("/api/attachments/{id}", get(attachment))
         // Public: a scheduling link's page reads its free times and books one (ADR-0026).

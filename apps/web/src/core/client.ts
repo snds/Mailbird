@@ -45,6 +45,8 @@ import type {
   EventDetail,
   EventInput,
   ImportFile,
+  NoteFile,
+  NoteFileData,
   ImportReport,
   Invite,
   InviteResponse,
@@ -294,6 +296,13 @@ export interface CoreClient {
   saveLockedNote(id: string, markdown: string, touch: boolean): Promise<void>
   notesLockSetting(): Promise<NotesLockSetting | null>
   applyNotesLockSetting(setting: NotesLockSetting): Promise<boolean>
+  /** Images in notes (ADR-0044). A locked note's are sealed and need the notes unlocked. */
+  addNoteFile(noteId: string, mime: string, dataBase64: string, width: number | null, height: number | null): Promise<NoteFile>
+  noteFile(id: string): Promise<NoteFileData>
+  noteFiles(noteId: string): Promise<NoteFile[]>
+  noteFileRecords(): Promise<NoteFile[]>
+  noteFileRaw(id: string): Promise<string>
+  putNoteFile(file: NoteFile, rawBase64: string): Promise<boolean>
   setNotesPrefs(prefs: NotesPrefs): Promise<NotesPrefs>
   /** The link to put on a note for something on this device. */
   noteLinkFor(target: NoteTarget): Promise<NoteLink | null>
@@ -459,6 +468,12 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     saveLockedNote: (id, markdown, touch) => call("save_locked_note", { id, markdown, touch }),
     notesLockSetting: () => call("notes_lock_setting"),
     applyNotesLockSetting: (setting) => call("apply_notes_lock_setting", { setting }),
+    addNoteFile: (noteId, mime, dataBase64, width, height) => call("add_note_file", { noteId, mime, dataBase64, width, height }),
+    noteFile: (id) => call("note_file", { id }),
+    noteFiles: (noteId) => call("note_files", { noteId }),
+    noteFileRecords: () => call("note_file_records"),
+    noteFileRaw: (id) => call("note_file_raw", { id }),
+    putNoteFile: (file, rawBase64) => call("put_note_file", { file, rawBase64 }),
     setNotesPrefs: (prefs) => call("set_notes_prefs", { prefs }),
     noteLinkFor: (target) => call("note_link_for", { target }),
     importNotes: (files) => call("import_notes", { files }),

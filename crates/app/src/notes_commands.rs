@@ -123,7 +123,15 @@ pub fn save_notes_export(app: AppHandle, state: &Shared) -> Res<String> {
     let dir = crate::commands::unique_path(&app.download_dir()?, &name);
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make the {name} folder: {e}"))?;
     for f in &files {
-        std::fs::write(dir.join(&f.path), &f.contents).map_err(|e| format!("couldn't save {}: {e}", f.path))?;
+        let path = dir.join(&f.path);
+        let bytes = match &f.data_base64 {
+            Some(b) => base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b).map_err(|_| format!("{} is damaged", f.path))?,
+            None => f.contents.clone().into_bytes(),
+        };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("couldn't make a folder for {}: {e}", f.path))?;
+        }
+        std::fs::write(&path, bytes).map_err(|e| format!("couldn't save {}: {e}", f.path))?;
     }
     Ok(dir.to_string_lossy().into_owned())
 }
@@ -281,4 +289,42 @@ pub fn apply_notes_lock_setting(app: AppHandle, state: &Shared, setting: pim_cor
         changed(&app);
     }
     Ok(changed_here)
+}
+
+// ── Images in notes (ADR-0044) ──────────────────────────────────────────────
+
+/// Adds an image to a note. A locked note's image is sealed, so it needs the
+/// notes unlocked; an ordinary note's doesn't.
+pub fn add_note_file(app: AppHandle, state: &Shared, note_id: String, mime: String, data_base64: String, width: Option<u32>, height: Option<u32>) -> Res<pim_core::NoteFile> {
+    let k = key(state).ok();
+    let f = with_store(state, |s| s.add_note_file(&note_id, &mime, &data_base64, width, height, k.as_ref()))?;
+    changed(&app);
+    Ok(f)
+}
+
+pub fn note_file(state: &Shared, id: String) -> Res<pim_core::NoteFileData> {
+    let k = key(state).ok();
+    with_store(state, |s| s.note_file(&id, k.as_ref()))
+}
+
+pub fn note_files(state: &Shared, note_id: String) -> Res<Vec<pim_core::NoteFile>> {
+    with_store(state, |s| s.note_files(&note_id))
+}
+
+/// Every image's facts, for the relay's index.
+pub fn note_file_records(state: &Shared) -> Res<Vec<pim_core::NoteFile>> {
+    with_store(state, |s| s.note_file_records())
+}
+
+/// An image's bytes as stored (sealed stays sealed), for the relay.
+pub fn note_file_raw(state: &Shared, id: String) -> Res<String> {
+    with_store(state, |s| s.note_file_raw(&id))
+}
+
+pub fn put_note_file(app: AppHandle, state: &Shared, file: pim_core::NoteFile, raw_base64: String) -> Res<bool> {
+    let kept = with_store(state, |s| s.put_note_file(&file, &raw_base64))?;
+    if kept {
+        changed(&app);
+    }
+    Ok(kept)
 }

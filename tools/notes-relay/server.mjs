@@ -28,8 +28,9 @@ const address = process.env.NOTES_RELAY_ADDRESS ?? "127.0.0.1"
 const data = process.env.NOTES_RELAY_DATA ?? join(process.cwd(), "data")
 await mkdir(data, { recursive: true })
 
-// Only Mailbird's own document names: "mailbird/index" and "mailbird/note/<id>".
-const NAME = /^mailbird\/(index|note\/[A-Za-z0-9-]{1,64})$/
+// Only Mailbird's own document names: "mailbird/index", "mailbird/note/<id>", and
+// "mailbird/file/<id>" (an image in a note, ADR-0044).
+const NAME = /^mailbird\/(index|(note|file)\/[A-Za-z0-9-]{1,64})$/
 const file = (name) => join(data, `${name.replaceAll("/", "__")}.ydoc`)
 
 const same = (a, b) => {
