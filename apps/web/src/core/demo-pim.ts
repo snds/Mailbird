@@ -496,6 +496,13 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       writable: calendar(input.bookId).writable,
     })
     if (input.labels) x.labels = cleanLabels(input.labels)
+    // Like the core: JPEG, PNG, or WebP data URLs; "" removes the photo.
+    if (input.photo === "") x.photo = null
+    else if (input.photo != null) {
+      if (!/^data:image\/(jpeg|png|webp);base64,/.test(input.photo)) throw new Error("that photo isn't a JPEG, PNG, or WebP image")
+      if (input.photo.length > 200 * 1024) throw new Error("that photo is too large; pick a smaller one")
+      x.photo = input.photo
+    }
     return x
   }
 
@@ -823,6 +830,22 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       toTrash(x)
       contacts.splice(contacts.indexOf(x), 1)
       changed()
+    },
+    contactCopies: async (id: string) => {
+      const me = contact(id)
+      const emails = me.emails.map((e) => normEmail(e.value))
+      const phones = me.phones.map((p) => normPhone(p.value)).filter((p) => p.length >= 7)
+      return later(
+        contacts
+          .filter((k) => k.id !== me.id && k.bookId !== me.bookId && visible(k.bookId))
+          .filter((k) => k.emails.some((e) => emails.includes(normEmail(e.value))) || k.phones.some((p) => phones.includes(normPhone(p.value))))
+          .map((k) => ({ id: k.id, bookId: k.bookId, fullName: k.fullName })),
+      )
+    },
+    contactPhotos: async () => {
+      const out: Record<string, string> = {}
+      for (const k of contacts.filter((x) => x.photo && visible(x.bookId))) for (const e of k.emails) out[normEmail(e.value)] ??= k.photo!
+      return later(out)
     },
     contactLabels: async () => {
       const counts = new Map<string, ContactLabel>()

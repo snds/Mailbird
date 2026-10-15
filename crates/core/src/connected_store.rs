@@ -231,7 +231,7 @@ mod tests {
 
     fn contact(s: &Store, name: &str, email: &str, birthday: Option<&str>) -> String {
         let book = s.collections(CollectionKind::Contacts).unwrap()[0].id.clone();
-        s.create_contact(&ContactInput {
+        s.create_contact(&ContactInput { photo: None,
             book_id: book,
             full_name: name.into(),
             emails: vec![ContactField { label: None, value: email.into() }],

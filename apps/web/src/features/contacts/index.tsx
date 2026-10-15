@@ -6,7 +6,7 @@ import { Icon } from "@/components/icon"
 import { ListRow, SearchField } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { Button } from "@/components/ui/button"
-import { useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
+import { useAccounts, useCollections, useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 
 import { ContactDetailPane } from "./contact-detail"
@@ -54,6 +54,16 @@ export function ContactsView() {
   const [restoring, setRestoring] = useState<number | null>(null)
   const { data: contacts = [], isPending } = useContacts(query, active, activeGroup?.id ?? null)
   const { data: dupes = [] } = useDuplicates()
+  // Source badges (ADR-0027): with more than one address book showing, each
+  // row says where that card lives, so you edit the copy you mean.
+  const { data: books = [] } = useCollections("contacts")
+  const { data: accounts = [] } = useAccounts()
+  const shown = books.filter((b) => !b.hidden && b.id !== "birthdays")
+  const sourceOf = (bookId: string) => {
+    if (shown.length < 2) return null
+    const b = books.find((x) => x.id === bookId)
+    return accounts.find((a) => a.id === b?.accountId)?.displayName ?? b?.name ?? null
+  }
   const { data: gone = [] } = useDeletedContacts()
 
   // The core sorts by family name; group consecutive rows by that letter.
@@ -134,6 +144,7 @@ export function ContactsView() {
                     leading={<PersonAvatar contact={c} />}
                     title={c.fullName}
                     supporting={c.org ?? c.emails[0]?.value ?? c.phones[0]?.value}
+                    trailing={sourceOf(c.bookId) && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{sourceOf(c.bookId)}</span>}
                   />
                 </div>
               ))}

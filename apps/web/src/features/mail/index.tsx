@@ -5,14 +5,14 @@ import { Icon } from "@/components/icon"
 import { ListRow } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { VirtualList } from "@/components/virtual-list"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAccounts, useCore, useInboxOverview, useMailAction, useMessagePages, useScreener, useSwipeActions, useThread } from "@/core/queries"
+import { useAccounts, useCore, useInboxOverview, useMailAction, useMessagePages, useContactPhotos, useScreener, useSwipeActions, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -301,8 +301,11 @@ function MessageRow({
   onSelect: () => void
   account?: string
 }) {
+  // A face for senders you have a card for (ADR-0027); initials otherwise.
+  const { data: photos } = useContactPhotos()
   // Your own mail says who it went to.
   const sentTo = m.mailbox === "Sent" ? m.sentTo : null
+  const face = sentTo ? undefined : photos?.[m.from.email.trim().toLowerCase()]
   // A follow-up that came due brings your own message back to the inbox.
   const nudged = lane === "inbox" && m.followUpAt != null && m.followUpAt <= now
   const meta =
@@ -326,6 +329,7 @@ function MessageRow({
         emphasized={!m.seen}
         leading={
           <Avatar className="mt-0.5">
+            {face && <AvatarImage src={face} alt="" />}
             <AvatarFallback>{sentTo ? initials({ name: sentTo, email: sentTo }) : initials(m.from)}</AvatarFallback>
           </Avatar>
         }

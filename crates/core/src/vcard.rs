@@ -235,10 +235,39 @@ fn crlf(s: String) -> String {
     s.replace("\r\n", "\n").replace('\n', "\r\n")
 }
 
+/// A PHOTO line for a `data:image/…;base64,` URL: inline binary for vCard
+/// 3.0 (what most servers and phones read), the data URI itself for 4.0.
+/// None for an empty string (no photo). Only JPEG, PNG, and WebP, and only
+/// up to the size lists show, so cards stay light to sync.
+fn photo_line(version: &str, url: &str) -> Result<Option<String>> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Ok(None);
+    }
+    let bad = || Error::Invalid("that photo isn't a JPEG, PNG, or WebP image".into());
+    let rest = url.strip_prefix("data:").ok_or_else(bad)?;
+    let (mime, data) = rest.split_once(";base64,").ok_or_else(bad)?;
+    let kind = match mime {
+        "image/jpeg" => "JPEG",
+        "image/png" => "PNG",
+        "image/webp" => "WEBP",
+        _ => return Err(bad()),
+    };
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| bad())?;
+    if bytes.len() > PHOTO_LIMIT {
+        return Err(Error::Invalid("that photo is too large; pick a smaller one".into()));
+    }
+    Ok(Some(if version == "4.0" { format!("PHOTO:{url}") } else { format!("PHOTO;ENCODING=b;TYPE={kind}:{data}") }))
+}
+
 /// A new vCard 3.0, the version every CardDAV server (iCloud included) accepts.
 pub fn new_contact(uid: &str, input: &ContactInput) -> Result<String> {
     let mut lines = vec![format!("UID:{uid}"), "PRODID:-//Mailbird//EN".to_string()];
     lines.extend(input_lines(input)?);
+    if let Some(l) = input.photo.as_deref().map(|p| photo_line("3.0", p)).transpose()?.flatten() {
+        lines.push(l);
+    }
     let body: String = lines.iter().map(|l| format!("{l}\r\n")).collect();
     Ok(crlf(parse(&format!("BEGIN:VCARD\r\nVERSION:3.0\r\n{body}END:VCARD\r\n"))?.to_string()))
 }
@@ -257,9 +286,13 @@ const OWNED: [VCardProperty; 8] = [
 pub fn edit_contact(vcf: &str, input: &ContactInput) -> Result<String> {
     let mut card = parse(vcf)?;
     let version = if vcf.contains("VERSION:4.0") { "4.0" } else { "3.0" };
-    let fresh = card_entries(version, &input_lines(input)?)?;
-    // Labels are ours only when the edit sets them.
-    let owned = |p: &VCardProperty| OWNED.contains(p) || (input.labels.is_some() && *p == VCardProperty::Categories);
+    let mut lines = input_lines(input)?;
+    if let Some(l) = input.photo.as_deref().map(|p| photo_line(version, p)).transpose()?.flatten() {
+        lines.push(l);
+    }
+    let fresh = card_entries(version, &lines)?;
+    // Labels and the photo are ours only when the edit sets them.
+    let owned = |p: &VCardProperty| OWNED.contains(p) || (input.labels.is_some() && *p == VCardProperty::Categories) || (input.photo.is_some() && *p == VCardProperty::Photo);
     card.entries.retain(|e| !owned(&e.name) && e.name != VCardProperty::Rev);
     // Keep fields we own ahead of the rest, where clients expect them.
     let at = card.entries.iter().position(|e| !matches!(e.name, VCardProperty::Begin | VCardProperty::Version)).unwrap_or(card.entries.len());
@@ -314,8 +347,32 @@ mod tests {
 
     const ANA: &str = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:ana-1\r\nFN:Ana Duarte\r\nN:Duarte;Ana;;;\r\nEMAIL;TYPE=INTERNET,WORK:ana@studio.example\r\nTEL;TYPE=CELL:+1 (555) 010-2030\r\nADR;TYPE=HOME:;;1 Lighthouse Rd;Porto;;4000;PT\r\nX-CUSTOM:keep me\r\nEND:VCARD\r\n";
 
+    #[test]
+    fn photos_are_set_replaced_and_removed() {
+        use base64::Engine;
+        // A 1×1 PNG.
+        let png = base64::engine::general_purpose::STANDARD.encode([0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 13]);
+        let url = format!("data:image/png;base64,{png}");
+        let vcf = new_contact("p-1", &ContactInput { photo: Some(url.clone()), ..input() }).unwrap();
+        let line = vcf.lines().find(|l| l.starts_with("PHOTO;")).unwrap_or_default().to_ascii_uppercase();
+        assert!(line.contains("ENCODING=B") && line.contains("TYPE=PNG"), "inline binary for 3.0: {vcf}");
+        assert_eq!(read_contact(&vcf).unwrap().photo.as_deref(), Some(url.as_str()), "and it reads back as the same image");
+        let kept = edit_contact(&vcf, &ContactInput { note: Some("x".into()), ..input() }).unwrap();
+        assert!(read_contact(&kept).unwrap().photo.is_some(), "an edit without a photo keeps it");
+        let gone = edit_contact(&vcf, &ContactInput { photo: Some(String::new()), ..input() }).unwrap();
+        assert!(read_contact(&gone).unwrap().photo.is_none() && !gone.contains("PHOTO"), "an empty photo removes it");
+        let v4 = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:p-2\r\nFN:Ana\r\nEND:VCARD\r\n";
+        let set4 = edit_contact(v4, &ContactInput { photo: Some(url.clone()), ..input() }).unwrap();
+        assert_eq!(read_contact(&set4).unwrap().photo.as_deref(), Some(url.as_str()), "4.0 keeps a data URI");
+        for bad in ["https://tracker.example/me.jpg", "data:image/gif;base64,R0lG", "data:image/png;base64,***"] {
+            assert!(new_contact("p-3", &ContactInput { photo: Some(bad.into()), ..input() }).is_err(), "{bad}");
+        }
+        let huge = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(vec![0u8; PHOTO_LIMIT + 1]));
+        assert!(new_contact("p-4", &ContactInput { photo: Some(huge), ..input() }).unwrap_err().to_string().contains("too large"));
+    }
+
     fn input() -> ContactInput {
-        ContactInput {
+        ContactInput { photo: None,
             book_id: "b".into(),
             full_name: "Marcus Lee".into(),
             emails: vec![ContactField { label: Some("home".into()), value: "marcus@example.com".into() }],
@@ -330,9 +387,9 @@ mod tests {
 
     #[test]
     fn year_less_birthdays_survive_a_round_trip() {
-        let vcf = new_contact("m-1", &ContactInput { birthday: Some("--07-02".into()), ..input() }).unwrap();
+        let vcf = new_contact("m-1", &ContactInput { photo: None, birthday: Some("--07-02".into()), ..input() }).unwrap();
         assert_eq!(read_contact(&vcf).unwrap().birthday.as_deref(), Some("--07-02"));
-        let edited = edit_contact(&vcf, &ContactInput { note: Some("x".into()), birthday: Some("--07-02".into()), ..input() }).unwrap();
+        let edited = edit_contact(&vcf, &ContactInput { photo: None, note: Some("x".into()), birthday: Some("--07-02".into()), ..input() }).unwrap();
         assert_eq!(read_contact(&edited).unwrap().birthday.as_deref(), Some("--07-02"), "and an edit");
         assert_eq!(read_contact("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X\r\nBDAY;VALUE=date:19900402\r\nEND:VCARD\r\n").unwrap().birthday.as_deref(), Some("1990-04-02"));
     }
@@ -366,7 +423,7 @@ mod tests {
         assert_eq!(c.note.as_deref(), Some("Board games\nGood coffee"));
         assert_eq!(c.birthday.as_deref(), Some("1990-04-02"));
         assert_eq!(c.emails[0].label.as_deref(), Some("home"));
-        let empty = ContactInput { full_name: " ".into(), emails: vec![], phones: vec![], org: None, ..input() };
+        let empty = ContactInput { photo: None, full_name: " ".into(), emails: vec![], phones: vec![], org: None, ..input() };
         assert!(new_contact("x", &empty).is_err());
     }
 

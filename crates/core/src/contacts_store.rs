@@ -46,6 +46,15 @@ pub struct DeletedContact {
     pub deleted_at: i64,
 }
 
+/// The same person's card in another address book.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactCopy {
+    pub id: String,
+    pub book_id: String,
+    pub full_name: String,
+}
+
 /// A card as a file to save or send.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,6 +144,40 @@ impl Store {
         self.contact(&id)
     }
 
+    /// The same person's cards in other address books: a shared email or
+    /// phone number, in a different book (Apple's unified contacts). Lets the
+    /// card say where else it lives, so you edit the copy you mean.
+    pub fn contact_copies(&self, id: &str) -> Result<Vec<ContactCopy>> {
+        let me = self.contact(id)?.summary;
+        let emails: Vec<String> = me.emails.iter().map(|e| vcard::normalize_email(&e.value)).collect();
+        let phones: Vec<String> = me.phones.iter().map(|p| vcard::normalize_phone(&p.value)).filter(|p| p.len() >= 7).collect();
+        let mut out = Vec::new();
+        for c in self.contacts(None)? {
+            if c.id == me.id || c.book_id == me.book_id {
+                continue;
+            }
+            let shares = c.emails.iter().any(|e| emails.contains(&vcard::normalize_email(&e.value))) || c.phones.iter().any(|p| phones.contains(&vcard::normalize_phone(&p.value)));
+            if shares {
+                out.push(ContactCopy { id: c.id, book_id: c.book_id, full_name: c.full_name });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Photos of the people you have cards for, by email address, so mail
+    /// can show a face instead of initials. Embedded photos only (never
+    /// fetched), from visible address books.
+    pub fn contact_photos(&self) -> Result<std::collections::BTreeMap<String, String>> {
+        let mut out = std::collections::BTreeMap::new();
+        for c in self.contacts(None)? {
+            let Some(photo) = c.photo else { continue };
+            for e in &c.emails {
+                out.entry(vcard::normalize_email(&e.value)).or_insert_with(|| photo.clone());
+            }
+        }
+        Ok(out)
+    }
+
     /// Every label on a visible contact, alphabetical, with counts.
     pub fn contact_labels(&self) -> Result<Vec<ContactLabel>> {
         let mut st = self.db.prepare(
@@ -177,7 +220,7 @@ impl Store {
     /// notes, so it stays small enough to scan.
     pub fn contact_qr(&self, id: &str) -> Result<String> {
         let c = self.contact(id)?;
-        let input = crate::ContactInput {
+        let input = crate::ContactInput { photo: None,
             book_id: String::new(),
             full_name: c.summary.full_name,
             emails: c.summary.emails,
@@ -319,7 +362,7 @@ mod tests {
     }
 
     fn input(book: &str, name: &str, email: &str, labels: Option<Vec<&str>>) -> ContactInput {
-        ContactInput {
+        ContactInput { photo: None,
             book_id: book.into(),
             full_name: name.into(),
             emails: vec![ContactField { label: None, value: email.into() }],
@@ -330,6 +373,38 @@ mod tests {
             birthday: None,
             labels: labels.map(|l| l.into_iter().map(String::from).collect()),
         }
+    }
+
+    #[test]
+    fn copies_in_other_books_and_photos_by_address() {
+        let s = Store::open_in_memory().unwrap();
+        s.ensure_local_collections().unwrap();
+        let local = s.collections(crate::CollectionKind::Contacts).unwrap()[0].id.clone();
+        s.db.execute("INSERT INTO collections (id, account_id, kind, name, writable) VALUES ('work', NULL, 'contacts', 'Work', 1)", []).unwrap();
+        let card = |book: &str, name: &str, email: &str, phone: &str, photo: Option<&str>| crate::ContactInput {
+            book_id: book.into(),
+            full_name: name.into(),
+            emails: vec![ContactField { label: None, value: email.into() }],
+            phones: if phone.is_empty() { vec![] } else { vec![ContactField { label: None, value: phone.into() }] },
+            org: None,
+            title: None,
+            note: None,
+            birthday: None,
+            labels: None,
+            photo: photo.map(String::from),
+        };
+        let png = format!("data:image/png;base64,{}", { use base64::Engine; base64::engine::general_purpose::STANDARD.encode([0x89u8, b'P', b'N', b'G']) });
+        let ana = s.create_contact(&card(&local, "Ana Duarte", "ana@example.com", "", Some(&png))).unwrap();
+        let work = s.create_contact(&card("work", "Ana D.", "ANA@example.com", "+351 912 345 678", None)).unwrap();
+        s.create_contact(&card(&local, "Ana (old)", "ana@example.com", "", None)).unwrap();
+        let by_phone = s.create_contact(&card("work", "Front desk", "desk@example.com", "912 345 678", None)).unwrap();
+        let copies = s.contact_copies(&ana.summary.id).unwrap();
+        assert_eq!(copies.iter().map(|c| c.full_name.as_str()).collect::<Vec<_>>(), ["Ana D."], "same address, other book; the same book's card isn't a copy");
+        let from_work = s.contact_copies(&work.summary.id).unwrap();
+        assert!(from_work.iter().any(|c| c.full_name == "Ana Duarte") && !from_work.iter().any(|c| c.id == by_phone.summary.id), "a phone shared within one book isn't a copy");
+        let photos = s.contact_photos().unwrap();
+        assert_eq!(photos.get("ana@example.com"), Some(&png), "a face for her address");
+        assert!(!photos.contains_key("desk@example.com"));
     }
 
     #[test]
@@ -419,7 +494,7 @@ mod tests {
     fn share_as_file_and_qr() {
         let (s, _, book) = store();
         let id = s
-            .create_contact(&ContactInput { title: Some("Lead".into()), note: Some("private".into()), ..input(&book, "Priya: Raman", "priya@studio.example", None) })
+            .create_contact(&ContactInput { photo: None, title: Some("Lead".into()), note: Some("private".into()), ..input(&book, "Priya: Raman", "priya@studio.example", None) })
             .unwrap()
             .summary
             .id;
@@ -442,19 +517,19 @@ mod tests {
         assert_eq!(new.card.emails[0].value, "priya@studio.example", "the sender's address is on the card");
 
         // With a contact already: only what's missing, never overwriting.
-        let id = s.create_contact(&ContactInput { org: Some("Studio Ltd".into()), ..input(&book, "Priya", "PRIYA@studio.example", None) }).unwrap().summary.id;
+        let id = s.create_contact(&ContactInput { photo: None, org: Some("Studio Ltd".into()), ..input(&book, "Priya", "PRIYA@studio.example", None) }).unwrap().summary.id;
         let more = s.contact_suggestion(&m).unwrap().unwrap();
         assert_eq!((more.contact_id.as_deref(), more.adds.clone()), (Some(id.as_str()), vec!["phone".to_string(), "title".to_string()]));
         assert_eq!((more.card.full_name.as_str(), more.card.org.as_deref()), ("Priya", Some("Studio Ltd")), "your fields win");
         s.update_contact(
             &id,
-            &ContactInput { phones: more.card.phones.clone(), title: more.card.title.clone(), org: more.card.org.clone(), ..input(&book, "Priya", "priya@studio.example", None) },
+            &ContactInput { photo: None, phones: more.card.phones.clone(), title: more.card.title.clone(), org: more.card.org.clone(), ..input(&book, "Priya", "priya@studio.example", None) },
         )
         .unwrap();
         assert_eq!(s.contact_suggestion(&m).unwrap(), None, "nothing new now");
 
         // A new address under a name you have: add it to that contact.
-        let sam = s.create_contact(&ContactInput { title: Some("Engineer".into()), ..input(&book, "Sam Okafor", "sam@studio.example", None) }).unwrap().summary.id;
+        let sam = s.create_contact(&ContactInput { photo: None, title: Some("Engineer".into()), ..input(&book, "Sam Okafor", "sam@studio.example", None) }).unwrap().summary.id;
         let other = s.insert_local(&account, "INBOX", &raw("Sam Okafor <sam@example.com>", "Spec attached.\r\n\r\n-- \r\nSam Okafor\r\nEngineer\r\nm: +1 555 010 2200"), false).unwrap();
         let more = s.contact_suggestion(&other).unwrap().unwrap();
         assert_eq!((more.contact_id.as_deref(), more.adds.clone()), (Some(sam.as_str()), vec!["phone".to_string(), "email".to_string()]));

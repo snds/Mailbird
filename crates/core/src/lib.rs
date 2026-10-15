@@ -27,7 +27,7 @@ pub use interesting::{INTERESTING_PREFIX, InterestingCalendar, SPECIAL_PREFIX};
 pub mod ical;
 pub mod itip;
 pub use connected_store::BIRTHDAY_PREFIX;
-pub use contacts_store::{ContactExport, ContactLabel, ContactSuggestion, DeletedContact};
+pub use contacts_store::{ContactCopy, ContactExport, ContactLabel, ContactSuggestion, DeletedContact};
 pub use people_store::{ContactsRestore, ContactsRestored, RestorePoint, SmartGroup, SmartGroupInput};
 pub use signature::SignatureCard;
 pub mod meeting;

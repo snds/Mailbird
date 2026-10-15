@@ -230,6 +230,15 @@ export function useSmartGroups() {
   return useQuery({ queryKey: keys.smartGroups, queryFn: () => call((c) => c.smartGroups()) })
 }
 
+export function useContactCopies(id: string) {
+  return useQuery({ queryKey: ["pim", "contact-copies", id], queryFn: () => call((c) => c.contactCopies(id)) })
+}
+
+/** Faces for mail: contact photos by lowercase email address. */
+export function useContactPhotos() {
+  return useQuery({ queryKey: ["pim", "contact-photos"], queryFn: () => call((c) => c.contactPhotos()), staleTime: 60_000 })
+}
+
 export function useDeletedContacts() {
   return useQuery({ queryKey: keys.deletedContacts, queryFn: () => call((c) => c.deletedContacts()) })
 }

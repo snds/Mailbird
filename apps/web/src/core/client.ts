@@ -16,6 +16,7 @@ import type {
   TimeSlot,
   ContactExport,
   ContactLabel,
+  ContactCopy,
   ContactsRestore,
   InterestingCalendar,
   SwipeActions,
@@ -177,6 +178,9 @@ export interface CoreClient {
   contactsRestorePreview(point: { since?: number; after?: number }): Promise<ContactsRestore>
   restoreContacts(point: { since?: number; after?: number }): Promise<ContactsRestored>
   contactLabels(): Promise<ContactLabel[]>
+  contactCopies(id: string): Promise<ContactCopy[]>
+  /** Contact photos by email address, for mail's avatars. */
+  contactPhotos(): Promise<Record<string, string>>
   /** Recently deleted, newest first (30 days). */
   deletedContacts(): Promise<DeletedContact[]>
   restoreContact(id: string): Promise<ContactDetail>
@@ -326,6 +330,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     contactsRestorePreview: (point) => call("contacts_restore_preview", { since: point.since ?? null, after: point.after ?? null }),
     restoreContacts: (point) => call("restore_contacts", { since: point.since ?? null, after: point.after ?? null }),
     contactLabels: () => call("contact_labels"),
+    contactCopies: (id) => call("contact_copies", { id }),
+    contactPhotos: () => call("contact_photos"),
     deletedContacts: () => call("deleted_contacts"),
     restoreContact: (id) => call("restore_contact", { id }),
     contactVcard: (id) => call("contact_vcard", { id }),

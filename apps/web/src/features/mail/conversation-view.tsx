@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
 import { Icon, type IconName } from "@/components/icon"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,7 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { Category } from "@/core/types"
-import { useMailAction } from "@/core/queries"
+import { useContactPhotos, useMailAction } from "@/core/queries"
 import { useNowSecs } from "@/hooks/use-now"
 
 function ToolbarButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
@@ -136,9 +136,11 @@ function AttachmentChip({ file }: { file: AttachmentInfo }) {
 function MessageCard({ message, expanded, onToggle, accountAddress }: { message: MessageDetail; expanded: boolean; onToggle: () => void; accountAddress?: string }) {
   const mine = message.mailbox === "Sent" || message.from.email === accountAddress
   const files = message.attachments.filter((a) => !a.inline)
+  const { data: photos } = useContactPhotos()
   const header = (
     <>
       <Avatar className={cn("shrink-0", mine && "bg-primary/10")}>
+        {!mine && photos?.[message.from.email.trim().toLowerCase()] && <AvatarImage src={photos[message.from.email.trim().toLowerCase()]} alt="" />}
         <AvatarFallback>{mine ? "Me" : initials(message.from)}</AvatarFallback>
       </Avatar>
       <span className="flex min-w-0 flex-1 flex-col">
