@@ -164,7 +164,7 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
             <dt className="text-xs text-muted-foreground">Also in</dt>
             <dd className="flex flex-wrap gap-1.5 pt-0.5">
               {copies.map((k) => (
-                <Button key={k.id} size="xs" variant="outline" className="rounded-full" onClick={() => jumpTo({ kind: "contact", id: k.id })} aria-label={`Open ${k.fullName} in ${bookName(k.bookId)}`}>
+                <Button key={k.id} size="xs" variant="outline" shape="pill" onClick={() => jumpTo({ kind: "contact", id: k.id })} aria-label={`Open ${k.fullName} in ${bookName(k.bookId)}`}>
                   {bookName(k.bookId)}
                   {k.fullName !== c.fullName && <span className="text-muted-foreground">as {k.fullName}</span>}
                 </Button>

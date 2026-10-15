@@ -103,7 +103,7 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
   return (
     <div className="flex flex-col gap-4">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">
+        <DialogTitle>
           <Button type="button" variant="ghost" size="icon-sm" onClick={() => (signIn.isPending && cancel(), onBack())} aria-label="Back">
             <Icon name="arrow_back" />
           </Button>
@@ -132,7 +132,7 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
             <ul className="flex flex-col gap-1.5">
               {copy.grants.map((g) => (
                 <li key={g.text} className="flex items-center gap-2 text-sm">
-                  <Icon name={g.icon} className="size-4 text-muted-foreground" /> {g.text}
+                  <Icon name={g.icon} tone="muted" className="size-4" /> {g.text}
                 </li>
               ))}
             </ul>
@@ -149,7 +149,7 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
             </p>
           )}
           <p className="flex gap-2 text-xs text-muted-foreground">
-            <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+            <Icon name="info" className="mt-0.5 size-4" />
             {client?.builtIn ? copy.builtInWarning : copy.ownWarning}
           </p>
           <DialogFooter className="items-center sm:justify-between">
@@ -182,7 +182,7 @@ function ClientForm({ issuer, copy, current, onClose }: { issuer: OAuthIssuer; c
     <form className="flex flex-col gap-4" onSubmit={(e) => (e.preventDefault(), save.mutate({ clientId: clientId.trim(), clientSecret: secret.trim() || null }))}>
       {!current && (
         <p className="flex gap-2 rounded-lg bg-muted px-3 py-2 text-sm" role="status">
-          <Icon name="key" className="mt-0.5 size-4 shrink-0" />
+          <Icon name="key" className="mt-0.5 size-4" />
           {copy.noClient}
         </p>
       )}

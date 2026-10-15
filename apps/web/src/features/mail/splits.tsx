@@ -26,7 +26,7 @@ export function SplitChips({ accountId, onPick }: { accountId: string | null; on
             size="xs"
             variant={active === s.id ? "secondary" : "ghost"}
             aria-pressed={active === s.id}
-            className="shrink-0 rounded-full px-3"
+            shape="pill"
             onClick={() => (setSplit(s.id), onPick())}
             onDoubleClick={() => open({ id: s.id, initial: s })}
           >
@@ -36,11 +36,11 @@ export function SplitChips({ accountId, onPick }: { accountId: string | null; on
         )
       })}
       {active && splits.some((s) => s.id === active) ? (
-        <Button size="icon-xs" variant="ghost" className="shrink-0 rounded-full" aria-label="Edit split" onClick={() => open({ id: active, initial: splits.find((s) => s.id === active)! })}>
+        <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit split" onClick={() => open({ id: active, initial: splits.find((s) => s.id === active)! })}>
           <Icon name="tune" />
         </Button>
       ) : (
-        <Button size="icon-xs" variant="ghost" className="shrink-0 rounded-full" aria-label="New split" onClick={() => open({ initial: {} })}>
+        <Button size="icon-xs" variant="ghost" shape="pill" aria-label="New split" onClick={() => open({ initial: {} })}>
           <Icon name="add" />
         </Button>
       )}
@@ -145,7 +145,7 @@ function SplitForm({ id, initial, onDone }: { id?: string; initial: Partial<Spli
       </label>
       <DialogFooter className="flex-row items-center">
         {id && (
-          <Button type="button" variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={() => void del()}>
+          <Button type="button" variant="ghost-destructive" className="mr-auto" onClick={() => void del()}>
             Delete split
           </Button>
         )}
@@ -182,7 +182,7 @@ export function BundleRow({ accountId, onOpen }: { accountId: string | null; onO
     <section aria-label="Newsletters bundle" className="mx-3 mb-1 flex items-center gap-3 rounded-xl border bg-muted/40 py-2 pr-2 pl-3" data-slot="bundle">
       <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onOpen}>
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-background">
-          <Icon name="newspaper" className="size-5 text-muted-foreground" />
+          <Icon name="newspaper" tone="muted" className="size-5" />
         </span>
         <span className="flex min-w-0 flex-col">
           <span className={b.unread ? "text-sm font-semibold" : "text-sm font-medium"}>

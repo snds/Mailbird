@@ -178,7 +178,7 @@ export function MailView() {
                     size="xs"
                     variant={category === c.id ? "secondary" : "ghost"}
                     aria-pressed={category === c.id}
-                    className="rounded-full px-3"
+                    shape="pill"
                     onClick={() => (setCategory(c.id), setSelected(null))}
                   >
                     {c.label}
@@ -353,7 +353,7 @@ function MessageRow({
         trailing={
           <span className="mt-0.5 flex shrink-0 flex-col items-end gap-1">
             {m.flagged && <Icon name="star" fill className="size-4 text-vertical-notes" label="Starred" />}
-            {m.hasAttachments && <Icon name="attach_file" className="size-4 text-muted-foreground" label="Has attachments" />}
+            {m.hasAttachments && <Icon name="attach_file" tone="muted" className="size-4" label="Has attachments" />}
             {account && <span className="text-[11px] text-muted-foreground">{account}</span>}
           </span>
         }

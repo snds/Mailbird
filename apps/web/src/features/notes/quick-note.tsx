@@ -82,7 +82,7 @@ function Composer({ target, onChange, onDone }: { target: QuickContext | null; o
       {target && linked && (
         <div className="flex">
           <span className="inline-flex h-7 max-w-full items-center gap-1 rounded-full border bg-muted/50 pl-2.5 text-xs" data-slot="quick-link">
-            <Icon name={ICON[target.kind]} className="size-3.5 shrink-0" />
+            <Icon name={ICON[target.kind]} className="size-3.5" />
             <span className="truncate">{label}</span>
             <button type="button" aria-label={`Don't link to ${label}`} className="flex h-full items-center px-1.5 text-muted-foreground hover:text-foreground" onClick={() => update(text, false)}>
               <Icon name="close" className="size-3.5" />
@@ -114,7 +114,7 @@ function Composer({ target, onChange, onDone }: { target: QuickContext | null; o
                 key={n.id}
                 size="xs"
                 variant="outline"
-                className="rounded-full"
+                shape="pill"
                 onClick={() => {
                   close()
                   jumpTo({ kind: "note", id: n.id })

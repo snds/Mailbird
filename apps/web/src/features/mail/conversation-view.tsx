@@ -2,7 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Avatar, AvatarFallback, AvatarImage, Badge, Button, AdaptiveSheetContent, Sheet, SheetTitle, Skeleton, Tooltip, TooltipContent, TooltipTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@unicron/ui"
+import { Icon, type IconName, Avatar, AvatarFallback, AvatarImage, Badge, Button, AdaptiveSheetContent, Sheet, SheetTitle, Skeleton, Tooltip, TooltipContent, TooltipTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { Account, AttachmentInfo, MessageDetail, MessageSummary } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -20,7 +20,7 @@ import { useQuickContext } from "../notes/use-quick-context"
 import { SenderProfile } from "./sender-profile"
 import { SignatureSuggestion } from "./signature-suggestion"
 import { SnoozeMenu } from "./snooze-menu"
-import { UnsubscribeButton } from "./unsubscribe-button"
+import { UnsubscribeAction } from "./unsubscribe"
 import { CATEGORIES } from "./lanes"
 import { useSenderActions } from "./sender-actions"
 import type { Category } from "@/core/types"
@@ -28,17 +28,7 @@ import { useContactPhotos, useMailAction } from "@/core/queries"
 import { useNowSecs } from "@/hooks/use-now"
 
 function ToolbarButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={label} aria-pressed={active} onClick={onClick} />}>
-        <Icon name={icon} fill={active} />
-      </TooltipTrigger>
-      <TooltipContent>
-        {label}
-        {shortcut && <kbd className="ml-2 font-mono text-[11px] opacity-70">{shortcut}</kbd>}
-      </TooltipContent>
-    </Tooltip>
-  )
+  return <IconButton icon={icon} label={label} shortcut={shortcut} aria-pressed={active} fill={active} onClick={onClick} />
 }
 
 function fileIcon(mime: string): IconName {
@@ -80,7 +70,7 @@ function AttachmentChip({ file }: { file: AttachmentInfo }) {
         {thumb ? (
           <img src={thumb} alt="" className="size-8 shrink-0 rounded-md object-cover" />
         ) : (
-          <Icon name={fileIcon(file.mimeType)} className="size-6 shrink-0 text-muted-foreground" opticalSize={24} />
+          <Icon name={fileIcon(file.mimeType)} tone="muted" className="size-6" opticalSize={24} />
         )}
         <span className="flex min-w-0 flex-col">
           <span className="truncate font-medium">{file.filename}</span>
@@ -133,7 +123,7 @@ function MessageCard({ message, expanded, onToggle, accountAddress }: { message:
         <span className="flex items-center gap-2">
           <span className={cn("truncate text-sm", message.seen ? "font-medium" : "font-semibold")}>{mine ? "Me" : displayName(message.from)}</span>
           {message.mailbox === "Sent" && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">Sent</Badge>}
-          {files.length > 0 && !expanded && <Icon name="attach_file" className="size-3.5 text-muted-foreground" label="Has attachments" />}
+          {files.length > 0 && !expanded && <Icon name="attach_file" tone="muted" className="size-3.5" label="Has attachments" />}
         </span>
         <span className="truncate text-xs text-muted-foreground">
           {expanded ? `to ${message.to.map(displayName).join(", ") || "you"}` : message.preview}
@@ -324,7 +314,7 @@ export function ConversationView({
 
       {screening && target.mailbox !== "Sent" && (
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border bg-accent/40 px-4 py-3 text-sm">
-          <Icon name="waving_hand" className="size-5 text-muted-foreground" />
+          <Icon name="waving_hand" tone="muted" className="size-5" />
           <span className="min-w-0 flex-1">
             <span className="font-medium">{displayName(target.from)}</span> is writing to you for the first time. Do you want their mail in your inbox?
           </span>
@@ -358,7 +348,7 @@ export function ConversationView({
 
       {target.mailbox !== "Sent" && target.unsubscribe && (
         <div className="flex">
-          <UnsubscribeButton message={target} onArchive={() => !row.archived && triage.toggleArchive(row)} />
+          <UnsubscribeAction message={target} onArchive={() => !row.archived && triage.toggleArchive(row)} />
         </div>
       )}
 

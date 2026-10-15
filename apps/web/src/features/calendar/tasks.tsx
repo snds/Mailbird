@@ -66,7 +66,7 @@ export function TasksPanel({ onOpen }: { onOpen: (eventId: string, start: number
         </div>
       ))}
       {tasks.length > SHOWN && (
-        <Button variant="ghost" size="sm" className="justify-start px-1 text-muted-foreground" onClick={() => setAll(!all)}>
+        <Button variant="ghost-muted" size="sm" className="justify-start px-1" onClick={() => setAll(!all)}>
           {all ? "Show fewer" : `Show all ${tasks.length}`}
         </Button>
       )}

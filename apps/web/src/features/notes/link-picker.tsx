@@ -91,7 +91,7 @@ function Picker({ linked, onLink }: { linked: NoteLink[]; onLink: (link: NoteLin
               const done = already(f.target)
               return (
                 <Button key={f.target.id} variant="ghost" className="h-auto justify-start gap-2 px-2 py-1.5 text-left" disabled={done} onClick={() => void pick(f)}>
-                  <Icon name={g.icon} className="size-4 shrink-0 text-muted-foreground" />
+                  <Icon name={g.icon} tone="muted" className="size-4" />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm">{f.label}</span>
                     <span className="truncate text-xs text-muted-foreground">{done ? "Linked already" : f.detail}</span>

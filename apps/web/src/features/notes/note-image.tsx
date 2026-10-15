@@ -70,7 +70,7 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     const locked = file.error instanceof Error && /passphrase/i.test(file.error.message)
     body = (
       <span className={frame} role="img" aria-label={alt || "Image"}>
-        <Icon name={locked ? "lock" : "hide_image"} className="size-5 shrink-0" />
+        <Icon name={locked ? "lock" : "hide_image"} className="size-5" />
         {locked ? "Unlock notes to see this image" : "This image isn't on this device yet"}
       </span>
     )
@@ -83,7 +83,7 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     }
     body = (
       <span className={frame}>
-        <Icon name="image" className="size-5 shrink-0" />
+        <Icon name="image" className="size-5" />
         <span className="min-w-0 truncate">{alt || "Web image"}</span>
         <Button type="button" size="xs" variant="outline" onClick={() => setAllowWeb(true)}>
           Show from {host || "the web"}
@@ -107,7 +107,7 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
   } else {
     body = (
       <span className={frame} role="img" aria-label={alt || "Image"}>
-        <Icon name="hide_image" className="size-5 shrink-0" />
+        <Icon name="hide_image" className="size-5" />
         {alt || "Image"}
       </span>
     )

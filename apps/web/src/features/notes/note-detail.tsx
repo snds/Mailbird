@@ -3,7 +3,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import { toast } from "sonner"
 
 import { useUi, type Jump } from "@/app/ui-store"
-import { Icon, type IconName, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
+import { Icon, type IconName, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger, IconButton } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLockedNote, useNote, useNoteAction, useNoteBacklinks, useNotesLock, useNoteTags } from "@/core/queries"
 import type { NoteLink, NoteLinkKind, NoteMeta } from "@/core/types"
@@ -190,21 +190,17 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             {current.archived ? "Archived · " : ""}Edited {longTime(note.updated)}
           </span>
           {note.locked && unlocked && (
-            <Tooltip>
-              <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label="Lock now" onClick={() => void lockNow()} />}>
-                <Icon name="lock_open" className="size-5" />
-              </TooltipTrigger>
-              <TooltipContent>Lock now (locked notes close)</TooltipContent>
-            </Tooltip>
+            <IconButton label="Lock now" tooltip="Lock now (locked notes close)" onClick={() => void lockNow()}>
+              <Icon name="lock_open" className="size-5" />
+            </IconButton>
           )}
-          <Tooltip>
-            <TooltipTrigger
-              render={<Toggle size="sm" aria-label="Pin" pressed={current.pinned} onPressedChange={(pinned) => void update({ pinned })} />}
-            >
-              <Icon name="keep" fill={current.pinned} className={current.pinned ? "text-vertical-notes" : undefined} />
-            </TooltipTrigger>
-            <TooltipContent>{current.pinned ? "Unpin" : "Pin to the top"}</TooltipContent>
-          </Tooltip>
+          <IconButton
+            label="Pin"
+            tooltip={current.pinned ? "Unpin" : "Pin to the top"}
+            render={<Toggle size="sm" pressed={current.pinned} onPressedChange={(pinned) => void update({ pinned })} />}
+          >
+            <Icon name="keep" fill={current.pinned} className={current.pinned ? "text-vertical-notes" : undefined} />
+          </IconButton>
           <RemindMenu
           value={remindAt}
           onPick={(at) => void update({ remindAt: at ?? 0 }).then(() => toast.success(at ? `Reminder set for ${reminderLabel(at)}` : "Reminder removed", { duration: 2500 }))}
@@ -248,7 +244,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             <LinkChip key={`${l.kind}:${l.key}`} link={l} onOpen={(target) => void open(l.kind, target)} onRemove={() => void update({ links: current.links.filter((x) => x !== l) })} />
           ))}
           <TagEditor tags={current.tags} onChange={(tags) => void update({ tags })} />
-          <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" aria-label="Link to an event, person, or conversation" onClick={() => setPicking(true)}>
+          <Button variant="ghost-muted" size="sm" shape="pill" className="h-7" aria-label="Link to an event, person, or conversation" onClick={() => setPicking(true)}>
             <Icon name="add_link" data-icon="inline-start" /> Link
           </Button>
         </div>
@@ -366,7 +362,7 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (tags: string
         </span>
       ))}
       {adding === null ? (
-        <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" onClick={() => setAdding("")}>
+        <Button variant="ghost-muted" size="sm" shape="pill" className="h-7" onClick={() => setAdding("")}>
           <Icon name="sell" data-icon="inline-start" /> Tag
         </Button>
       ) : (

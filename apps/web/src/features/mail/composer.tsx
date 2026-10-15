@@ -96,7 +96,8 @@ export function Composer() {
       {/* Above the keyboard on iOS too, which covers the page instead of resizing it. */}
       <SheetContent
         side="bottom"
-        className="gap-0 rounded-none border-0 pt-[env(safe-area-inset-top)] data-[side=bottom]:bottom-(--keyboard-inset) data-[side=bottom]:h-[calc(100dvh-var(--keyboard-inset))]"
+        fullscreen
+        className="data-[side=bottom]:bottom-(--keyboard-inset) data-[side=bottom]:h-[calc(100dvh-var(--keyboard-inset))]"
         showCloseButton={false}
         initialFocus={firstField}
         finalFocus={returnFocus}
@@ -318,7 +319,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
       </header>
       {sendAt !== null && (
         <p className="flex items-center gap-2 border-b bg-accent/50 px-4 py-2 text-sm">
-          <Icon name="schedule_send" className="size-4 text-muted-foreground" />
+          <Icon name="schedule_send" tone="muted" className="size-4" />
           <span className="flex-1">Sends {longTime(sendAt)}</span>
           <Button type="button" variant="ghost" size="sm" onClick={() => setSendAt(null)}>
             Send now instead
@@ -353,7 +354,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
       {late && (
         // Outside their working hours: say so, and offer their morning (ADR-0041).
         <p data-slot="recipient-local-time" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/40 px-4 py-2 text-sm">
-          <Icon name={late.day === "Night there" ? "bedtime" : "schedule"} className="size-4 text-muted-foreground" />
+          <Icon name={late.day === "Night there" ? "bedtime" : "schedule"} tone="muted" className="size-4" />
           {/* On phones the sentence gets the line and the offer drops under it, aligned with the text. */}
           <span className="min-w-0 flex-1 max-sm:basis-[calc(100%-1.5rem)]">
             It's {timeThere(late.t.offset, now)} for {firstName(late.t)} <span className="text-muted-foreground">· {late.day} · {utcLabel(late.t.offset)}</span>
@@ -380,7 +381,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         <ul className="flex flex-wrap gap-2 border-t px-4 py-2" aria-label="Attachments">
           {files.map((f, i) => (
             <li key={`${f.filename}-${i}`} className="flex max-w-full items-center gap-1.5 rounded-lg border bg-muted/40 py-1 pr-1 pl-2 text-xs">
-              <Icon name="attach_file" className="size-4 text-muted-foreground" />
+              <Icon name="attach_file" tone="muted" className="size-4" />
               <span className="max-w-48 truncate font-medium">{f.filename}</span>
               <span className="text-muted-foreground">{formatSize(bytesOf(f))}</span>
               <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${f.filename}`} onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}>

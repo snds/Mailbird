@@ -21,7 +21,7 @@ const DONE: Record<UnsubscribeMethod, string> = {
 }
 
 /** Shown on mail from a list that says how to leave it (List-Unsubscribe). */
-export function UnsubscribeButton({ message, onArchive }: { message: MessageDetail; onArchive: () => void }) {
+export function UnsubscribeAction({ message, onArchive }: { message: MessageDetail; onArchive: () => void }) {
   const [open, setOpen] = useState(false)
   const unsubscribe = useMailAction<string>((c, id) => c.unsubscribe(id))
   const u = message.unsubscribe

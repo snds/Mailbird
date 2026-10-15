@@ -1,4 +1,4 @@
-import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
+import { Icon, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, IconButton } from "@unicron/ui"
 import { NOTE_COLORS, type NoteColor } from "@/core/types"
 import { cn } from "@/lib/utils"
 
@@ -9,12 +9,9 @@ export function NoteColorMenu({ value, onChange }: { value: NoteColor | null; on
   const label = value ? `Color: ${NOTE_COLOR_LABEL[value]}` : "Color"
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={label} />} />}>
-          <Icon name="palette" className="size-5" />
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
+      <DropdownMenuTrigger render={<IconButton label={label} />}>
+        <Icon name="palette" className="size-5" />
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto p-2">
         <DropdownMenuRadioGroup
           aria-label="Note color"
@@ -36,7 +33,7 @@ export function NoteColorMenu({ value, onChange }: { value: NoteColor | null; on
               )}
               style={{ background: c === "none" ? undefined : noteFill(c), borderColor: c === "none" ? undefined : noteEdge(c) }}
             >
-              {c === "none" && <Icon name="format_color_reset" className="size-4 text-muted-foreground in-data-checked:hidden" />}
+              {c === "none" && <Icon name="format_color_reset" tone="muted" className="size-4 in-data-checked:hidden" />}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

@@ -20,7 +20,7 @@ export function SmartGroupChips({ active, onPick }: { active: string | null; onP
           size="xs"
           variant={active === g.id ? "secondary" : "ghost"}
           aria-pressed={active === g.id}
-          className="shrink-0 rounded-full px-3"
+          shape="pill"
           onClick={() => onPick(active === g.id ? null : g.id)}
         >
           <Icon name="filter_alt" data-icon="inline-start" className="text-vertical-contacts" />
@@ -29,11 +29,11 @@ export function SmartGroupChips({ active, onPick }: { active: string | null; onP
         </Button>
       ))}
       {current ? (
-        <Button size="icon-xs" variant="ghost" className="shrink-0 rounded-full" aria-label="Edit smart group" onClick={() => setEditing({ group: current })}>
+        <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit smart group" onClick={() => setEditing({ group: current })}>
           <Icon name="tune" />
         </Button>
       ) : (
-        <Button size="xs" variant="ghost" className="shrink-0 rounded-full px-3 text-muted-foreground" onClick={() => setEditing({})}>
+        <Button size="xs" variant="ghost-muted" shape="pill" onClick={() => setEditing({})}>
           <Icon name="add" data-icon="inline-start" /> Smart group
         </Button>
       )}
@@ -113,7 +113,7 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
           Has any of these labels
           <div className="flex flex-wrap gap-1.5">
             {choices.map((l) => (
-              <Button key={l} type="button" size="xs" variant={picked.includes(l) ? "secondary" : "outline"} aria-pressed={picked.includes(l)} className="rounded-full px-3" onClick={() => toggle(l)}>
+              <Button key={l} type="button" size="xs" variant={picked.includes(l) ? "secondary" : "outline"} aria-pressed={picked.includes(l)} shape="pill" onClick={() => toggle(l)}>
                 {l}
               </Button>
             ))}
@@ -155,7 +155,7 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
       </div>
       <DialogFooter className="flex-row items-center">
         {group && (
-          <Button type="button" variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={() => void del()}>
+          <Button type="button" variant="ghost-destructive" className="mr-auto" onClick={() => void del()}>
             Delete group
           </Button>
         )}

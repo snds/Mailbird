@@ -24,7 +24,7 @@ export function EditorFrame({ open, onClose, title, children }: { open: boolean;
   }
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="bottom" className="gap-0 rounded-none border-0 pt-[env(safe-area-inset-top)] data-[side=bottom]:h-dvh" showCloseButton={false} initialFocus={firstField}>
+      <SheetContent side="bottom" fullscreen showCloseButton={false} initialFocus={firstField}>
         <SheetTitle className="sr-only">{title}</SheetTitle>
         {children}
       </SheetContent>

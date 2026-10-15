@@ -91,7 +91,7 @@ export function ContactsView() {
             {labels.length > 0 && (
               <div role="group" aria-label="Labels" className="-mx-4 no-scrollbar mt-3 flex gap-1.5 overflow-x-auto px-4">
                 {[{ name: null, count: 0 } as const, ...labels].map((l) => (
-                  <Button key={l.name ?? "all"} size="xs" variant={active === l.name ? "secondary" : "ghost"} aria-pressed={active === l.name} className="shrink-0 rounded-full px-3" onClick={() => setLabel(l.name)}>
+                  <Button key={l.name ?? "all"} size="xs" variant={active === l.name ? "secondary" : "ghost"} aria-pressed={active === l.name} shape="pill" onClick={() => setLabel(l.name)}>
                     {l.name ?? "All"}
                     {l.name && <span className="text-muted-foreground tabular-nums">{l.count}</span>}
                   </Button>
@@ -118,7 +118,7 @@ export function ContactsView() {
                 </span>
                 <span className="block text-xs text-muted-foreground">Review and merge</span>
               </span>
-              <Icon name="chevron_right" className="size-4 text-muted-foreground" />
+              <Icon name="chevron_right" tone="muted" className="size-4" />
             </button>
           )}
           {!isPending && contacts.length === 0 && (

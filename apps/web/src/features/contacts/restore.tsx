@@ -70,7 +70,7 @@ function RestoreForm({ openedAt, onDone }: { openedAt: number; onDone: () => voi
       </DialogHeader>
       <div role="radiogroup" aria-label="Restore to" className="flex flex-wrap gap-1.5">
         {POINTS.map((p, i) => (
-          <Button key={p.label} size="sm" variant={pick === i ? "secondary" : "outline"} role="radio" aria-checked={pick === i} className="rounded-full" onClick={() => choose(i)}>
+          <Button key={p.label} size="sm" variant={pick === i ? "secondary" : "outline"} role="radio" aria-checked={pick === i} shape="pill" onClick={() => choose(i)}>
             {p.label}
           </Button>
         ))}

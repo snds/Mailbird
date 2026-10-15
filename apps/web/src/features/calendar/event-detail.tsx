@@ -39,7 +39,7 @@ const STATUS: Record<string, { label: string; icon: IconName }> = {
 function Row({ icon, children }: { icon: IconName; children: React.ReactNode }) {
   return (
     <div className="flex gap-3 text-sm">
-      <Icon name={icon} className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+      <Icon name={icon} tone="muted" className="mt-0.5 size-5" />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   )

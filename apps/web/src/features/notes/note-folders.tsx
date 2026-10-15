@@ -24,7 +24,7 @@ export function NoteFolderChips({ active, onPick }: { active: string | null; onP
           size="xs"
           variant={active === f.id ? "secondary" : "ghost"}
           aria-pressed={active === f.id}
-          className="shrink-0 rounded-full px-3"
+          shape="pill"
           onClick={() => onPick(active === f.id ? null : f.id)}
         >
           <Icon name="folder_special" data-icon="inline-start" className="text-vertical-notes" />
@@ -33,11 +33,11 @@ export function NoteFolderChips({ active, onPick }: { active: string | null; onP
         </Button>
       ))}
       {current ? (
-        <Button size="icon-xs" variant="ghost" className="shrink-0 rounded-full" aria-label="Edit smart folder" onClick={() => setEditing({ folder: current })}>
+        <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit smart folder" onClick={() => setEditing({ folder: current })}>
           <Icon name="tune" />
         </Button>
       ) : (
-        <Button size="xs" variant="ghost" className="shrink-0 rounded-full px-3 text-muted-foreground" onClick={() => setEditing({})}>
+        <Button size="xs" variant="ghost-muted" shape="pill" onClick={() => setEditing({})}>
           <Icon name="add" data-icon="inline-start" /> Smart folder
         </Button>
       )}
@@ -109,7 +109,7 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
           Has any of these tags
           <div className="flex flex-wrap gap-1.5">
             {choices.map((t) => (
-              <Button key={t} type="button" size="xs" variant={picked.includes(t) ? "secondary" : "outline"} aria-pressed={picked.includes(t)} className="rounded-full px-3" onClick={() => toggle(t)}>
+              <Button key={t} type="button" size="xs" variant={picked.includes(t) ? "secondary" : "outline"} aria-pressed={picked.includes(t)} shape="pill" onClick={() => toggle(t)}>
                 #{t}
               </Button>
             ))}
@@ -133,10 +133,10 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
       <div role="group" aria-label="Color" className="flex flex-col gap-1.5 text-sm">
         Color
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button type="button" size="xs" variant={color === null ? "secondary" : "outline"} aria-pressed={color === null} className="rounded-full px-3" onClick={() => setColor(null)}>
+          <Button type="button" size="xs" variant={color === null ? "secondary" : "outline"} aria-pressed={color === null} shape="pill" onClick={() => setColor(null)}>
             Any or none
           </Button>
-          <Button type="button" size="xs" variant={color === "any" ? "secondary" : "outline"} aria-pressed={color === "any"} className="rounded-full px-3" onClick={() => setColor("any")}>
+          <Button type="button" size="xs" variant={color === "any" ? "secondary" : "outline"} aria-pressed={color === "any"} shape="pill" onClick={() => setColor("any")}>
             Any color
           </Button>
           {NOTE_COLORS.map((c: NoteColor) => (
@@ -163,7 +163,7 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
       </label>
       <DialogFooter className="flex-row items-center">
         {folder && (
-          <Button type="button" variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={() => void del()}>
+          <Button type="button" variant="ghost-destructive" className="mr-auto" onClick={() => void del()}>
             Delete folder
           </Button>
         )}

@@ -166,7 +166,7 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
             <input aria-label="Location" placeholder="Location" className={`${bare} w-full`} value={location} onChange={(ev) => setLocation(ev.target.value)} />
             {!found && (
               // A Jitsi room needs no account and no sign-up: anyone with the link joins (ADR-0030).
-              <Button type="button" variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={() => setLocation(location.trim() ? `${location.trim()} · ${jitsiRoom()}` : jitsiRoom())}>
+              <Button type="button" variant="ghost-muted" size="sm" onClick={() => setLocation(location.trim() ? `${location.trim()} · ${jitsiRoom()}` : jitsiRoom())}>
                 <Icon name="video_call" data-icon="inline-start" /> Add video call
               </Button>
             )}

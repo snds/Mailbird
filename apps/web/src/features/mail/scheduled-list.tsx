@@ -79,10 +79,10 @@ function ScheduledRow({ item }: { item: OutboxItem }) {
           <Icon name="edit" data-icon="inline-start" /> Edit
         </Button>
         <Button
-          variant="ghost"
+          variant="ghost-destructive"
           size="icon-sm"
           aria-label="Delete"
-          className="ml-auto text-destructive hover:text-destructive"
+          className="ml-auto"
           onClick={() =>
             run(async () => {
               const client = await getCoreClient()

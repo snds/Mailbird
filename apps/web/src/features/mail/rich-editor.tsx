@@ -1,7 +1,7 @@
 import { EditorContent, useEditorState, type Editor } from "@tiptap/react"
 import { useState } from "react"
 
-import { Icon, type IconName, Button, Toggle, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
+import { Icon, type IconName, Button, Toggle, IconButton } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 import { SAFE_LINK } from "./use-rich-editor"
@@ -11,17 +11,7 @@ export function RichEditor({ editor }: { editor: Editor }) {
 }
 
 export function Mark({ icon, label, shortcut, pressed, onPressedChange }: { icon: IconName; label: string; shortcut?: string; pressed: boolean; onPressedChange: () => void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<Toggle size="sm" aria-label={label} pressed={pressed} onPressedChange={onPressedChange} />}>
-        <Icon name={icon} />
-      </TooltipTrigger>
-      <TooltipContent>
-        {label}
-        {shortcut && <kbd className="ml-2 font-mono text-[11px] opacity-70">{shortcut}</kbd>}
-      </TooltipContent>
-    </Tooltip>
-  )
+  return <IconButton icon={icon} label={label} shortcut={shortcut} render={<Toggle size="sm" pressed={pressed} onPressedChange={onPressedChange} />} />
 }
 
 const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"
@@ -70,7 +60,7 @@ export function FormatBar({ editor, notes = false, onAddImage, onScan, onSketch 
       {linking !== null && (
         // A div, not a form: this sits inside the composer's form.
         <div className="flex items-center gap-2 border-b px-3 py-1.5">
-          <Icon name="link" className="size-4 text-muted-foreground" />
+          <Icon name="link" tone="muted" className="size-4" />
           <input
             aria-label="Link address"
             className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"

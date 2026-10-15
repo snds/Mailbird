@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
+import { Icon, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, IconButton } from "@unicron/ui"
 import { PickTimeDialog } from "@/features/mail/send-later"
 import { reminderLabel, snoozeOptions } from "@/lib/time"
 
@@ -14,12 +14,9 @@ export function RemindMenu({ value, onPick }: { value: number | null; onPick: (a
   return (
     <>
       <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={label} />} />}>
-            <Icon name={value ? "notifications_active" : "notification_add"} className="size-5" fill={!!value} />
-          </TooltipTrigger>
-          <TooltipContent>{label}</TooltipContent>
-        </Tooltip>
+        <DropdownMenuTrigger render={<IconButton label={label} />}>
+          <Icon name={value ? "notifications_active" : "notification_add"} className="size-5" fill={!!value} />
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64 bg-popover">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Remind me…</DropdownMenuLabel>

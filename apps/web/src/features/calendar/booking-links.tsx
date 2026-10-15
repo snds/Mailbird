@@ -61,7 +61,7 @@ export function BookingLinks() {
               )}
             </div>
           ))}
-          <Button variant="ghost" size="sm" className="justify-start px-1 text-muted-foreground" onClick={() => setEditing({})}>
+          <Button variant="ghost-muted" size="sm" className="justify-start px-1" onClick={() => setEditing({})}>
             <Icon name="add" data-icon="inline-start" /> New booking link
           </Button>
           {core?.kind === "demo" && links.length > 0 && <p className="px-1 text-xs text-muted-foreground">In the demo, Preview shows the page. On a gateway you'd share the link.</p>}
@@ -179,7 +179,7 @@ function LinkForm({ link, onDone }: { link?: BookingLink; onDone: () => void }) 
       </label>
       <DialogFooter className="flex-row items-center">
         {link && (
-          <Button type="button" variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={() => void del()}>
+          <Button type="button" variant="ghost-destructive" className="mr-auto" onClick={() => void del()}>
             Delete link
           </Button>
         )}
