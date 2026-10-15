@@ -107,6 +107,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **27 · Quick Note** ✅ | Jot a note from anywhere (⌥N, ⌘K, or a Notes section) without leaving what you're doing, already linked to the conversation, event, or person that's open; it saves when you close it ([ADR-0037](docs/decisions/0037-quick-note.md)) |
 | **28 · Note cards** ✅ | Notes as Keep-style cards that fill the window (one tap between cards and rows), ten colors that sync, import from Keep, and export with the note, tinting the open note in light and dark ([ADR-0038](docs/decisions/0038-note-cards.md)) |
 | **29 · Note reminders** ✅ | "Remind me" on any note (Later today, Tomorrow, or any time): a notification when it's due, even if Mailbird was closed, and the note waits at the top of Notes until you mark it done ([ADR-0039](docs/decisions/0039-note-reminders.md)) |
+| **30 · Their local time** ✅ | The sender profile shows what time it is for them, live, with how far ahead or behind you they are and a word when it's night or the weekend there, read from the time zone on their own mail (never a newsletter's) ([ADR-0040](docs/decisions/0040-sender-local-time.md)) |
 
 ## License
 

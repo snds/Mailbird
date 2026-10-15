@@ -119,3 +119,26 @@ export function reminderLabel(secs: number, now = new Date()) {
   const sameYear = d.getFullYear() === now.getFullYear()
   return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) })}, ${time}`
 }
+
+// ── Someone else's clock (ADR-0040) ──────────────────────────────────────
+
+/** "UTC+5:30", "UTC−4": the offset as people read it, with a real minus. */
+export const utcLabel = (offset: number) => {
+  if (offset === 0) return "UTC"
+  const h = Math.floor(Math.abs(offset) / 60)
+  const m = Math.abs(offset) % 60
+  return `UTC${offset < 0 ? "\u2212" : "+"}${h}${m ? `:${String(m).padStart(2, "0")}` : ""}`
+}
+
+/** "4½ h ahead of you", "3 h behind you", "same time as you". */
+export const gapLabel = (offset: number, mine: number) => {
+  const d = offset - mine
+  if (d === 0) return "same time as you"
+  const h = Math.abs(d) / 60
+  const n = Number.isInteger(h) ? `${h}` : Number.isInteger(h * 2) ? `${Math.floor(h)}½` : h.toFixed(2).replace(/0$/, "")
+  return `${n} h ${d > 0 ? "ahead of" : "behind"} you`
+}
+
+/** Outside working hours, a word for what their day is doing; nothing between 8 and 6. */
+export const partOfDay = (hour: number, weekday: number) =>
+  hour >= 22 || hour < 5 ? "Night there" : hour < 8 ? "Early morning there" : weekday === 0 || weekday === 6 ? "Weekend there" : hour >= 18 ? "Evening there" : null

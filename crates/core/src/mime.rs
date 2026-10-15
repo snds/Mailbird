@@ -13,6 +13,9 @@ pub struct Parsed {
     pub cc: Vec<Address>,
     pub subject: String,
     pub date: Option<i64>,
+    /// The sender's offset from UTC in minutes, from the Date header
+    /// (`-0700` is -420). `None` when it's missing or `-0000` ("unknown").
+    pub tz_offset: Option<i32>,
     pub preview: String,
     /// Plain text; derived from HTML when the message has no text part.
     pub body_text: String,
@@ -68,6 +71,7 @@ pub fn parse(raw: &[u8]) -> Result<Parsed> {
         cc: addresses(msg.cc()),
         subject: msg.subject().unwrap_or_default().trim().to_owned(),
         date: msg.date().map(|d| d.to_timestamp()),
+        tz_offset: msg.date().and_then(offset_minutes),
         preview: preview(&body_text),
         body_text,
         body_html,
@@ -102,6 +106,19 @@ pub fn parse(raw: &[u8]) -> Result<Parsed> {
             })
             .collect(),
     })
+}
+
+
+/// Minutes east of UTC. RFC 5322 reserves `-0000` for "local time unknown".
+fn offset_minutes(d: &mail_parser::DateTime) -> Option<i32> {
+    let minutes = i32::from(d.tz_hour) * 60 + i32::from(d.tz_minute);
+    match (d.tz_before_gmt, minutes) {
+        (true, 0) => None,
+        // Real offsets run from -12:00 to +14:00.
+        (_, m) if m > 14 * 60 => None,
+        (true, m) => Some(-m),
+        (false, m) => Some(m),
+    }
 }
 
 fn strip_brackets(id: &str) -> &str {
@@ -221,6 +238,16 @@ Hi,\r\n\r\nThree surface tokens collapse in dark mode.\r\n\r\n> earlier quoted t
         assert_eq!(p.message_id.as_deref(), Some("abc@studio.example"));
         assert_eq!(p.date, Some(1_791_884_460));
         assert!(p.body_html.is_none(), "text-only mail must not get synthesized HTML");
+    }
+
+    #[test]
+    fn reads_the_senders_utc_offset() {
+        let at = |date: &str| parse(format!("From: a@x.test\r\nDate: {date}\r\n\r\nx").as_bytes()).unwrap().tz_offset;
+        assert_eq!(at("Tue, 13 Oct 2026 09:41:00 -0700"), Some(-420));
+        assert_eq!(at("Tue, 13 Oct 2026 09:41:00 +0530"), Some(330));
+        assert_eq!(at("Tue, 13 Oct 2026 09:41:00 +0000"), Some(0));
+        assert_eq!(at("Tue, 13 Oct 2026 09:41:00 -0000"), None, "RFC 5322: local time unknown");
+        assert_eq!(parse(b"From: a@x.test\r\n\r\nx").unwrap().tz_offset, None, "no Date header");
     }
 
     #[test]

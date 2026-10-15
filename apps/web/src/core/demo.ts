@@ -52,7 +52,12 @@ interface DemoMessage extends MessageDetail {
   files: Record<string, string>
   /** The meeting invitation this message carries, if any. */
   inviteSeed?: DemoInviteSeed
+  /** The sender's UTC offset in minutes, from the Date header (ADR-0040). */
+  tzOffset?: number | null
 }
+
+/** Where the demo's people write from: Bengaluru, Toronto, Lisbon, New York. */
+const SENDER_TZ: Record<string, number> = { "priya@studio.example": 330, "marcus@example.com": -240, "ana@example.com": 60, "sam@example.com": -240 }
 
 function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<string, number> } {
   const t = now()
@@ -76,7 +81,7 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
       from, subject, preview: body.replace(/\s+/g, " ").slice(0, 160), date, sortAt: date,
       seen: false, flagged: false, archived: false, snoozedUntil: null, mailbox: "INBOX",
       to: [me(accountId)], cc: [], messageId: `${id}@demo.example`, bodyText: body, bodyHtml: null,
-      attachments: [], references: [], files: {}, ...extra,
+      attachments: [], references: [], files: {}, tzOffset: SENDER_TZ[from.email] ?? null, ...extra,
     }
   }
   const file = (id: string, filename: string, mimeType: string, data: string): AttachmentInfo & { data: string } => ({
@@ -484,6 +489,10 @@ export function createDemoClient(): CoreClient {
       const contact = hit ? await pimApi.getContact(hit.id) : null
       const emails = [...new Set([email, ...(contact?.emails ?? []).map((e) => e.value.trim().toLowerCase()).filter((e) => e.includes("@"))])]
       const meetings = contact ? pimApi.contactMeetings(contact.id) : { upcoming: [], past: [] }
+      // Their own newest mail's offset, never a list's (ADR-0040).
+      const own = state.messages
+        .filter((m) => emails.includes(m.from.email.toLowerCase()) && m.mailbox !== SENT && categoryOf(m) === "people" && (m as DemoMessage).tzOffset != null)
+        .sort((a, b) => b.date - a.date)[0] as DemoMessage | undefined
       return later({
         email,
         name,
@@ -491,6 +500,8 @@ export function createDemoClient(): CoreClient {
         received: theirs.length,
         firstSeen: theirs.length ? Math.min(...theirs.map((m) => m.date)) : null,
         activity: { threads: threadsWith(emails), ...meetings },
+        localOffset: own?.tzOffset ?? null,
+        offsetSeen: own?.date ?? null,
       })
     },
     ...notes,

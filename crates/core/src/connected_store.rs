@@ -16,6 +16,13 @@ INSERT OR IGNORE INTO collections (id, account_id, kind, name, color, writable) 
 
 /// Birthday "events" are addressed as `birthday:<contact id>`.
 pub const BIRTHDAY_PREFIX: &str = "birthday:";
+/// Version 15: the sender's UTC offset from each message's Date header (ADR-0040).
+pub(crate) const MIGRATE_V15: &str = "ALTER TABLE messages ADD COLUMN tz_offset INTEGER;";
+
+/// How many of someone's newest personal messages to read the offset from
+/// when they arrived before version 15 recorded it.
+const OFFSET_BACKFILL: usize = 5;
+
 const BIRTHDAYS: &str = "birthdays";
 
 /// When the reminder worker last checked, so the next launch can catch up.
@@ -165,7 +172,29 @@ impl Store {
             }
         }
         let activity = self.activity_for(&emails)?;
-        Ok(crate::SenderProfile { email, name, contact, received, first_seen, activity })
+        let (local_offset, offset_seen) = self.sender_offset(&emails)?.unzip();
+        Ok(crate::SenderProfile { email, name, contact, received, first_seen, activity, local_offset, offset_seen })
+    }
+
+    /// Their UTC offset, from the newest message they wrote themselves (the
+    /// People category): a newsletter's Date is its server's clock, not theirs.
+    /// Messages from before version 15 are read once and the offset kept.
+    fn sender_offset(&self, emails: &[String]) -> Result<Option<(i32, i64)>> {
+        let list = emails.iter().map(|e| format!("'{}'", e.replace('\'', "''"))).collect::<Vec<_>>().join(",");
+        let base = format!("FROM messages WHERE lower(from_email) IN ({list}) AND category = 'people' AND mailbox <> '{}'", crate::store::SENT);
+        let known: Option<(i32, i64)> =
+            self.db.query_row(&format!("SELECT tz_offset, date {base} AND tz_offset IS NOT NULL ORDER BY date DESC LIMIT 1"), [], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
+        // Older rows may be newer than the newest known one: read those first.
+        let after = known.map(|k| k.1).unwrap_or(i64::MIN);
+        let mut st = self.db.prepare(&format!("SELECT id, raw, date {base} AND tz_offset IS NULL AND raw IS NOT NULL AND date > ?1 ORDER BY date DESC LIMIT {OFFSET_BACKFILL}"))?;
+        let older: Vec<(String, Vec<u8>, i64)> = st.query_map([after], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+        for (id, raw, date) in older {
+            if let Some(off) = crate::mime::parse(&raw).ok().and_then(|p| p.tz_offset) {
+                self.db.execute("UPDATE messages SET tz_offset = ?2 WHERE id = ?1", params![id, off])?;
+                return Ok(Some((off, date)));
+            }
+        }
+        Ok(known)
     }
 
     /// Recent conversations with any of `emails`, and meetings they're in.
@@ -441,6 +470,18 @@ mod tests {
         let lena = s.sender_profile("lena@example.de").unwrap();
         assert!(lena.contact.is_none(), "not a contact");
         assert_eq!((lena.name.as_deref(), lena.received), (Some("Lena"), 1));
+
+        assert_eq!((p.local_offset, p.offset_seen), (Some(0), Some(1_791_968_400)), "the newest message's offset");
+
+        // Local time (ADR-0040): their own newest mail, not a mailing list's clock.
+        s.insert_local(&acct, "INBOX", b"From: Lena <lena@example.de>\r\nSubject: Wieder\r\nMessage-ID: <s4@x>\r\nDate: Thu, 15 Oct 2026 08:00:00 +0200\r\n\r\nx\r\n", false).unwrap();
+        s.insert_local(&acct, "INBOX", b"From: Lena <lena@example.de>\r\nSubject: Digest\r\nMessage-ID: <s5@x>\r\nList-Id: <digest.example.de>\r\nList-Unsubscribe: <https://example.de/u>\r\nDate: Thu, 15 Oct 2026 20:00:00 +0900\r\n\r\nx\r\n", false).unwrap();
+        assert_eq!(s.sender_profile("lena@example.de").unwrap().local_offset, Some(120), "a list's Date is its server's clock");
+        // A message stored before the column existed is read once, then kept.
+        s.db.execute("UPDATE messages SET tz_offset = NULL WHERE message_id = 's4@x'", []).unwrap();
+        assert_eq!(s.sender_profile("lena@example.de").unwrap().local_offset, Some(120));
+        let kept: Option<i32> = s.db.query_row("SELECT tz_offset FROM messages WHERE message_id = 's4@x'", [], |r| r.get(0)).unwrap();
+        assert_eq!(kept, Some(120));
 
         let nobody = s.sender_profile("new@example.org").unwrap();
         assert_eq!((nobody.received, nobody.first_seen, nobody.name), (0, None, None));
