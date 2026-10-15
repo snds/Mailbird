@@ -129,10 +129,51 @@ impl Store {
                 .ok_or_else(|| crate::Error::NotFound("that contact was deleted".into()))?;
             from_json::<Vec<ContactField>>(raw).into_iter().map(|f| f.value.trim().to_lowercase()).filter(|e| e.contains('@')).collect()
         };
+        self.activity_for(&emails)
+    }
+
+    /// Who sent mail from `email` (ADR-0036): their card if one lists that
+    /// address, else the name they use, plus conversations and meetings.
+    pub fn sender_profile(&self, email: &str) -> Result<crate::SenderProfile> {
+        let email = email.trim().to_lowercase();
+        if !email.contains('@') {
+            return Err(crate::Error::Invalid("that isn't an email address".into()));
+        }
+        let (received, first_seen): (u32, Option<i64>) = self.db.query_row("SELECT count(*), min(date) FROM messages WHERE lower(from_email) = ?1", [&email], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        let name: Option<String> = self
+            .db
+            .query_row("SELECT from_name FROM messages WHERE lower(from_email) = ?1 AND trim(coalesce(from_name, '')) <> '' ORDER BY date DESC LIMIT 1", [&email], |r| r.get(0))
+            .optional()?;
+        // Two cards can share an address; the one named as they sign wins.
+        let contact_id: Option<String> = self
+            .db
+            .query_row(
+                "SELECT c.id FROM contacts c WHERE c.state <> 'deleted'
+                   AND EXISTS (SELECT 1 FROM json_each(c.emails) e WHERE lower(trim(json_extract(e.value, '$.value'))) = ?1)
+                 ORDER BY lower(c.full_name) = lower(coalesce(?2, '')) DESC, c.full_name LIMIT 1",
+                params![&email, &name],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let contact = contact_id.map(|id| self.contact(&id)).transpose()?;
+        // A contact's other addresses count too: it's the same person.
+        let mut emails = vec![email.clone()];
+        for f in contact.iter().flat_map(|c| &c.summary.emails) {
+            let e = f.value.trim().to_lowercase();
+            if e.contains('@') && !emails.contains(&e) {
+                emails.push(e);
+            }
+        }
+        let activity = self.activity_for(&emails)?;
+        Ok(crate::SenderProfile { email, name, contact, received, first_seen, activity })
+    }
+
+    /// Recent conversations with any of `emails`, and meetings they're in.
+    fn activity_for(&self, emails: &[String]) -> Result<ContactActivity> {
         if emails.is_empty() {
             return Ok(ContactActivity { threads: vec![], upcoming: vec![], past: vec![] });
         }
-        let threads = self.threads_with(&emails, 5)?;
+        let threads = self.threads_with(emails, 5)?;
 
         // Meetings name people as ATTENDEE/ORGANIZER "mailto:" addresses.
         let tz = self.time_zone()?;
@@ -143,7 +184,7 @@ impl Store {
                 "SELECT e.id, e.collection_id, e.ics, e.all_day, e.recurring FROM events e JOIN collections c ON c.id = e.collection_id
                  WHERE c.hidden = 0 AND e.state <> 'deleted' AND e.ics LIKE '%mailto:' || ?1 || '%'",
             )?;
-            for email in &emails {
+            for email in emails {
                 for row in st.query_map([email], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))? {
                     let row = row?;
                     if !events.iter().any(|e| e.0 == row.0) {
@@ -378,5 +419,30 @@ mod tests {
         assert_eq!(missed.iter().map(|r| r.title.as_str()).collect::<Vec<_>>(), ["Call"], "one per occurrence, only ones still relevant");
         s.set_reminders_checked(now()).unwrap();
         assert!(s.missed_reminders(now()).unwrap().is_empty(), "once");
+    }
+
+    #[test]
+    fn sender_profile_finds_the_card_or_the_name() {
+        let (s, acct) = store();
+        let ana = contact(&s, "Ana", "ana@example.com", None);
+        let _other_card = contact(&s, "A. Duarte", "ana@example.com", None);
+        s.insert_local(&acct, "INBOX", b"From: Ana D <Ana@Example.com>\r\nSubject: Photos\r\nMessage-ID: <s1@x>\r\nDate: Tue, 13 Oct 2026 09:00:00 +0000\r\n\r\nx\r\n", false).unwrap();
+        s.insert_local(&acct, "INBOX", b"From: Ana <ana@example.com>\r\nSubject: More photos\r\nMessage-ID: <s2@x>\r\nDate: Wed, 14 Oct 2026 09:00:00 +0000\r\n\r\nx\r\n", false).unwrap();
+        s.insert_local(&acct, "INBOX", b"From: Lena <lena@example.de>\r\nSubject: Hallo\r\nMessage-ID: <s3@x>\r\nDate: Wed, 14 Oct 2026 10:00:00 +0000\r\n\r\nx\r\n", false).unwrap();
+
+        let p = s.sender_profile(" ANA@example.com ").unwrap();
+        assert_eq!(p.email, "ana@example.com");
+        assert_eq!(p.contact.as_ref().map(|c| c.summary.id.as_str()), Some(ana.as_str()), "matched to the card named as they sign, ignoring case");
+        assert_eq!((p.received, p.first_seen), (2, Some(1_791_882_000)));
+        assert_eq!(p.name.as_deref(), Some("Ana"), "the newest message's name");
+        assert_eq!(p.activity.threads.len(), 2);
+
+        let lena = s.sender_profile("lena@example.de").unwrap();
+        assert!(lena.contact.is_none(), "not a contact");
+        assert_eq!((lena.name.as_deref(), lena.received), (Some("Lena"), 1));
+
+        let nobody = s.sender_profile("new@example.org").unwrap();
+        assert_eq!((nobody.received, nobody.first_seen, nobody.name), (0, None, None));
+        assert!(s.sender_profile("not an address").is_err());
     }
 }

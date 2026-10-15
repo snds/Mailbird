@@ -439,6 +439,18 @@ export interface DueReminder {
 }
 
 /** What you have going on with one contact. */
+/** Who sent a message, for the profile beside it (ADR-0036). */
+export interface SenderProfile {
+  email: string
+  /** The name on their newest message, for people who aren't contacts. */
+  name: string | null
+  contact: ContactDetail | null
+  /** Messages from them on this device. */
+  received: number
+  firstSeen: number | null
+  activity: ContactActivity
+}
+
 export interface ContactActivity {
   /** Newest first, one row per conversation. */
   threads: MessageSummary[]

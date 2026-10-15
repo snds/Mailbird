@@ -91,6 +91,9 @@ async fn every_command_routes_and_works() {
     let back = json_of(dispatch(&app, &state, "note_backlinks", json!({ "id": note["id"] })).await.unwrap());
     assert_eq!(back[0]["id"], other["id"]);
     assert_eq!(json_of(dispatch(&app, &state, "find_note", json!({ "title": "HELLO" })).await.unwrap()), note["id"]);
+    let profile = json_of(dispatch(&app, &state, "sender_profile", json!({ "email": "Nobody@Example.com" })).await.unwrap());
+    assert_eq!((&profile["email"], &profile["received"], &profile["contact"]), (&json!("nobody@example.com"), &json!(0), &Value::Null));
+    assert!(dispatch(&app, &state, "sender_profile", json!({ "email": "nope" })).await.is_err());
     let linking = json_of(dispatch(&app, &state, "notes_linking_to", json!({ "title": "Hello", "except": note["id"] })).await.unwrap());
     assert_eq!(linking[0]["id"], other["id"]);
     let files = json_of(dispatch(&app, &state, "export_notes", Value::Null).await.unwrap());

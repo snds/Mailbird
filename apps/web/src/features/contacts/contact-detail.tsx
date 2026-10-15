@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContact, useContactActivity, useContactCopies, usePimAction } from "@/core/queries"
-import type { ContactActivity, Occurrence } from "@/core/types"
+import type { ContactActivity, MessageSummary, Occurrence } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { shortTime } from "@/lib/time"
 
@@ -27,7 +27,7 @@ function birthdayLabel(b: string) {
 
 const ACTION = "h-auto min-w-18 flex-col gap-1 px-3 py-2 text-xs"
 
-function Action({ icon, label, href, onClick, disabled }: { icon: IconName; label: string; href?: string; onClick?: () => void; disabled?: boolean }) {
+export function Action({ icon, label, href, onClick, disabled }: { icon: IconName; label: string; href?: string; onClick?: () => void; disabled?: boolean }) {
   const cls = ACTION
   if (href && !disabled) {
     return (
@@ -201,7 +201,7 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
 }
 
 /** Recent conversations and meetings, each opening where it lives (Mail, Calendar). */
-function Activity({ activity: { threads, upcoming, past } }: { activity: ContactActivity }) {
+export function Activity({ activity: { threads, upcoming, past }, onThread }: { activity: ContactActivity; onThread?: (row: MessageSummary) => void }) {
   const jumpTo = useUi((s) => s.jumpTo)
   const now = useNowSecs()
   const meeting = (o: Occurrence) => (
@@ -230,7 +230,7 @@ function Activity({ activity: { threads, upcoming, past } }: { activity: Contact
           <ul>
             {threads.map((t) => (
               <li key={t.threadId} className="border-b last:border-0">
-                <button type="button" className="flex w-full gap-2 py-2 text-left text-sm hover:text-primary" onClick={() => jumpTo({ kind: "thread", id: t.threadId, row: t })}>
+                <button type="button" className="flex w-full gap-2 py-2 text-left text-sm hover:text-primary" onClick={() => (onThread ? onThread(t) : jumpTo({ kind: "thread", id: t.threadId, row: t }))}>
                   <span className={t.seen ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate font-semibold"}>{t.subject || "(no subject)"}</span>
                   {t.threadCount > 1 && <span className="shrink-0 text-xs text-muted-foreground tabular-nums" aria-label={`${t.threadCount} messages`}>{t.threadCount}</span>}
                   <span className="shrink-0 text-xs text-muted-foreground">{shortTime(t.date)}</span>

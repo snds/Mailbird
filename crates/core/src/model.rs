@@ -885,6 +885,22 @@ pub struct EventDetail {
     pub manage: Vec<crate::meeting::ManageLink>,
 }
 
+/// Who sent a message, beside it in the mail pane (ADR-0036): their card if
+/// they're a contact, what you've done together, and how long you've known them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SenderProfile {
+    pub email: String,
+    /// The name on their newest message, for people who aren't contacts.
+    pub name: Option<String>,
+    pub contact: Option<ContactDetail>,
+    /// Messages from them on this device.
+    pub received: u32,
+    /// Their first message here (Unix seconds).
+    pub first_seen: Option<i64>,
+    pub activity: ContactActivity,
+}
+
 /// What you've done with someone: recent conversations, and meetings they're in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -242,6 +242,11 @@ pub fn contact_activity(state: &Shared, id: String) -> Res<pim_core::ContactActi
     with_store(state, |s| s.contact_activity(&id))
 }
 
+/// Who sent a message, for the profile beside it (ADR-0036).
+pub fn sender_profile(state: &Shared, email: String) -> Res<pim_core::SenderProfile> {
+    with_store(state, |s| s.sender_profile(&email))
+}
+
 /// The reminders missed while the app was closed, once: a second call gets none.
 pub fn take_missed_reminders(state: &Shared) -> Vec<pim_core::DueReminder> {
     state.missed_reminders.lock().map(|mut m| std::mem::take(&mut *m)).unwrap_or_default()

@@ -22,6 +22,7 @@ import type {
   SwipeActions,
   KeyBindings,
   ExportedNote,
+  SenderProfile,
   Booked,
   BookingLink,
   BookingLinkInput,
@@ -210,6 +211,8 @@ export interface CoreClient {
   getContact(id: string): Promise<ContactDetail>
   /** Recent conversations and meetings with this contact. */
   contactActivity(id: string): Promise<ContactActivity>
+  /** Who sent mail from an address: their card, or their name, and your history together (ADR-0036). */
+  senderProfile(email: string): Promise<SenderProfile>
   /** Reminders that came due while the app was closed; each is returned once. */
   takeMissedReminders(): Promise<DueReminder[]>
   listSplits(): Promise<Split[]>
@@ -377,6 +380,7 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     parseSignature: (text) => call("parse_signature", { text }),
     getContact: (id) => call("get_contact", { id }),
     contactActivity: (id) => call("contact_activity", { id }),
+    senderProfile: (email) => call("sender_profile", { email }),
     takeMissedReminders: () => call("take_missed_reminders"),
     listSplits: () => call("list_splits"),
     saveSplit: (id, input) => call("save_split", { id, input }),
