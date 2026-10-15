@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { eventStyle } from "./colors"
 import { DAY, addDays, fmt, sameDay, secs } from "./dates"
 import { placeLabel } from "./meeting"
+import { travelLabel } from "./reminders"
 import { layoutDay, occurrenceKey } from "./layout"
 import { deviceZone, useSecondZone, zoneAbbr, zoneCity, zoneHour } from "./zones"
 
@@ -61,7 +62,7 @@ export function TimeGrid({
       type="button"
       onClick={(e) => (e.stopPropagation(), onSelect(o))}
       data-selected={selected === occurrenceKey(o)}
-      aria-label={`${o.title}, ${o.allDay ? "all day" : `${fmt.time(o.start)} to ${fmt.time(o.end)}`}`}
+      aria-label={`${o.title}, ${o.allDay ? "all day" : `${fmt.time(o.start)} to ${fmt.time(o.end)}`}${o.travel && !o.allDay ? `, ${o.travel} min travel before` : ""}`}
       className={cn("event-chip overflow-hidden rounded-md text-left text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-[selected=true]:ring-2 data-[selected=true]:ring-ring", className)}
       style={{ ...eventStyle(calendars.get(o.calendarId)), ...style }}
     >
@@ -155,6 +156,29 @@ export function TimeGrid({
                 {HOURS.slice(1).map((h) => (
                   <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-border/60" style={{ top: `calc(var(--c-calendar-hour-height) * ${h})` }} />
                 ))}
+                {/* Travel time: a hatched band above the event, the same width (ADR-0029). */}
+                {placed
+                  .filter((p) => p.o.travel && !p.o.allDay && p.top > 0)
+                  .map((p) => {
+                    const lead = Math.min(p.o.travel!, p.top)
+                    return (
+                      <div
+                        key={`travel-${occurrenceKey(p.o)}`}
+                        aria-hidden
+                        data-slot="travel-band"
+                        className="travel-band pointer-events-none absolute overflow-hidden rounded-t-md border-x border-t border-dashed px-1.5 text-[10px] leading-tight text-muted-foreground"
+                        style={{
+                          ...eventStyle(calendars.get(p.o.calendarId)),
+                          top: `calc(var(--c-calendar-hour-height) * ${(p.top - lead) / 60})`,
+                          height: `calc(var(--c-calendar-hour-height) * ${lead / 60})`,
+                          left: `calc(${(p.col / p.cols) * 100}% + 2px)`,
+                          width: `calc(${100 / p.cols}% - 4px)`,
+                        }}
+                      >
+                        {lead >= 20 && <span className="block truncate">{travelLabel(p.o.travel!)} travel</span>}
+                      </div>
+                    )
+                  })}
                 {placed.map((p) =>
                   chip(p.o, cn("absolute px-1.5", p.height < 45 ? "py-0" : "py-1"), {
                     top: `calc(var(--c-calendar-hour-height) * ${p.top / 60})`,

@@ -14,7 +14,11 @@ import { formatRecipients, parseRecipients } from "../mail/format"
 import { RecipientInput } from "../mail/recipient-input"
 import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dates"
 import { FindATime } from "./find-a-time"
-import { REMINDER_PRESETS, reminderLabel } from "./reminders"
+import { REMINDER_PRESETS, reminderLabel, travelLabel } from "./reminders"
+import { deviceZone, zoneAbbr, zoneCity, zonedDate, zonedInput, zones } from "./zones"
+
+/** Minutes; how long getting there takes, blocked out before the start. */
+const TRAVEL_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90, 120]
 
 const REPEAT_LABELS: [Repeat, string][] = [
   ["none", "Does not repeat"],
@@ -77,6 +81,8 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
   const [endDate, setEndDate] = useState(initial.allDay && initial.end ? dateInput(addDays(fromInputs(e.date), -1)) : e.date)
   const [endTime, setEndTime] = useState(e.time)
   const [repeat, setRepeat] = useState<Repeat>(initial.repeat ?? "none")
+  const [zone, setZone] = useState(initial.timeZone ?? deviceTimeZone())
+  const [travel, setTravel] = useState(initial.travel ?? 0)
   const [chosen, setCalendarId] = useState(initial.calendarId ?? "")
   const calendarId = chosen || writable[0]?.id || ""
   const [error, setError] = useState<string | null>(null)
@@ -104,7 +110,8 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
       allDay,
       start: allDay ? startDate : `${startDate}T${startTime}`,
       end: allDay ? dateInput(addDays(fromInputs(endDate), 1)) : `${endDate}T${endTime}`,
-      timeZone: deviceTimeZone(),
+      timeZone: allDay ? deviceTimeZone() : zone,
+      travel: allDay ? 0 : travel,
       // One occurrence doesn't repeat; the series keeps its rule.
       repeat: single ? "none" : repeat,
       reminders,
@@ -182,12 +189,39 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
             date={startDate}
             minutes={Math.round((fromInputs(endDate, endTime).getTime() - fromInputs(startDate, startTime).getTime()) / 60_000) || 60}
             onPick={(s, e) => {
-              setStartDate(dateInput(s))
-              setStartTime(timeInput(s))
-              setEndDate(dateInput(e))
-              setEndTime(timeInput(e))
+              // Free times are instants; write them as the event's own zone's clock.
+              const [sd, st] = zonedInput(s.getTime() / 1000, zone).split("T")
+              const [ed, et] = zonedInput(e.getTime() / 1000, zone).split("T")
+              setStartDate(sd!)
+              setStartTime(st!)
+              setEndDate(ed!)
+              setEndTime(et!)
             }}
           />
+        )}
+        {!allDay && <ZoneRow zone={zone} onZone={setZone} start={[startDate, startTime]} end={[endDate, endTime]} />}
+        {!allDay && (
+          <div className={row}>
+            <label htmlFor="event-travel" className={label}>
+              Travel
+            </label>
+            <NativeSelect id="event-travel" value={String(travel)} onChange={(ev) => setTravel(Number(ev.target.value))} className="ml-auto">
+              <NativeSelectOption value="0">None</NativeSelectOption>
+              {[...new Set([...TRAVEL_PRESETS, ...(travel ? [travel] : [])])]
+                .sort((a, b) => a - b)
+                .map((m) => (
+                  <NativeSelectOption key={m} value={String(m)}>
+                    {travelLabel(m)}
+                  </NativeSelectOption>
+                ))}
+            </NativeSelect>
+          </div>
+        )}
+        {!allDay && travel > 0 && (
+          <p className="border-b px-4 py-2 text-xs text-muted-foreground" data-slot="travel-note">
+            Blocked out before it starts, so nothing gets booked over it. You'll get a “time to leave” alert at {new Date(zonedDate(startDate, startTime, zone).getTime() - travel * 60_000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+            {zone !== deviceZone() ? " your time" : ""}.
+          </p>
         )}
         <div className={single ? "hidden" : row}>
           <label htmlFor="event-repeat" className={label}>
@@ -271,5 +305,45 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
         </p>
       )}
     </form>
+  )
+}
+
+/**
+ * The zone the event's times are in. Usually yours; pick another for a
+ * flight, a trip, or a call set in someone else's city (ADR-0029). The note
+ * says what that is on your clock.
+ */
+function ZoneRow({ zone, onZone, start, end }: { zone: string; onZone: (z: string) => void; start: [string, string]; end: [string, string] }) {
+  const mine = deviceZone()
+  const at = zonedDate(start[0], start[1], zone)
+  const until = zonedDate(end[0], end[1], zone)
+  const name = (z: string) => `${zoneCity(z)} (${zoneAbbr(z, at)})`
+  const rest = zones().filter((z) => z !== mine && z !== zone)
+  const time = (d: Date) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+  const sameDay = at.toDateString() === until.toDateString()
+  return (
+    <>
+      <div className={row}>
+        <label htmlFor="event-zone" className={label}>
+          Time zone
+        </label>
+        <NativeSelect id="event-zone" value={zone} onChange={(ev) => onZone(ev.target.value)} className="ml-auto max-w-[60%]">
+          <NativeSelectOption value={mine}>{`Yours · ${name(mine)}`}</NativeSelectOption>
+          {zone !== mine && <NativeSelectOption value={zone}>{name(zone)}</NativeSelectOption>}
+          <optgroup label="Other zones">
+            {rest.map((z) => (
+              <NativeSelectOption key={z} value={z}>
+                {`${z.replace(/_/g, " ")} (${zoneAbbr(z, at)})`}
+              </NativeSelectOption>
+            ))}
+          </optgroup>
+        </NativeSelect>
+      </div>
+      {zone !== mine && !Number.isNaN(at.getTime()) && (
+        <p className="border-b px-4 py-2 text-xs text-muted-foreground" data-slot="zone-note">
+          {`That's ${at.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${time(at)}–${sameDay ? "" : `${until.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, `}${time(until)} your time (${zoneCity(mine)}).`}
+        </p>
+      )}
+    </>
   )
 }

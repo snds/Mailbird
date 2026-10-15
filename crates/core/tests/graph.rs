@@ -826,6 +826,7 @@ async fn outlook_calendars_and_contacts() {
         repeat: Repeat::Weekly,
         reminders: Some(vec![5, 30]),
         attendees: None,
+        travel: None,
     };
     store.create_event(&retro).unwrap();
     let pass = pim_pass(&store, &account, &pim).await;
@@ -860,6 +861,7 @@ async fn outlook_calendars_and_contacts() {
         repeat: Repeat::None,
         reminders: None,
         attendees: None,
+        travel: None,
     };
     store.update_event(&series.event_id, &moved, EditScope::This, Some(slot)).unwrap();
     store.delete_event(&series.event_id, Some(ts("2026-12-02T09:00", "America/Los_Angeles")), EditScope::This).unwrap();
@@ -884,7 +886,7 @@ async fn outlook_calendars_and_contacts() {
         f.events.get_mut("lunch").unwrap()["subject"] = json!("Team lunch (moved upstairs)");
         f.rekey("lunch");
     }
-    let mine = EventInput { calendar_id: outlook.clone(), title: "Lunch (mine)".into(), location: None, notes: None, start: "2026-10-15T13:00".into(), end: "2026-10-15T14:00".into(), all_day: false, time_zone: "Europe/Lisbon".into(), repeat: Repeat::None, reminders: None, attendees: None };
+    let mine = EventInput { calendar_id: outlook.clone(), title: "Lunch (mine)".into(), location: None, notes: None, start: "2026-10-15T13:00".into(), end: "2026-10-15T14:00".into(), all_day: false, time_zone: "Europe/Lisbon".into(), repeat: Repeat::None, reminders: None, attendees: None, travel: None };
     store.update_event(&lunch.event_id, &mine, EditScope::All, None).unwrap();
     let pass = pim_pass(&store, &account, &pim).await;
     assert!(pass.iter().any(|(o, _)| *o == DavOutcome::Conflict));

@@ -231,4 +231,14 @@
   .event-dot {
     background: var(--event);
   }
+  /* Travel time before an event (ADR-0029): the same hue, hatched and
+     lighter, so it reads as "blocked" rather than as a second event. */
+  .travel-band {
+    border-color: color-mix(in oklab, var(--event) 45%, transparent);
+    background: repeating-linear-gradient(
+      -45deg,
+      color-mix(in oklab, var(--event) calc(var(--c-event-tint) * 0.6), var(--background)) 0 4px,
+      var(--background) 4px 8px
+    );
+  }
 }

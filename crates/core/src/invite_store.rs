@@ -414,6 +414,7 @@ mod tests {
             repeat: Repeat::None,
             reminders: None,
             attendees: Some(vec![ana.clone(), marcus.clone()]),
+            travel: None,
         };
         let e = s.create_event(&input).unwrap();
         assert_eq!(e.organizer.as_ref().unwrap().email, "me@studio.example");

@@ -195,7 +195,7 @@ async fn connected_commands() {
     assert_eq!(call("contact_activity", json!({ "id": ana })).await.unwrap(), json!({ "threads": [], "upcoming": [], "past": [] }));
 
     // Missed reminders are handed over once.
-    let missed = pim_core::DueReminder { event_id: "e1".into(), title: "Standup".into(), location: None, start: 100, fire_at: 40 };
+    let missed = pim_core::DueReminder { event_id: "e1".into(), title: "Standup".into(), location: None, start: 100, fire_at: 40, leave: false };
     *state.missed_reminders.lock().unwrap() = vec![missed];
     assert_eq!(call("take_missed_reminders", Value::Null).await.unwrap()[0]["title"], "Standup");
     assert_eq!(call("take_missed_reminders", Value::Null).await.unwrap(), json!([]));

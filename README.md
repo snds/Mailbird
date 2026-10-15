@@ -96,6 +96,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **16 · Scheduling links** ✅ | Booking links whose public page (served by the web gateway) shows only your free times; a booking lands in your calendar and invites the booker from mail-account calendars ([ADR-0026](docs/decisions/0026-scheduling-links.md)) |
 | **17 · Faces and sources** ✅ | Contact photos (resized on the device, synced in the vCard), a source badge on every row, "Also in" links to the same person in other address books, and contact photos as sender faces in mail ([ADR-0027](docs/decisions/0027-faces-and-sources.md)) |
 | **18 · Tasks on the calendar** ✅ | Checklist items from every note listed beside the calendar, planned into free time as linked blocks, checked off from either side; checked items move down their list ([ADR-0028](docs/decisions/0028-tasks-on-the-calendar.md)) |
+| **19 · Travel and time zones** ✅ | Travel time before events (the same property Apple Calendar uses), drawn above the event and counted as busy, with a "time to leave" alert; events set in another time zone, showing what that is on your clock ([ADR-0029](docs/decisions/0029-travel-and-time-zones.md)) |
 
 ## License
 

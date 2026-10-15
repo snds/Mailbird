@@ -190,6 +190,7 @@ mod tests {
                 repeat: Repeat::None,
                 reminders: None,
                 attendees: None,
+                travel: None,
             })
             .unwrap()
         };

@@ -86,6 +86,7 @@ impl Store {
                     recurring: true,
                     meeting_url: None,
                     contact_id: Some(id.clone()),
+                    travel: None,
                 });
             }
         }
@@ -159,6 +160,7 @@ impl Store {
                     calendar_id: calendar_id.clone(),
                     meeting_url: o.location.as_deref().and_then(|l| crate::meeting::meeting_link([l])),
                     contact_id: None,
+                    travel: None,
                     title: o.title,
                     location: o.location,
                     start: o.start,
@@ -260,6 +262,7 @@ mod tests {
             repeat: Repeat::None,
             reminders,
             attendees: None,
+            travel: None,
         }
     }
 

@@ -105,6 +105,7 @@ impl Store {
             repeat: detail.repeat,
             reminders: None,
             attendees: Some(self.event_guests(&id)?),
+            travel: None,
         };
         // The edit bumps SEQUENCE and, without CalDAV scheduling, emails the REQUEST.
         self.update_event(&id, &input, EditScope::All, None)?;
@@ -135,7 +136,7 @@ impl Store {
         }
         let tz = self.time_zone()?;
         let from = round_up(from.max(now()), GRID);
-        let mut busy: Vec<(i64, i64)> = self.occurrences(from, from + (FIND_DAYS + 1) * 86_400)?.into_iter().filter(|o| !o.all_day).map(|o| (o.start, o.end)).collect();
+        let mut busy: Vec<(i64, i64)> = self.occurrences(from, from + (FIND_DAYS + 1) * 86_400)?.into_iter().filter(|o| !o.all_day).map(|o| (o.start - o.travel.unwrap_or(0) * 60, o.end)).collect();
         busy.sort_unstable();
         let mut out = Vec::new();
         let first = ical::local_date(from, &tz);
@@ -249,6 +250,7 @@ mod tests {
             repeat: Repeat::None,
             reminders: None,
             attendees: guests,
+            travel: None,
         }
     }
 
@@ -357,6 +359,13 @@ mod tests {
         let next: Vec<String> = s.find_times(fri, 90, 9 * 60, 17 * 60, true, 2).unwrap().into_iter().map(|t| local(t.start)).collect();
         assert_eq!(next, vec!["2030-06-10T09:00", "2030-06-10T11:00"], "90 minutes don't fit before 5 on Friday; Monday next");
         assert!(s.find_times(tue, 600, 9 * 60, 17 * 60, true, 2).is_err(), "longer than the day");
+
+        // Travel time before an event is busy too: 12:00 is gone when getting to a 13:30 takes an hour.
+        let mut away = ev(&cal, "Site visit", "2030-06-04T13:30", "2030-06-04T14:00", None);
+        away.travel = Some(60);
+        s.create_event(&away).unwrap();
+        let slots: Vec<String> = s.find_times(tue, 60, 9 * 60, 17 * 60, true, 2).unwrap().into_iter().map(|t| local(t.start)).collect();
+        assert_eq!(slots, vec!["2030-06-04T14:00", "2030-06-04T16:00"], "noon is gone: that hour is spent getting to the visit");
     }
 
     #[test]

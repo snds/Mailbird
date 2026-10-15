@@ -662,6 +662,10 @@ pub struct EventInput {
     /// single occurrence.
     #[serde(default)]
     pub attendees: Option<Vec<Address>>,
+    /// Minutes to get there, blocked out before the start (ADR-0029).
+    /// `None` keeps it as it is; `Some(0)` removes it.
+    #[serde(default)]
+    pub travel: Option<i64>,
 }
 
 /// How you answer an invitation.
@@ -835,6 +839,9 @@ pub struct Occurrence {
     /// For a birthday: the contact it belongs to (open them, not an event).
     #[serde(default)]
     pub contact_id: Option<String>,
+    /// Minutes to get there, blocked out before `start` (ADR-0029).
+    #[serde(default)]
+    pub travel: Option<i64>,
 }
 
 /// Which occurrences of a series an edit or delete applies to.
@@ -886,6 +893,9 @@ pub struct DueReminder {
     /// The occurrence's start (Unix seconds).
     pub start: i64,
     pub fire_at: i64,
+    /// "Time to leave": fires when its travel time begins (ADR-0029).
+    #[serde(default)]
+    pub leave: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

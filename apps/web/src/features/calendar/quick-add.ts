@@ -1,6 +1,7 @@
 import * as chrono from "chrono-node"
 
 import type { EventDetail, EventInput } from "@/core/types"
+import { zonedInput } from "@/lib/zoned"
 
 import { addDays, dateInput, deviceTimeZone, fromSecs, startOfDay, timeInput } from "./dates"
 
@@ -70,14 +71,28 @@ export function quickToInput(q: QuickEvent, calendarId: string): EventInput {
 export function inputFromDetail(e: EventDetail): Partial<EventInput> {
   const a = fromSecs(e.start)
   const b = fromSecs(e.end)
+  // Timed events open in the zone they were written in, so saving keeps it (ADR-0029).
+  const zone = !e.allDay && e.timeZone && zoneKnown(e.timeZone) ? e.timeZone : deviceTimeZone()
   return {
     calendarId: e.calendarId,
     title: e.title,
     location: e.location,
     notes: e.notes,
     allDay: e.allDay,
-    start: e.allDay ? dateInput(a) : `${dateInput(a)}T${timeInput(a)}`,
-    end: e.allDay ? dateInput(b) : `${dateInput(b)}T${timeInput(b)}`,
+    start: e.allDay ? dateInput(a) : zonedInput(e.start, zone),
+    end: e.allDay ? dateInput(b) : zonedInput(e.end, zone),
     repeat: e.repeat,
+    timeZone: zone,
+    travel: e.travel ?? 0,
+  }
+}
+
+/** Whether this browser knows an IANA zone (Windows names from Outlook don't parse). */
+function zoneKnown(zone: string) {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: zone })
+    return true
+  } catch {
+    return false
   }
 }

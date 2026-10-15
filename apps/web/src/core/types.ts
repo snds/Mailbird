@@ -347,6 +347,8 @@ export interface EventInput {
   reminders?: number[] | null
   /** Guests to invite. Omit to keep the guest list; [] removes it. */
   attendees?: Address[] | null
+  /** Minutes to get there. Omit to keep it; 0 removes it. */
+  travel?: number | null
 }
 
 /** Which occurrences of a series an edit or delete applies to. */
@@ -368,6 +370,8 @@ export interface Occurrence {
   meetingUrl?: string | null
   /** Set on the Birthdays calendar: the contact whose birthday this is. */
   contactId?: string | null
+  /** Minutes to get there, blocked out before `start` (ADR-0029). */
+  travel?: number | null
 }
 
 export interface Attendee {
@@ -395,6 +399,8 @@ export interface DueReminder {
   location: string | null
   start: number
   fireAt: number
+  /** "Time to leave": its travel time begins now (ADR-0029). */
+  leave?: boolean
 }
 
 /** What you have going on with one contact. */
