@@ -93,6 +93,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **13 · Contacts that look after themselves** ✅ | Smart groups from rules (labels, company, domain, phone, birthday, in touch lately), restore contacts to a point in time with a preview and Undo, conversations that survive a server move ([ADR-0023](docs/decisions/0023-contacts-that-keep-themselves.md)) |
 | **14 · Interesting calendars** ✅ | National holidays for 13 countries and moon phases, computed on the device (nothing fetched), shown like any read-only calendar ([ADR-0024](docs/decisions/0024-interesting-calendars.md)) |
 | **15 · One action grammar** ✅ | Configurable swipes (short and long, each way) from one shared action vocabulary, saved in the core so every device agrees; a Shortcuts and gestures list on ?, ⌘K, and Settings ([ADR-0025](docs/decisions/0025-one-action-grammar.md)) |
+| **16 · Scheduling links** ✅ | Booking links whose public page (served by the web gateway) shows only your free times; a booking lands in your calendar and invites the booker from mail-account calendars ([ADR-0026](docs/decisions/0026-scheduling-links.md)) |
 
 ## License
 

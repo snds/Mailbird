@@ -108,6 +108,28 @@ async fn gateway_end_to_end() {
     assert_eq!(anon.get(format!("{base}/assets/app.js")).send().await.unwrap().text().await.unwrap(), "console.log('hi')");
     assert_eq!(anon.get(format!("{base}/api/nothing")).send().await.unwrap().status(), 404, "unknown API paths don't fall back to the page");
 
+    // Scheduling links (ADR-0026): the owner makes one; anyone with its address can book.
+    let cals: Value = core(&http, "list_collections", json!({ "kind": "calendar" })).await.unwrap().json().await.unwrap();
+    let cal = cals.as_array().unwrap().iter().find(|c| c["writable"] == json!(true) && c["accountId"].is_null()).unwrap()["id"].clone();
+    let link: Value = core(&http, "save_booking_link", json!({ "input": { "title": "Intro call", "minutes": 30, "calendarId": cal, "dayStart": 0, "dayEnd": 1440, "weekdaysOnly": false, "daysAhead": 3 } }))
+        .await.unwrap().json().await.unwrap();
+    let token = link["token"].as_str().unwrap().to_owned();
+    assert_eq!(core(&anon, "booking_links", Value::Null).await.unwrap().status(), 401, "visitors can't list links");
+    let page: Value = anon.get(format!("{base}/api/book/{token}")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(page["title"], "Intro call");
+    let slot = page["slots"][0]["start"].as_i64().unwrap();
+    assert_eq!(anon.get(format!("{base}/api/book/{}", "0".repeat(32))).send().await.unwrap().status(), 404, "an unknown link");
+    assert_eq!(anon.get(format!("{base}/api/book/not-a-token")).send().await.unwrap().status(), 404);
+    let book = |body: Value| anon.post(format!("{base}/api/book/{token}")).header("X-Mailbird", "1").json(&body).send();
+    assert_eq!(anon.post(format!("{base}/api/book/{token}")).json(&json!({})).send().await.unwrap().status(), 403, "booking needs the header too");
+    assert_eq!(book(json!({ "start": slot, "name": "Ana", "email": "nope" })).await.unwrap().status(), 400);
+    let done: Value = book(json!({ "start": slot, "name": "Ana", "email": "ana@example.com" })).await.unwrap().json().await.unwrap();
+    assert_eq!((done["start"].as_i64(), done["invited"].as_bool()), (Some(slot), Some(false)));
+    let again = book(json!({ "start": slot, "name": "Sam", "email": "sam@example.com" })).await.unwrap();
+    assert_eq!(again.status(), 400, "that time is taken now");
+    let occ: Value = core(&http, "list_occurrences", json!({ "from": slot - 1, "to": slot + 3600 })).await.unwrap().json().await.unwrap();
+    assert!(occ.as_array().unwrap().iter().any(|o| o["title"] == "Intro call with Ana"), "the booking is in the owner's calendar");
+
     // Sign out: the session ends.
     assert_eq!(http.delete(format!("{base}/api/session")).header("X-Mailbird", "1").send().await.unwrap().status(), 204);
     assert_eq!(core(&http, "list_accounts", Value::Null).await.unwrap().status(), 401);

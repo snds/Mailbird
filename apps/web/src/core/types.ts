@@ -509,6 +509,54 @@ export interface ContactLabel {
   count: number
 }
 
+/** What a scheduling link offers (ADR-0026). */
+export interface BookingLinkInput {
+  title: string
+  minutes: number
+  /** Where booked events go. */
+  calendarId: string
+  /** Minutes after midnight, the calendar's time zone. */
+  dayStart: number
+  dayEnd: number
+  weekdaysOnly: boolean
+  /** 1–14. */
+  daysAhead: number
+  note: string | null
+}
+
+export interface BookingLink extends BookingLinkInput {
+  id: string
+  /** The unguessable part of the page's address. */
+  token: string
+  bookedAt: number[]
+}
+
+/** What the public page shows: free times, nothing else about your calendar. */
+export interface PublicBooking {
+  title: string
+  minutes: number
+  host: string
+  timeZone: string
+  note: string | null
+  slots: TimeSlot[]
+}
+
+export interface BookingRequest {
+  start: number
+  name: string
+  email: string
+  note: string | null
+}
+
+export interface Booked {
+  start: number
+  end: number
+  title: string
+  host: string
+  /** An invitation was emailed to the booker. */
+  invited: boolean
+}
+
 /** A mail action a swipe can do (ADR-0025). */
 export type SwipeActionId = "none" | "read" | "archive" | "star" | "snooze-tomorrow" | "snooze-next-week" | "remind" | "newsletters"
 

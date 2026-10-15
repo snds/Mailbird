@@ -64,6 +64,31 @@ pub fn list_contacts(state: &Shared, search: Option<String>, label: Option<Strin
     with_store(state, |s| s.contacts_in(search.as_deref(), label.as_deref(), group.as_deref()))
 }
 
+/// Your scheduling links (ADR-0026).
+pub fn booking_links(state: &Shared) -> Res<Vec<pim_core::BookingLink>> {
+    with_store(state, |s| s.booking_links())
+}
+
+pub fn save_booking_link(state: &Shared, id: Option<String>, input: pim_core::BookingLinkInput) -> Res<pim_core::BookingLink> {
+    with_store(state, |s| s.save_booking_link(id.as_deref(), &input))
+}
+
+pub fn delete_booking_link(state: &Shared, id: String) -> Res<()> {
+    with_store(state, |s| s.delete_booking_link(&id))
+}
+
+/// The public page's data: the only thing a visitor can read.
+pub fn public_booking(state: &Shared, token: String) -> Res<pim_core::PublicBooking> {
+    with_store(state, |s| s.public_booking(&token))
+}
+
+/// A visitor's booking: the only thing a visitor can write.
+pub fn book_slot(app: AppHandle, state: &Shared, token: String, request: pim_core::BookingRequest) -> Res<pim_core::Booked> {
+    let done = with_store(state, |s| s.book(&token, &request))?;
+    edited(&app, state);
+    Ok(done)
+}
+
 /// Holidays and moon phases you can add (ADR-0024).
 pub fn interesting_calendars(state: &Shared) -> Res<Vec<pim_core::InterestingCalendar>> {
     with_store(state, |s| s.interesting_calendars())

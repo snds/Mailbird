@@ -19,6 +19,11 @@ import type {
   ContactsRestore,
   InterestingCalendar,
   SwipeActions,
+  Booked,
+  BookingLink,
+  BookingLinkInput,
+  BookingRequest,
+  PublicBooking,
   ContactsRestored,
   SmartGroup,
   SmartGroupInput,
@@ -142,6 +147,12 @@ export interface CoreClient {
   setCollectionHidden(id: string, hidden: boolean): Promise<void>
   interestingCalendars(): Promise<InterestingCalendar[]>
   swipeActions(): Promise<SwipeActions>
+  bookingLinks(): Promise<BookingLink[]>
+  saveBookingLink(id: string | null, input: BookingLinkInput): Promise<BookingLink>
+  deleteBookingLink(id: string): Promise<void>
+  /** A scheduling link's public page (no session needed on a gateway). */
+  publicBooking(token: string): Promise<PublicBooking>
+  bookSlot(token: string, request: BookingRequest): Promise<Booked>
   setSwipeActions(actions: SwipeActions): Promise<SwipeActions>
   addInterestingCalendar(id: string): Promise<void>
   removeInterestingCalendar(id: string): Promise<void>
@@ -292,6 +303,11 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     setCollectionHidden: (id, hidden) => call("set_collection_hidden", { id, hidden }),
     interestingCalendars: () => call("interesting_calendars"),
     swipeActions: () => call("swipe_actions"),
+    bookingLinks: () => call("booking_links"),
+    saveBookingLink: (id, input) => call("save_booking_link", { id, input }),
+    deleteBookingLink: (id) => call("delete_booking_link", { id }),
+    publicBooking: (token) => call("public_booking", { token }),
+    bookSlot: (token, request) => call("book_slot", { token, request }),
     setSwipeActions: (actions) => call("set_swipe_actions", { actions }),
     addInterestingCalendar: (id) => call("add_interesting_calendar", { id }),
     removeInterestingCalendar: (id) => call("remove_interesting_calendar", { id }),
@@ -411,6 +427,27 @@ export async function gatewaySession(): Promise<GatewaySession | null> {
 async function gatewayError(r: Response): Promise<Error> {
   const v = (await r.json().catch(() => null)) as { error?: string } | null
   return new Error(v?.error ?? `the gateway answered ${r.status}`)
+}
+
+/** True when a web gateway served this page. */
+export const onGateway = () => !!document.querySelector('meta[name="mailbird-gateway"]')
+
+/**
+ * A scheduling link's page, for a visitor: on a gateway, its public routes
+ * (no session, no event stream); elsewhere, this page's own core (the demo).
+ */
+export async function visitorBooking(token: string): Promise<PublicBooking> {
+  if (!onGateway()) return (await getCoreClient()).publicBooking(token)
+  const r = await fetch(`/api/book/${encodeURIComponent(token)}`, { credentials: "omit" })
+  if (!r.ok) throw await gatewayError(r)
+  return (await r.json()) as PublicBooking
+}
+
+export async function visitorBook(token: string, request: BookingRequest): Promise<Booked> {
+  if (!onGateway()) return (await getCoreClient()).bookSlot(token, request)
+  const r = await fetch(`/api/book/${encodeURIComponent(token)}`, { method: "POST", credentials: "omit", headers: { "Content-Type": "application/json", ...CSRF }, body: JSON.stringify(request) })
+  if (!r.ok) throw await gatewayError(r)
+  return (await r.json()) as Booked
 }
 
 export async function signInToGateway(password: string): Promise<void> {
