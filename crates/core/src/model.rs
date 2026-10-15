@@ -899,6 +899,11 @@ pub struct SenderProfile {
     /// Their first message here (Unix seconds).
     pub first_seen: Option<i64>,
     pub activity: ContactActivity,
+    /// Their offset from UTC in minutes, from the Date header of their newest
+    /// personal message (ADR-0040). `None` for automated mail, or none known.
+    pub local_offset: Option<i32>,
+    /// When that message was sent, since the offset is only as fresh as it.
+    pub offset_seen: Option<i64>,
 }
 
 /// What you've done with someone: recent conversations, and meetings they're in.

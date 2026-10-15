@@ -36,7 +36,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -246,6 +246,9 @@ impl Store {
         }
         if version < 14 {
             tx.execute_batch(crate::notes_store::MIGRATE_V14)?;
+        }
+        if version < 15 {
+            tx.execute_batch(crate::connected_store::MIGRATE_V15)?;
         }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
@@ -1174,6 +1177,7 @@ fn insert_message(
         cc: vec![],
         subject: "(unreadable message)".into(),
         date: None,
+        tz_offset: None,
         preview: e.to_string(),
         body_text: String::from_utf8_lossy(raw).into_owned(),
         body_html: None,
@@ -1193,12 +1197,12 @@ fn insert_message(
     let n = tx.execute(
         "INSERT OR IGNORE INTO messages (id, account_id, mailbox, uid, message_id, from_name, from_email,
            to_json, cc_json, subject, preview, body_text, body_html, date, sort_at, seen, flagged,
-           thread_id, has_attachments, raw, remote_id, archived, category)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18, ?19, ?20, ?21)",
+           thread_id, has_attachments, raw, remote_id, archived, category, tz_offset)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?1, ?17, ?18, ?19, ?20, ?21, ?22)",
         params![
             id, account_id, mailbox, uid, p.message_id, p.from.name, p.from.email, json(&p.to),
             json(&p.cc), p.subject, p.preview, p.body_text, p.body_html, date, seen, flagged,
-            has_files, raw, remote_id, mailbox == ARCHIVE, category.as_str()
+            has_files, raw, remote_id, mailbox == ARCHIVE, category.as_str(), p.tz_offset
         ],
     )?;
     if n == 0 {

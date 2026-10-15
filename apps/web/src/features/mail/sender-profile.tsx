@@ -4,6 +4,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSenderProfile } from "@/core/queries"
+import { useNowSecs } from "@/hooks/use-now"
+import { gapLabel, partOfDay, utcLabel } from "@/lib/time"
 import type { Address, MessageSummary } from "@/core/types"
 import { Action, Activity } from "@/features/contacts/contact-detail"
 import { LinkedNotes } from "@/features/notes/linked-notes"
@@ -54,6 +56,7 @@ export function SenderProfile({ from, threadId, onOpenThread }: { from: Address;
         {c && (c.title || c.org) && <p className="text-sm text-muted-foreground">{[c.title, c.org].filter(Boolean).join(" · ")}</p>}
         <p className="text-xs break-all text-muted-foreground">{p.email}</p>
         {!c && <Badge variant="outline">Not in your contacts</Badge>}
+        {p.localOffset !== null && <LocalTime offset={p.localOffset} seen={p.offsetSeen} name={name} />}
       </div>
 
       {/* One row of equal buttons, however many apply (a narrow column fits four). */}
@@ -78,5 +81,34 @@ export function SenderProfile({ from, threadId, onOpenThread }: { from: Address;
       <Activity activity={activity} onThread={onOpenThread} />
       {c && <LinkedNotes target={{ kind: "contact", id: c.id }} title={c.fullName} />}
     </div>
+  )
+}
+
+const FRESH = 90 * 86_400
+
+/**
+ * Their local time (Superhuman), from the offset in the Date header of
+ * their newest personal mail (ADR-0040). Live, so it's right when you look,
+ * with a word when it's night or the weekend for them, which says more
+ * about when to expect a reply than the time does.
+ */
+function LocalTime({ offset, seen, name }: { offset: number; seen: number | null; name: string }) {
+  const now = useNowSecs(30_000)
+  // Their wall clock: shift by their offset and read it as UTC.
+  const there = new Date((now + offset * 60) * 1000)
+  const time = there.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" })
+  const mine = -new Date(now * 1000).getTimezoneOffset()
+  const day = partOfDay(there.getUTCHours(), there.getUTCDay())
+  const stale = seen !== null && now - seen > FRESH
+  return (
+    <p data-slot="sender-local-time" className="flex flex-wrap items-center justify-center gap-x-1.5 text-xs text-muted-foreground" aria-label={`Local time for ${name}: ${time}, ${utcLabel(offset)}, ${gapLabel(offset, mine)}${day ? `. ${day}` : ""}`}>
+      <Icon name={day === "Night there" ? "bedtime" : "schedule"} className="size-3.5" />
+      <span className="font-medium text-foreground">{time}</span>
+      <span>
+        {utcLabel(offset)} · {gapLabel(offset, mine)}
+      </span>
+      {day && <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{day}</Badge>}
+      {stale && seen !== null && <span className="basis-full">as of {monthYear(seen)}</span>}
+    </p>
   )
 }

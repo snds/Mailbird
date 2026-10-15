@@ -451,6 +451,10 @@ export interface SenderProfile {
   received: number
   firstSeen: number | null
   activity: ContactActivity
+  /** Their offset from UTC in minutes, from the Date header of their newest personal message (ADR-0040). */
+  localOffset: number | null
+  /** When that message was sent: the offset is only as fresh as it. */
+  offsetSeen: number | null
 }
 
 export interface ContactActivity {
