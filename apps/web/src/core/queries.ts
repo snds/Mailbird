@@ -186,6 +186,15 @@ export function useContacts(search: string, label: string | null = null) {
   })
 }
 
+// Under "messages", so mail changes refresh them too.
+export function useSplits() {
+  return useQuery({ queryKey: ["messages", "splits"], queryFn: () => call((c) => c.listSplits()) })
+}
+
+export function useInboxOverview(accountId: string | null) {
+  return useQuery({ queryKey: ["messages", "overview", accountId], queryFn: () => call((c) => c.inboxOverview(accountId)) })
+}
+
 export function useCalendarSets() {
   return useQuery({ queryKey: keys.calendarSets, queryFn: () => call((c) => c.calendarSets()) })
 }

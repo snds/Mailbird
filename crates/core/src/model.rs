@@ -240,6 +240,72 @@ pub struct MessageQuery {
     /// Only this kind of mail (People, Updates, Newsletters).
     #[serde(default)]
     pub category: Option<Category>,
+    /// Inbox only: just the mail a split catches (ADR-0022).
+    #[serde(default)]
+    pub split: Option<String>,
+    /// Inbox only: fold newsletters into one bundle row when there are two or more.
+    #[serde(default)]
+    pub bundle: bool,
+}
+
+/// Your own inbox tab: mail matching a rule (Superhuman's split inbox).
+/// Every field set must match; a sender list matches any of its entries.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SplitInput {
+    pub name: String,
+    /// Addresses ("ana@example.com") or whole domains ("@studio.example").
+    #[serde(default)]
+    pub senders: Vec<String>,
+    /// Words the subject contains.
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub has_attachments: bool,
+    /// Only mail to this account.
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// Its mail leaves the main inbox (shows only in the split).
+    #[serde(default)]
+    pub exclusive: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Split {
+    pub id: String,
+    #[serde(flatten)]
+    pub rule: SplitInput,
+}
+
+/// A split's size, for its tab.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SplitCount {
+    pub id: String,
+    /// Conversations, and how many have unread mail.
+    pub threads: u32,
+    pub unread: u32,
+}
+
+/// Newsletters folded into one inbox row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewsletterBundle {
+    pub threads: u32,
+    pub unread: u32,
+    /// The newest, where the row sorts.
+    pub latest: i64,
+    /// Who they're from, newest first, up to three.
+    pub senders: Vec<String>,
+}
+
+/// What the inbox shows above its rows: split tab counts and the bundle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxOverview {
+    pub splits: Vec<SplitCount>,
+    pub bundle: Option<NewsletterBundle>,
 }
 
 /// A row in a message list. Lists are grouped by conversation: each row is

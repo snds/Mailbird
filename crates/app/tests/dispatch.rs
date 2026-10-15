@@ -262,3 +262,24 @@ async fn planning_commands() {
     assert_eq!(call("delete_calendar_set", json!({ "id": id })).await.unwrap(), json!([]));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn split_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-splits-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let app = AppHandle::new(TestHost::default());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+    let split = call("save_split", json!({ "input": { "name": "Work", "senders": ["@studio.example"], "exclusive": true } })).await.unwrap();
+    assert_eq!((split["name"].as_str(), split["exclusive"].as_bool()), (Some("Work"), Some(true)), "the rule is flattened into the split");
+    let id = split["id"].as_str().unwrap().to_owned();
+    assert!(call("save_split", json!({ "input": { "name": "Bad" } })).await.unwrap_err().contains("say what goes in it"));
+    assert_eq!(call("list_messages", json!({ "query": { "lane": "inbox", "split": id, "bundle": false } })).await.unwrap(), json!([]));
+    assert_eq!(call("inbox_overview", Value::Null).await.unwrap(), json!({ "splits": [{ "id": id, "threads": 0, "unread": 0 }], "bundle": null }));
+    assert_eq!(call("bundle_archive", Value::Null).await.unwrap(), json!([]));
+    assert_eq!(call("delete_split", json!({ "id": id })).await.unwrap(), json!([]));
+    let _ = std::fs::remove_dir_all(dir);
+}

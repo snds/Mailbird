@@ -155,6 +155,46 @@ export interface MessageQuery {
   offset?: number | null
   /** Only People, Updates, or Newsletters. */
   category?: Category | null
+  /** Inbox only: just the mail this split catches. */
+  split?: string | null
+  /** Inbox only: fold newsletters into the bundle when there are two or more. */
+  bundle?: boolean
+}
+
+/** Your own inbox tab: mail matching every field set. */
+export interface SplitInput {
+  name: string
+  /** Addresses, or whole domains like "@studio.example". */
+  senders: string[]
+  /** Words the subject contains. */
+  subject?: string | null
+  hasAttachments?: boolean
+  accountId?: string | null
+  /** Its mail leaves the main inbox. */
+  exclusive: boolean
+}
+
+export interface Split extends SplitInput {
+  id: string
+}
+
+export interface SplitCount {
+  id: string
+  threads: number
+  unread: number
+}
+
+export interface NewsletterBundle {
+  threads: number
+  unread: number
+  latest: number
+  /** Up to three, newest first. */
+  senders: string[]
+}
+
+export interface InboxOverview {
+  splits: SplitCount[]
+  bundle: NewsletterBundle | null
 }
 
 /** A list row is a conversation: its newest matching message plus thread totals. */

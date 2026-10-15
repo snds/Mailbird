@@ -371,6 +371,11 @@ impl Store {
             clauses.push(format!("{CATEGORY} = ?"));
             args.push(c.as_str().to_string().into());
         }
+        // Splits and the newsletter bundle (ADR-0022).
+        for (sql, more) in self.inbox_clauses(q)? {
+            clauses.push(sql);
+            args.extend(more);
+        }
         let order = match q.lane {
             Lane::Snoozed => "snoozed_until ASC",
             Lane::Waiting => "follow_up_at ASC",
@@ -1420,7 +1425,7 @@ mod tests {
     }
 
     fn lane(s: &Store, lane: Lane) -> Vec<MessageSummary> {
-        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap()
+        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap()
     }
 
     fn inbox(s: &Store) -> Vec<MessageSummary> {
@@ -1451,7 +1456,7 @@ mod tests {
         let (s, acct) = store_with_account();
         let msgs: Vec<FetchedMessage> = (1..=450).map(|i| fetched_raw(i, threaded(&format!("m{i}@x"), None, &[], &format!("Message {i}"), i % 24))).collect();
         s.apply_sync(&acct, &batch(7, msgs, (1..=450).collect())).unwrap();
-        let page = |offset| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(200), offset: Some(offset), category: None }).unwrap();
+        let page = |offset| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: Some(200), offset: Some(offset), category: None, split: None, bundle: false }).unwrap();
         let all: Vec<String> = [0, 200, 400].into_iter().flat_map(|o| page(o).into_iter().map(|m| m.id)).collect();
         assert_eq!(all.len(), 450, "three pages cover every conversation");
         let unique: std::collections::HashSet<_> = all.iter().collect();
@@ -1562,7 +1567,7 @@ mod tests {
             fetched_raw(1, raw("Ferry booking", "Saturday crossing")),
             fetched_raw(2, raw("Token audit", "semantic tier")),
         ], vec![1, 2])).unwrap();
-        let q = |text: &str| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some(text.into()), limit: None, offset: None, category: None }).unwrap();
+        let q = |text: &str| s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: Some(text.into()), limit: None, offset: None, category: None, split: None, bundle: false }).unwrap();
         assert_eq!(q("cross")[0].subject, "Ferry booking");
         assert_eq!(q("ana")[0].from.email, "ana@example.com");
         assert_eq!(q("semantic tier").len(), 1);
@@ -1902,7 +1907,7 @@ Content-Type: multipart/related; boundary=\"b1\"\r\n\r\n\
         )
         .unwrap();
         let s = Store::init(db).unwrap();
-        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None }).unwrap();
+        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].thread_id, "m1", "existing mail becomes its own conversation");
         let v: i64 = s.db.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();

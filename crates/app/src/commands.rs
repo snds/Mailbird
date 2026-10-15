@@ -133,6 +133,53 @@ fn changed(app: &AppHandle, state: &Shared) {
     workers::sync_soon(app, state);
 }
 
+// ── Splits and the newsletter bundle (ADR-0022) ──
+
+pub fn list_splits(state: &Shared) -> Res<Vec<pim_core::Split>> {
+    with_store(state, |s| s.splits())
+}
+
+pub fn save_split(app: AppHandle, state: &Shared, id: Option<String>, input: pim_core::SplitInput) -> Res<pim_core::Split> {
+    let split = with_store(state, |s| s.save_split(id.as_deref(), &input))?;
+    let _ = app.emit(events::MAIL_CHANGED, ());
+    Ok(split)
+}
+
+pub fn delete_split(app: AppHandle, state: &Shared, id: String) -> Res<Vec<pim_core::Split>> {
+    let all = with_store(state, |s| s.delete_split(&id))?;
+    let _ = app.emit(events::MAIL_CHANGED, ());
+    Ok(all)
+}
+
+pub fn move_split(app: AppHandle, state: &Shared, id: String, index: usize) -> Res<Vec<pim_core::Split>> {
+    let all = with_store(state, |s| s.move_split(&id, index))?;
+    let _ = app.emit(events::MAIL_CHANGED, ());
+    Ok(all)
+}
+
+pub fn inbox_overview(state: &Shared, account_id: Option<String>) -> Res<pim_core::InboxOverview> {
+    with_store(state, |s| s.inbox_overview(account_id.as_deref()))
+}
+
+pub fn bundle_mark_read(app: AppHandle, state: &Shared, account_id: Option<String>) -> Res<u32> {
+    let n = with_store(state, |s| s.bundle_mark_read(account_id.as_deref()))?;
+    changed(&app, state);
+    Ok(n)
+}
+
+/// Archives the bundle; returns the keys Undo needs.
+pub fn bundle_archive(app: AppHandle, state: &Shared, account_id: Option<String>) -> Res<Vec<String>> {
+    let ids = with_store(state, |s| s.bundle_archive(account_id.as_deref()))?;
+    changed(&app, state);
+    Ok(ids)
+}
+
+pub fn unarchive_bundle(app: AppHandle, state: &Shared, keys: Vec<String>) -> Res<()> {
+    with_store(state, |s| s.unarchive_bundle(&keys))?;
+    changed(&app, state);
+    Ok(())
+}
+
 pub fn set_thread_seen(app: AppHandle, state: &Shared, thread_id: String, seen: bool) -> Res<()> {
     with_store(state, |s| s.set_thread_seen(&thread_id, seen))?;
     changed(&app, state);

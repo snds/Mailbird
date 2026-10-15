@@ -16,6 +16,7 @@ import { ContactsView } from "@/features/contacts"
 import { EventEditor } from "@/features/calendar/event-editor"
 import { ReminderWatcher } from "@/features/calendar/reminder-watcher"
 import { ContactEditor } from "@/features/contacts/contact-editor"
+import { SplitEditor } from "@/features/mail/splits"
 import { MailView } from "@/features/mail"
 import { Composer, OutboxWatcher } from "@/features/mail/composer"
 import { NotesView } from "@/features/notes"
@@ -59,6 +60,7 @@ function Root() {
       <Composer />
       <EventEditor />
       <ContactEditor />
+      <SplitEditor />
       <AccountsDialog />
       <WritingDialog />
       <CommandPalette

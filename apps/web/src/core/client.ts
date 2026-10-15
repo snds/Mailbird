@@ -8,6 +8,9 @@ import type {
   Collection,
   CollectionKind,
   CalendarSet,
+  InboxOverview,
+  Split,
+  SplitInput,
   ContactActivity,
   FindTimes,
   TimeSlot,
@@ -162,6 +165,17 @@ export interface CoreClient {
   contactActivity(id: string): Promise<ContactActivity>
   /** Reminders that came due while the app was closed; each is returned once. */
   takeMissedReminders(): Promise<DueReminder[]>
+  listSplits(): Promise<Split[]>
+  /** Adds a split, or changes the one with `id`. */
+  saveSplit(id: string | null, input: SplitInput): Promise<Split>
+  deleteSplit(id: string): Promise<Split[]>
+  moveSplit(id: string, index: number): Promise<Split[]>
+  /** Split tab counts and the newsletter bundle. */
+  inboxOverview(accountId?: string | null): Promise<InboxOverview>
+  bundleMarkRead(accountId?: string | null): Promise<number>
+  /** Archives the bundle; returns the message ids for Undo. */
+  bundleArchive(accountId?: string | null): Promise<string[]>
+  unarchiveBundle(keys: string[]): Promise<void>
   /** Sends the organizer another time (iTIP COUNTER). */
   proposeTime(messageId: string, start: number, end: number, comment?: string | null): Promise<Invite>
   /** Takes a guest's proposed time: moves your event and tells everyone. */
@@ -279,6 +293,14 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     getContact: (id) => call("get_contact", { id }),
     contactActivity: (id) => call("contact_activity", { id }),
     takeMissedReminders: () => call("take_missed_reminders"),
+    listSplits: () => call("list_splits"),
+    saveSplit: (id, input) => call("save_split", { id, input }),
+    deleteSplit: (id) => call("delete_split", { id }),
+    moveSplit: (id, index) => call("move_split", { id, index }),
+    inboxOverview: (accountId) => call("inbox_overview", { accountId: accountId ?? null }),
+    bundleMarkRead: (accountId) => call("bundle_mark_read", { accountId: accountId ?? null }),
+    bundleArchive: (accountId) => call("bundle_archive", { accountId: accountId ?? null }),
+    unarchiveBundle: (keys) => call("unarchive_bundle", { keys }),
     proposeTime: (messageId, start, end, comment) => call("propose_time", { messageId, start, end, comment: comment ?? null }),
     acceptCounter: (messageId) => call("accept_counter", { messageId }),
     declineCounter: (messageId) => call("decline_counter", { messageId }),
