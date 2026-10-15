@@ -1,12 +1,12 @@
 //! Reading other apps' note exports. Pure functions: files in, notes out.
 //!
 //! - **Google Keep** (Takeout): one `.json` per note. Checklists become
-//!   Markdown task lists, labels become tags, and pinned, archived, and
+//!   Markdown task lists, labels become tags, and color, pinned, archived, and
 //!   trashed carry over (trashed notes are skipped). The `.html` copies next
 //!   to the JSON are ignored.
 //! - **Markdown folders** (Obsidian, Bear, Apple Notes exporters, plain
 //!   `.md`/`.txt`): YAML front matter (`title`, `tags`, `created`,
-//!   `updated`/`modified`, `pinned`, `archived`) is read and removed; Bear-style
+//!   `updated`/`modified`, `pinned`, `archived`, `color`) is read and removed; Bear-style
 //!   `#tags` in the text are collected as tags; the folders under the one
 //!   you picked become a tag (`Work/Clients`).
 //!
@@ -21,6 +21,8 @@ pub(crate) struct ImportedNote {
     pub tags: Vec<String>,
     pub pinned: bool,
     pub archived: bool,
+    /// A color name; the store keeps it only if it's one of its own.
+    pub color: Option<String>,
     pub created: i64,
     pub updated: i64,
 }
@@ -125,11 +127,22 @@ fn keep_note(path: &str, contents: &str) -> Option<Keep> {
             tags,
             pinned: o.get("isPinned").and_then(|b| b.as_bool()).unwrap_or(false),
             archived: o.get("isArchived").and_then(|b| b.as_bool()).unwrap_or(false),
+            color: o.get("color").and_then(|c| c.as_str()).and_then(keep_color),
             created,
             updated,
         },
         dropped,
     ))
+}
+
+/// Keep's color names in Takeout. Its two blues (BLUE, a light one, and
+/// CERULEAN) fold into ours; DEFAULT is no color.
+fn keep_color(c: &str) -> Option<String> {
+    match c {
+        "DEFAULT" => None,
+        "CERULEAN" => Some("blue".into()),
+        c => Some(c.to_ascii_lowercase()),
+    }
 }
 
 fn markdown_note(segments: &[&str], contents: &str, modified: Option<i64>) -> ImportedNote {
@@ -171,6 +184,10 @@ fn markdown_note(segments: &[&str], contents: &str, modified: Option<i64>) -> Im
         tags,
         pinned: matches!(get("pinned"), Some(FrontValue::Text(t)) if t == "true"),
         archived: matches!(get("archived"), Some(FrontValue::Text(t)) if t == "true"),
+        color: match get("color") {
+            Some(FrontValue::Text(t)) => Some(t),
+            _ => None,
+        },
         created,
         updated: updated.max(created),
     }

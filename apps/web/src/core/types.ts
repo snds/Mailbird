@@ -765,7 +765,13 @@ export interface NoteLink {
 export interface NotesPrefs {
   /** Checking an item moves it below the unchecked ones. */
   sortChecked: boolean
+  /** Notes as cards in a grid, the way Keep shows them (ADR-0038). */
+  grid?: boolean
 }
+
+/** A note card's color: Keep's palette by name. The shades are tokens (`--c-note-card-*`). */
+export const NOTE_COLORS = ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "gray"] as const
+export type NoteColor = (typeof NOTE_COLORS)[number]
 
 /** A checklist item in a note (ADR-0028). */
 export interface NoteTask {
@@ -792,6 +798,8 @@ export interface NoteSummary {
   snippet: string
   pinned: boolean
   archived: boolean
+  /** `null` is the plain card. */
+  color: NoteColor | null
   tags: string[]
   links: NoteLink[]
   created: number
@@ -815,6 +823,8 @@ export interface NoteInput {
 export interface NoteMeta {
   pinned?: boolean
   archived?: boolean
+  /** A color, or `""` for none. */
+  color?: NoteColor | ""
   tags?: string[]
   links?: NoteLink[]
 }
@@ -857,6 +867,8 @@ export interface NoteRecord {
   pinned: boolean
   archived: boolean
   deleted: boolean
+  /** Left out by devices from before colors. */
+  color?: NoteColor | null
   tags: string[]
   links: NoteLink[]
   created: number

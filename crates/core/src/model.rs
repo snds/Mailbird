@@ -1057,6 +1057,8 @@ pub struct NoteSummary {
     pub snippet: String,
     pub pinned: bool,
     pub archived: bool,
+    /// One of [`NOTE_COLORS`](crate::NOTE_COLORS), or `None` for the plain card.
+    pub color: Option<String>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,
@@ -1093,6 +1095,8 @@ pub struct NoteInput {
 pub struct NoteMeta {
     pub pinned: Option<bool>,
     pub archived: Option<bool>,
+    /// A color name, or `""` for none.
+    pub color: Option<String>,
     pub tags: Option<Vec<String>>,
     pub links: Option<Vec<NoteLink>>,
 }
@@ -1158,6 +1162,9 @@ pub struct NoteRecord {
     pub pinned: bool,
     pub archived: bool,
     pub deleted: bool,
+    /// Devices from before colors (ADR-0038) leave it out.
+    #[serde(default)]
+    pub color: Option<String>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,

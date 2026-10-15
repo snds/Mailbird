@@ -96,6 +96,16 @@ async fn every_command_routes_and_works() {
     assert!(dispatch(&app, &state, "sender_profile", json!({ "email": "nope" })).await.is_err());
     let linking = json_of(dispatch(&app, &state, "notes_linking_to", json!({ "title": "Hello", "except": note["id"] })).await.unwrap());
     assert_eq!(linking[0]["id"], other["id"]);
+    // Card colors and the grid (ADR-0038).
+    let colored = json_of(dispatch(&app, &state, "set_note_meta", json!({ "id": note["id"], "meta": { "color": "teal" } })).await.unwrap());
+    assert_eq!(colored["color"], "teal");
+    let cleared = json_of(dispatch(&app, &state, "set_note_meta", json!({ "id": note["id"], "meta": { "color": "" } })).await.unwrap());
+    assert_eq!(cleared["color"], Value::Null);
+    let prefs = json_of(dispatch(&app, &state, "set_notes_prefs", json!({ "prefs": { "sortChecked": true, "grid": true } })).await.unwrap());
+    assert_eq!(prefs["grid"], true);
+    // Older clients send prefs without the grid; that means the list.
+    let prefs = json_of(dispatch(&app, &state, "set_notes_prefs", json!({ "prefs": { "sortChecked": false } })).await.unwrap());
+    assert_eq!(prefs["grid"], false);
     let files = json_of(dispatch(&app, &state, "export_notes", Value::Null).await.unwrap());
     let mut paths: Vec<&str> = files.as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
     paths.sort();

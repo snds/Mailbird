@@ -143,7 +143,7 @@ export function NoteEditor({ note, autoFocus, onSaved }: { note: NoteDetail; aut
     <div className="flex min-h-0 flex-1 flex-col">
       <EditorContent editor={editor} className="min-h-0 flex-1 overflow-y-auto [&>div]:min-h-full" />
       {live && <WikiSuggest editor={editor} q={live} choices={choices} active={active} onPick={choose} />}
-      <div className="sticky bottom-0 bg-background">
+      <div className="sticky bottom-0 bg-(--note-surface,var(--background)) transition-colors">
         <FormatBar editor={editor} notes />
       </div>
     </div>

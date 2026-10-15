@@ -6,7 +6,8 @@
 import { downloadNotes } from "@/lib/download"
 
 import type { CoreEvent } from "./client"
-import type { ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
+import { NOTE_COLORS } from "./types"
+import type { ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
 
 interface DemoNote extends NoteRecord {
   markdown: string
@@ -109,29 +110,38 @@ function cleanLinks(links: NoteLink[]): NoteLink[] {
   return out
 }
 
+/** A known color or none, like clean_color: a newer device's color shows as the plain card. */
+function cleanColor(c: string | null | undefined): NoteColor | null {
+  const k = (c ?? "").trim().toLowerCase()
+  return (NOTE_COLORS as readonly string[]).includes(k) ? (k as NoteColor) : null
+}
+
+/** Keep's Takeout names: two blues fold into ours, DEFAULT is none. */
+const keepColor = (c: unknown) => (c === "CERULEAN" ? "blue" : typeof c === "string" ? cleanColor(c) : null)
+
 export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) => Promise<T>, links: DemoLinks) {
   const t = now()
   const DAY = 86_400
   let n = 0
   const note = (markdown: string, ago: number, extra: Partial<DemoNote> = {}): DemoNote => ({
-    id: `note-${++n}`, markdown, ydoc: null, pinned: false, archived: false, deleted: false, tags: [], links: [],
+    id: `note-${++n}`, markdown, ydoc: null, pinned: false, archived: false, deleted: false, color: null, tags: [], links: [],
     created: t - ago - DAY, updated: t - ago, source: null, ...extra,
   })
   const event = (title: string) => links.byName("event", title)
   const notes: DemoNote[] = [
     note("Cabin packing list\n\n- [ ] Board games\n- [ ] Coffee + grinder\n- [x] Rain jackets\n- [ ] Ferry tickets (in Mail)", 2 * 3600, {
-      pinned: true, tags: ["trip"], links: [event("Cabin weekend")].filter((l): l is NoteLink => !!l),
+      pinned: true, color: "green", tags: ["trip"], links: [event("Cabin weekend")].filter((l): l is NoteLink => !!l),
     }),
     note("Design review agenda\n\n1. Token drift in the **semantic** tier\n2. List density on phones\n3. Mobile tab bar labels\n\nBackground: [[Icon axis ideas]]", 5 * 3600, {
       tags: ["work"], links: [event("Design review")].filter((l): l is NoteLink => !!l),
     }),
-    note("Icon axis ideas\n\nFill animates on selection. Grade drops in dark mode. Optical size follows the rendered px size.", DAY, { tags: ["design"] }),
+    note("Icon axis ideas\n\nFill animates on selection. Grade drops in dark mode. Optical size follows the rendered px size.", DAY, { color: "purple", tags: ["design"] }),
     note("Gift ideas for Marcus\n\n- A good hand grinder\n- *Wingspan* expansion", 3 * DAY, {
-      tags: ["home"], links: [links.byName("contact", "Marcus Lee")].filter((l): l is NoteLink => !!l),
+      color: "yellow", tags: ["home"], links: [links.byName("contact", "Marcus Lee")].filter((l): l is NoteLink => !!l),
     }),
     note("Old color experiments\n\nOKLCH ramps with a fixed chroma cap.", 40 * DAY, { archived: true, tags: ["design"] }),
   ]
-  let prefs: NotesPrefs = { sortChecked: true }
+  let prefs: NotesPrefs = { sortChecked: true, grid: false }
   let relay: RelayConfig | null = null
   try {
     const saved = localStorage.getItem("mailbird.demo.relay")
@@ -149,7 +159,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
   const summary = (x: DemoNote): NoteSummary => {
     const [title, snippet] = titleAndSnippet(x.markdown)
     return {
-      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, tags: [...x.tags],
+      id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, tags: [...x.tags],
       links: x.links.map((l) => ({ ...l, target: links.resolve(l) })), created: x.created, updated: x.updated,
     }
   }
@@ -211,6 +221,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
           fm += `created: ${iso(x.created)}\nupdated: ${iso(x.updated)}\n`
           if (x.pinned) fm += "pinned: true\n"
           if (x.archived) fm += "archived: true\n"
+          if (x.color) fm += `color: ${x.color}\n`
           return { path, contents: `${fm}---\n${x.markdown.trimEnd()}\n` }
         })
       return downloadNotes(files)
@@ -234,6 +245,7 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
       const x = find(id)
       if (meta.pinned !== undefined) x.pinned = meta.pinned
       if (meta.archived !== undefined) x.archived = meta.archived
+      if (meta.color !== undefined) x.color = cleanColor(meta.color)
       if (meta.tags) x.tags = cleanTags(meta.tags)
       if (meta.links) x.links = cleanLinks(meta.links)
       bump(x)
@@ -310,8 +322,9 @@ export function createDemoNotes(emit: (e: CoreEvent) => void, later: <T>(v: T) =
       const ids: string[] = []
       for (const r of records) {
         const x = notes.find((k) => k.id === r.id)
-        if (!x) notes.push({ ...structuredClone(r), tags: cleanTags(r.tags), links: cleanLinks(r.links), markdown: "", ydoc: null, source: null })
-        else if (x.updated < r.updated) Object.assign(x, { ...structuredClone(r), tags: cleanTags(r.tags), links: cleanLinks(r.links) })
+        const clean = { ...structuredClone(r), color: cleanColor(r.color), tags: cleanTags(r.tags), links: cleanLinks(r.links) }
+        if (!x) notes.push({ ...clean, markdown: "", ydoc: null, source: null })
+        else if (x.updated < r.updated) Object.assign(x, clean)
         else continue
         ids.push(r.id)
       }
@@ -339,6 +352,7 @@ interface Parsed {
   tags: string[]
   pinned: boolean
   archived: boolean
+  color: NoteColor | null
   created: number
   updated: number
 }
@@ -398,7 +412,7 @@ function keep(path: string, contents: string): { note: Parsed; dropped: number }
   const updated = secs("userEditedTimestampUsec")
   return {
     note: {
-      source: `keep:${path}`, markdown: md.trimEnd(), tags: labels, pinned: o.isPinned === true, archived: o.isArchived === true,
+      source: `keep:${path}`, markdown: md.trimEnd(), tags: labels, pinned: o.isPinned === true, archived: o.isArchived === true, color: keepColor(o.color),
       created: secs("createdTimestampUsec") || updated, updated,
     },
     dropped: Array.isArray(o.attachments) ? o.attachments.length : 0,
@@ -464,5 +478,5 @@ function markdownNote(segs: string[], raw: string, modified: number | null): Par
   const date = (k: string) => (str(k) ? parseDate(str(k)!) : null)
   const updated = date("updated") ?? date("modified") ?? modified ?? 0
   const created = date("created") ?? date("date") ?? updated
-  return { source: `md:${segs.join("/")}`, markdown: markdown.trimEnd(), tags, pinned: str("pinned") === "true", archived: false, created, updated: Math.max(updated, created) }
+  return { source: `md:${segs.join("/")}`, markdown: markdown.trimEnd(), tags, pinned: str("pinned") === "true", archived: false, color: cleanColor(str("color")), created, updated: Math.max(updated, created) }
 }

@@ -41,6 +41,20 @@
   --g-red-500: oklch(0.577 0.245 27.3);
   --g-red-400: oklch(0.704 0.191 22.2);
 
+  /* Note card hues (Keep's palette by name). Only hue lives here: lightness
+     and chroma are semantic, so one hue gives a pastel card in light mode
+     and a deep one in dark. */
+  --g-hue-red: 25;
+  --g-hue-orange: 55;
+  --g-hue-yellow: 95;
+  --g-hue-green: 150;
+  --g-hue-teal: 190;
+  --g-hue-blue: 245;
+  --g-hue-purple: 300;
+  --g-hue-pink: 350;
+  --g-hue-brown: 65;
+  --g-hue-gray: 260;
+
   --g-radius-base: 0.625rem;
   --g-duration-fast: 120ms;
   --g-duration-base: 200ms;
@@ -78,6 +92,9 @@
   --vertical-contacts: var(--g-green-500);
   --vertical-notes: var(--g-amber-500);
   --unread: var(--g-blue-500);
+  /* Tinted surfaces (note cards): a light, soft wash behind dark text. */
+  --tint-l: 0.95;
+  --tint-c: 0.045;
 
   /* Sidebar contract (used by shadcn sidebar if added later) */
   --sidebar: var(--surface-chrome);
@@ -119,6 +136,9 @@
   --vertical-contacts: var(--g-green-400);
   --vertical-notes: var(--g-amber-400);
   --unread: var(--g-blue-400);
+  /* Deep and quiet, so light text keeps its contrast. */
+  --tint-l: 0.3;
+  --tint-c: 0.05;
 }
 
 /* ── Tier 3 · Component ─────────────────────────────────────────────────── */
@@ -158,6 +178,25 @@
   /* [[Links]] between notes (ADR-0034): the notes accent, unlike web links. */
   --c-note-wikilink-text: var(--vertical-notes);
   --c-note-wikilink-bg: color-mix(in oklab, var(--vertical-notes) 12%, transparent);
+
+  /* Note cards (ADR-0038): one tint per color, theme-aware through tier 2.
+     Brown and gray carry less chroma, as Keep's do. */
+  --c-note-card-red: oklch(var(--tint-l) var(--tint-c) var(--g-hue-red));
+  --c-note-card-orange: oklch(var(--tint-l) var(--tint-c) var(--g-hue-orange));
+  --c-note-card-yellow: oklch(var(--tint-l) calc(var(--tint-c) * 1.4) var(--g-hue-yellow));
+  --c-note-card-green: oklch(var(--tint-l) var(--tint-c) var(--g-hue-green));
+  --c-note-card-teal: oklch(var(--tint-l) var(--tint-c) var(--g-hue-teal));
+  --c-note-card-blue: oklch(var(--tint-l) var(--tint-c) var(--g-hue-blue));
+  --c-note-card-purple: oklch(var(--tint-l) var(--tint-c) var(--g-hue-purple));
+  --c-note-card-pink: oklch(var(--tint-l) var(--tint-c) var(--g-hue-pink));
+  --c-note-card-brown: oklch(var(--tint-l) calc(var(--tint-c) * 0.6) var(--g-hue-brown));
+  --c-note-card-gray: oklch(var(--tint-l) 0.008 var(--g-hue-gray));
+  --c-note-card-plain: var(--card);
+  --c-note-card-radius: 0.875rem;
+  /* Cards are at least this wide; the grid fits as many as the pane holds.
+     In a narrow pane (under 32rem) they shrink so two still fit. */
+  --c-note-card-min: 15rem;
+  --c-note-card-min-compact: 9.25rem;
 
   /* Adaptive sheet (ADR-0036): a bottom sheet on phones, a side panel above. */
   /* A set height, not just a cap: short content still gets room to breathe. */

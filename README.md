@@ -105,6 +105,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **25 · Links that keep up** ✅ | Rename a note and it offers to update every `[[link]]` to it (through each note's own sync document, so edits merge); link a note to an event, person, or conversation from the note itself ([ADR-0035](docs/decisions/0035-links-that-keep-up.md)) |
 | **26 · Who's writing** ✅ | A sender profile beside every conversation (a sheet on narrow screens): their card or their name, email/call/message, how long you've heard from them, meetings and other mail together, and their notes ([ADR-0036](docs/decisions/0036-sender-profile.md)) |
 | **27 · Quick Note** ✅ | Jot a note from anywhere (⌥N, ⌘K, or a Notes section) without leaving what you're doing, already linked to the conversation, event, or person that's open; it saves when you close it ([ADR-0037](docs/decisions/0037-quick-note.md)) |
+| **28 · Note cards** ✅ | Notes as Keep-style cards that fill the window (one tap between cards and rows), ten colors that sync, import from Keep, and export with the note, tinting the open note in light and dark ([ADR-0038](docs/decisions/0038-note-cards.md)) |
 
 ## License
 

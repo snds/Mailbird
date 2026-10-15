@@ -42,7 +42,7 @@ pub mod triage;
 mod invite_store;
 mod notes_import;
 mod notes_store;
-pub use notes_store::{ExportedNote, wikilinks};
+pub use notes_store::{ExportedNote, NOTE_COLORS, wikilinks};
 pub mod store;
 pub mod unsubscribe;
 pub mod vcard;

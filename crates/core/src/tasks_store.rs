@@ -36,17 +36,20 @@ pub struct PlannedTask {
     pub end: Option<i64>,
 }
 
-/// How checklists behave in every note's editor.
+/// How checklists behave in every note's editor, and how the list looks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotesPrefs {
     /// Checking an item moves it below the unchecked ones in its list.
     pub sort_checked: bool,
+    /// Notes as cards in a grid, the way Keep shows them (ADR-0038).
+    #[serde(default)]
+    pub grid: bool,
 }
 
 impl Default for NotesPrefs {
     fn default() -> Self {
-        Self { sort_checked: true }
+        Self { sort_checked: true, grid: false }
     }
 }
 
@@ -212,7 +215,7 @@ mod tests {
         assert!(s.note_tasks(true).unwrap().is_empty(), "archived notes keep their tasks to themselves");
 
         assert!(s.notes_prefs().unwrap().sort_checked, "checked items sort down unless you say otherwise");
-        s.set_notes_prefs(&NotesPrefs { sort_checked: false }).unwrap();
+        s.set_notes_prefs(&NotesPrefs { sort_checked: false, ..Default::default() }).unwrap();
         assert!(!s.notes_prefs().unwrap().sort_checked);
     }
 }
