@@ -16,6 +16,8 @@ export function meetingService(url: string) {
   if (is("meet.jit.si")) return "Jitsi"
   if (is("whereby.com")) return "Whereby"
   if (is("facetime.apple.com")) return "FaceTime"
+  if (is("meet.goto.com") || is("gotomeeting.com")) return "GoTo"
+  if (is("chime.aws")) return "Chime"
   return "the call"
 }
 

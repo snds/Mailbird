@@ -21,6 +21,23 @@ pub fn set_time_zone(state: &Shared, tz: String) -> Res<()> {
     with_store(state, |s| s.set_time_zone(&tz))
 }
 
+/// How Join opens calls, and opening one (ADR-0030).
+pub fn meeting_prefs(state: &Shared) -> Res<pim_core::meeting::MeetingPrefs> {
+    with_store(state, |s| s.meeting_prefs())
+}
+
+pub fn set_meeting_prefs(app: AppHandle, state: &Shared, prefs: pim_core::meeting::MeetingPrefs) -> Res<pim_core::meeting::MeetingPrefs> {
+    let out = with_store(state, |s| s.set_meeting_prefs(&prefs))?;
+    let _ = app.emit(events::PIM_CHANGED, ());
+    Ok(out)
+}
+
+/// The desktop opens call links with the system, so Zoom or Teams can take them.
+pub fn open_meeting(app: AppHandle, url: String) -> Res<()> {
+    pim_core::meeting::openable(&url).map_err(|e| e.to_string())?;
+    app.open_url(&url)
+}
+
 pub fn list_collections(state: &Shared, kind: CollectionKind) -> Res<Vec<Collection>> {
     with_store(state, |s| s.collections(kind))
 }

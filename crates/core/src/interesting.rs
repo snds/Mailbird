@@ -476,6 +476,7 @@ impl Store {
                     meeting_url: None,
                     contact_id: None,
                     travel: None,
+                    meeting_app_url: None,
                 });
             }
         }
@@ -541,8 +542,9 @@ impl Store {
             meeting_url: None,
             contact_id: None,
             travel: None,
+            meeting_app_url: None,
         };
-        Ok(EventDetail { occurrence, notes, repeat: Repeat::None, time_zone: None, organizer: None, attendees: vec![], url: None, writable: false, reminders: vec![] })
+        Ok(EventDetail { occurrence, notes, repeat: Repeat::None, time_zone: None, organizer: None, attendees: vec![], url: None, writable: false, reminders: vec![], meeting: None, manage: vec![] })
     }
 }
 

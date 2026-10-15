@@ -123,6 +123,12 @@ impl Store {
             comment: rx.meta.comment.clone(),
             answered: if counter { self.setting(&format!("{COUNTER_ANSWER}{message_id}"))? } else { None },
             proposed: if rx.meta.method == "REQUEST" { self.proposed_time(message_id)? } else { None },
+            // The call and the booking tool's links, read from the invitation itself (ADR-0030).
+            meeting: ev.as_ref().and_then(|e| {
+                let texts: Vec<&str> = e.conference.iter().map(String::as_str).chain([e.location.as_deref(), e.url.as_deref(), e.notes.as_deref()].into_iter().flatten()).collect();
+                crate::meeting::meeting_info(texts.iter().copied())
+            }),
+            manage: ev.as_ref().map(|e| crate::meeting::manage_links([e.notes.as_deref(), e.url.as_deref()].into_iter().flatten())).unwrap_or_default(),
         }))
     }
 

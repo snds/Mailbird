@@ -717,6 +717,11 @@ pub struct Invite {
     /// For an invitation: the new time you proposed, if you did.
     #[serde(default)]
     pub proposed: Option<TimeSlot>,
+    /// The call the invitation is for (ADR-0030).
+    #[serde(default)]
+    pub meeting: Option<crate::meeting::MeetingInfo>,
+    #[serde(default)]
+    pub manage: Vec<crate::meeting::ManageLink>,
 }
 
 /// A free stretch of time, from "find a time".
@@ -842,6 +847,9 @@ pub struct Occurrence {
     /// Minutes to get there, blocked out before `start` (ADR-0029).
     #[serde(default)]
     pub travel: Option<i64>,
+    /// `meeting_url` in its service's app (Zoom, Teams), when it has one (ADR-0030).
+    #[serde(default)]
+    pub meeting_app_url: Option<String>,
 }
 
 /// Which occurrences of a series an edit or delete applies to.
@@ -869,6 +877,12 @@ pub struct EventDetail {
     pub writable: bool,
     /// Minutes before the start, for the series' editable reminders.
     pub reminders: Vec<i64>,
+    /// The call, as the invitation describes it (ADR-0030).
+    #[serde(default)]
+    pub meeting: Option<crate::meeting::MeetingInfo>,
+    /// Reschedule and cancel links from the booking tool that made it.
+    #[serde(default)]
+    pub manage: Vec<crate::meeting::ManageLink>,
 }
 
 /// What you've done with someone: recent conversations, and meetings they're in.

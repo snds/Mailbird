@@ -10,6 +10,7 @@ import type { Invite, InviteResponse } from "@/core/types"
 import { cn } from "@/lib/utils"
 
 import { dayLabel, fromSecs, rangeLabel } from "../calendar/dates"
+import { MeetingPanel } from "../calendar/meeting-panel"
 import { displayName } from "./format"
 import { Conflicts, CounterProposal, ProposeTime } from "./invite-planning"
 
@@ -113,6 +114,8 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
           )}
         </div>
       </div>
+
+      {invite.method !== "cancel" && <MeetingPanel meeting={invite.meeting} manage={invite.manage} compact />}
 
       {invite.method === "request" &&
         (invite.outdated ? (

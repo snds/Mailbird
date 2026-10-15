@@ -101,6 +101,7 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
           const start = Math.floor(d.getTime() / 1000)
           return {
             uid: "crit-1@studio.example", title: "Design crit", location: "Studio, room 2", start, end: start + HOUR,
+            notes: "Hybrid: room 2, or join online.\n\nJoin with Google Meet\nhttps://meet.google.com/xyz-abcd-efg\nJoin by phone\n(US) +1 252-555-0142 PIN: 381 442 907#",
             organizer: priya,
             attendees: [
               { ...priya, status: "accepted" },

@@ -16,6 +16,7 @@ import { LinkedNotes } from "../notes/linked-notes"
 import { calendarColor } from "./colors"
 import { dayLabel, fmt, fromSecs, rangeLabel } from "./dates"
 import { JoinButton } from "./join-button"
+import { MeetingPanel } from "./meeting-panel"
 import { placeLabel } from "./meeting"
 import { inputFromDetail } from "./quick-add"
 import { reminderLabel, travelLabel } from "./reminders"
@@ -107,10 +108,14 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
         <p className="pl-6 text-sm text-muted-foreground">
           {dayLabel(fromSecs(e.start))} · {rangeLabel(e.start, e.end, e.allDay)}
         </p>
-        {e.meetingUrl && (
-          <div className="pt-2 pl-6">
-            <JoinButton url={e.meetingUrl} size="default" long />
-          </div>
+        {e.meeting || e.manage?.length ? (
+          <MeetingPanel meeting={e.meeting} manage={e.manage} />
+        ) : (
+          e.meetingUrl && (
+            <div className="pt-2 pl-6">
+              <JoinButton url={e.meetingUrl} appUrl={e.meetingAppUrl} size="default" long />
+            </div>
+          )
         )}
       </header>
 

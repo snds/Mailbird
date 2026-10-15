@@ -44,6 +44,9 @@ pub struct EventMeta {
     pub reminders: Vec<i64>,
     /// Minutes to get there (Apple's `X-APPLE-TRAVEL-DURATION`).
     pub travel: Option<i64>,
+    /// Call links from conference properties: RFC 7986 `CONFERENCE`, and
+    /// Google's and Microsoft's own (ADR-0030).
+    pub conference: Vec<String>,
 }
 
 /// One occurrence of an event, in absolute time.
@@ -58,6 +61,11 @@ pub struct Instance {
     pub location: Option<String>,
     /// Minutes to get there: this occurrence's own, else the series'.
     pub travel: Option<i64>,
+    /// The call link from a conference property: this occurrence's, else the series'.
+    pub conference: Option<String>,
+    /// The call link, from the conference property, location, URL, or
+    /// description (ADR-0030): what Join opens in lists.
+    pub meeting_url: Option<String>,
 }
 
 fn parse(ics: &str) -> Result<ICalendar> {
@@ -84,6 +92,21 @@ pub(crate) fn local_date(ts: i64, zone: &str) -> chrono::NaiveDate {
 /// An IANA zone; unknown names fall back to UTC rather than floating time.
 fn tz(name: &str) -> Tz {
     Tz::from_str(name).or_else(|_| Tz::from_str("UTC")).unwrap_or_default()
+}
+
+/// Where servers put an event's call link, besides LOCATION and DESCRIPTION.
+const CONFERENCE_PROPS: [&str; 3] = ["X-GOOGLE-CONFERENCE", "X-MICROSOFT-SKYPETEAMSMEETINGURL", "X-MICROSOFT-ONLINEMEETINGCONFLINK"];
+
+fn conference_of(c: &ICalendarComponent) -> Vec<String> {
+    c.entries
+        .iter()
+        .filter(|e| matches!(&e.name, ICalendarProperty::Conference) || matches!(&e.name, ICalendarProperty::Other(n) if CONFERENCE_PROPS.iter().any(|p| n.eq_ignore_ascii_case(p))))
+        .filter_map(|e| match e.values.first()? {
+            ICalendarValue::Uri(calcard::icalendar::Uri::Location(u)) => Some(u.clone()),
+            v => v.as_text().map(str::to_owned),
+        })
+        .filter(|u| u.starts_with("https://"))
+        .collect()
 }
 
 /// Apple Calendar's travel time, which iCloud and macOS/iOS read and write.
@@ -216,6 +239,7 @@ fn for_expansion(cal: &ICalendar) -> ICalendar {
 
 fn expand_all(cal: &ICalendar, local_tz: &str) -> Vec<Instance> {
     let series_travel = master_index(cal).and_then(|m| travel_of(&cal.components[m]));
+    let series_conference = master_index(cal).and_then(|m| conference_of(&cal.components[m]).into_iter().next());
     let exp = for_expansion(cal).expand_dates(tz(local_tz), EXPAND_LIMIT);
     exp.events
         .into_iter()
@@ -239,6 +263,12 @@ fn expand_all(cal: &ICalendar, local_tz: &str) -> Vec<Instance> {
                 title: text(c, ICalendarProperty::Summary).unwrap_or_default(),
                 location: text(c, ICalendarProperty::Location),
                 travel: if is_date_only(c) { None } else { travel_of(c).or(series_travel) },
+                conference: conference_of(c).into_iter().next().or_else(|| series_conference.clone()),
+                meeting_url: {
+                    let conference = conference_of(c).into_iter().next().or_else(|| series_conference.clone());
+                    let (location, url, notes) = (text(c, ICalendarProperty::Location), text(c, ICalendarProperty::Url), text(c, ICalendarProperty::Description));
+                    crate::meeting::meeting_link([conference.as_deref(), location.as_deref(), url.as_deref(), notes.as_deref()].into_iter().flatten())
+                },
             })
         })
         .collect()
@@ -282,6 +312,7 @@ pub fn read_event(ics: &str, local_tz: &str) -> Result<EventMeta> {
         url: text(c, ICalendarProperty::Url),
         reminders: reminders_of(&cal, i),
         travel: if is_date_only(c) { None } else { travel_of(c) },
+        conference: conference_of(c),
     })
 }
 
@@ -1088,6 +1119,16 @@ mod tests {
         let edited = edit_occurrence(SERIES, 1_794_303_000, &one, "UTC").unwrap();
         let by_start: Vec<_> = occurrences(&edited, "UTC", 0, i64::MAX).unwrap().into_iter().map(|o| (o.original, o.travel)).collect();
         assert!(by_start.contains(&(1_794_303_000, Some(15))) && by_start.iter().filter(|(_, t)| t.is_some()).count() == 1, "{by_start:?}");
+    }
+
+    #[test]
+    fn conference_properties_carry_the_call() {
+        let google = SERIES.replacen("SUMMARY:Standup\r\n", "SUMMARY:Standup\r\nX-GOOGLE-CONFERENCE:https://meet.google.com/abc-defg-hij\r\n", 1);
+        assert_eq!(read_event(&google, "UTC").unwrap().conference, ["https://meet.google.com/abc-defg-hij"]);
+        assert!(occurrences(&google, "UTC", 0, i64::MAX).unwrap().iter().all(|o| o.conference.as_deref() == Some("https://meet.google.com/abc-defg-hij")), "every occurrence, the moved one too");
+        let rfc = SERIES.replacen("SUMMARY:Standup\r\n", "SUMMARY:Standup\r\nCONFERENCE;VALUE=URI;FEATURE=VIDEO:https://meet.jit.si/standup\r\nX-MICROSOFT-SKYPETEAMSMEETINGURL:https://teams.microsoft.com/l/meetup-join/19%3ax/0\r\n", 1);
+        assert_eq!(read_event(&rfc, "UTC").unwrap().conference, ["https://meet.jit.si/standup", "https://teams.microsoft.com/l/meetup-join/19%3ax/0"]);
+        assert!(read_event(SERIES, "UTC").unwrap().conference.is_empty());
     }
 
     #[test]

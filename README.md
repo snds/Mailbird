@@ -97,6 +97,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **17 · Faces and sources** ✅ | Contact photos (resized on the device, synced in the vCard), a source badge on every row, "Also in" links to the same person in other address books, and contact photos as sender faces in mail ([ADR-0027](docs/decisions/0027-faces-and-sources.md)) |
 | **18 · Tasks on the calendar** ✅ | Checklist items from every note listed beside the calendar, planned into free time as linked blocks, checked off from either side; checked items move down their list ([ADR-0028](docs/decisions/0028-tasks-on-the-calendar.md)) |
 | **19 · Travel and time zones** ✅ | Travel time before events (the same property Apple Calendar uses), drawn above the event and counted as busy, with a "time to leave" alert; events set in another time zone, showing what that is on your clock ([ADR-0029](docs/decisions/0029-travel-and-time-zones.md)) |
+| **20 · Meeting services** ✅ | Calls read from the invitation (Zoom, Meet, Teams, Webex, and more: link, meeting ID, passcode, one-tap dial-in), Join in the service's app or the browser, Calendly and Cal.com reschedule and cancel links, Add video call (Jitsi) ([ADR-0030](docs/decisions/0030-meeting-services.md)) |
 
 ## License
 

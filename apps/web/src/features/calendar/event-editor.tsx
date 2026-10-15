@@ -9,13 +9,22 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Switch } from "@/components/ui/switch"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
 import type { EventInput, Repeat } from "@/core/types"
+import { meetingInfo, meetingLink } from "@/lib/meeting-info"
 
 import { formatRecipients, parseRecipients } from "../mail/format"
 import { RecipientInput } from "../mail/recipient-input"
 import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dates"
 import { FindATime } from "./find-a-time"
 import { REMINDER_PRESETS, reminderLabel, travelLabel } from "./reminders"
+import { meetingService } from "./meeting"
 import { deviceZone, zoneAbbr, zoneCity, zonedDate, zonedInput, zones } from "./zones"
+
+/** A fresh Jitsi room: unguessable, readable in a link. */
+function jitsiRoom() {
+  const bytes = crypto.getRandomValues(new Uint8Array(9))
+  const id = Array.from(bytes, (b) => "abcdefghjkmnpqrstuvwxyz23456789"[b % 31]).join("")
+  return `https://meet.jit.si/Mailbird-${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}`
+}
 
 /** Minutes; how long getting there takes, blocked out before the start. */
 const TRAVEL_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90, 120]
@@ -86,6 +95,9 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
   const [chosen, setCalendarId] = useState(initial.calendarId ?? "")
   const calendarId = chosen || writable[0]?.id || ""
   const [error, setError] = useState<string | null>(null)
+  // A call link pasted into the location or notes (an invitation's text, say).
+  const found = meetingLink(location, notes)
+  const foundId = found ? meetingInfo(location, notes)?.meetingId : null
 
   // Moving the start keeps the duration, like every calendar app.
   const moveStart = (date: string, time: string) => {
@@ -153,7 +165,20 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-b px-4 py-2">
           <input aria-label="Title" placeholder="Title" className="h-11 w-full bg-transparent text-lg font-medium outline-none placeholder:text-muted-foreground" value={title} onChange={(ev) => setTitle(ev.target.value)} data-editor-focus="" />
-          <input aria-label="Location" placeholder="Location" className={`${bare} w-full`} value={location} onChange={(ev) => setLocation(ev.target.value)} />
+          <div className="flex items-center gap-2">
+            <input aria-label="Location" placeholder="Location" className={`${bare} w-full`} value={location} onChange={(ev) => setLocation(ev.target.value)} />
+            {!found && (
+              // A Jitsi room needs no account and no sign-up: anyone with the link joins (ADR-0030).
+              <Button type="button" variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={() => setLocation(location.trim() ? `${location.trim()} · ${jitsiRoom()}` : jitsiRoom())}>
+                <Icon name="video_call" data-icon="inline-start" /> Add video call
+              </Button>
+            )}
+          </div>
+          {found && (
+            <p className="flex items-center gap-1.5 pb-1 text-xs text-muted-foreground" data-slot="meeting-found">
+              <Icon name="videocam" className="size-3.5" /> {meetingService(found)} call · Join shows on the event{foundId ? ` · Meeting ID ${foundId}` : ""}
+            </p>
+          )}
         </div>
         {eventId && initial.repeat && initial.repeat !== "none" && (
           <p className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground" data-slot="scope-note">

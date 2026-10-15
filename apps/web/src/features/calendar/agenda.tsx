@@ -79,7 +79,7 @@ export function Agenda({
                   </span>
                 </span>
               </button>
-              {o.meetingUrl && o.end > now.getTime() / 1000 && <JoinButton url={o.meetingUrl} variant="outline" className="mx-4 shrink-0" />}
+              {o.meetingUrl && o.end > now.getTime() / 1000 && <JoinButton url={o.meetingUrl} appUrl={o.meetingAppUrl} variant="outline" className="mx-4 shrink-0" />}
             </div>
           ))}
         </section>
