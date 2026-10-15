@@ -507,7 +507,7 @@ impl Store {
         match (rec.locked, rec.sealed.as_deref()) {
             (true, Some(sealed)) => {
                 self.db.execute(
-                    "UPDATE notes SET locked = 1, sealed = ?2, title = coalesce(?3, title), body = '', snippet = '', ydoc = NULL WHERE id = ?1",
+                    "UPDATE notes SET locked = 1, sealed = ?2, title = coalesce(?3, title), body = '', snippet = '', ydoc = NULL, image_text = '' WHERE id = ?1",
                     params![rec.id, sealed, rec.title],
                 )?;
             }

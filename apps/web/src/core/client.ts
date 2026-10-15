@@ -303,6 +303,9 @@ export interface CoreClient {
   noteFileRecords(): Promise<NoteFile[]>
   noteFileRaw(id: string): Promise<string>
   putNoteFile(file: NoteFile, rawBase64: string): Promise<boolean>
+  /** Text in images (ADR-0045): keep what was read; list the ones not read yet. */
+  setNoteFileText(id: string, text: string): Promise<NoteFile>
+  noteFilesWithoutText(limit: number): Promise<NoteFile[]>
   setNotesPrefs(prefs: NotesPrefs): Promise<NotesPrefs>
   /** The link to put on a note for something on this device. */
   noteLinkFor(target: NoteTarget): Promise<NoteLink | null>
@@ -474,6 +477,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     noteFileRecords: () => call("note_file_records"),
     noteFileRaw: (id) => call("note_file_raw", { id }),
     putNoteFile: (file, rawBase64) => call("put_note_file", { file, rawBase64 }),
+    setNoteFileText: (id, text) => call("set_note_file_text", { id, text }),
+    noteFilesWithoutText: (limit) => call("note_files_without_text", { limit }),
     setNotesPrefs: (prefs) => call("set_notes_prefs", { prefs }),
     noteLinkFor: (target) => call("note_link_for", { target }),
     importNotes: (files) => call("import_notes", { files }),

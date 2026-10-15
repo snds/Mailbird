@@ -30,6 +30,8 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | @tiptap/extension-collaboration, @tiptap/y-tiptap | Editor ↔ Yjs binding | 3.31.3 / 3.0.9 (pinned) | MIT | ✅ | — |
 | yjs, y-protocols | CRDT for notes sync | 13.6.33 / 1.0.7 (pinned) | MIT | ✅ | See [ADR-0012](decisions/0012-notes.md). |
 | @hocuspocus/provider, @hocuspocus/server | Notes sync client and relay | 4.7.0 (pinned) | MIT | ✅ | The relay is `tools/notes-relay`. Hocuspocus Cloud and Tiptap Collab are paid hosted options; not needed. |
+| tesseract.js, tesseract.js-core | Reading text in note images, on the device | 7.0.0 (pinned) | Apache-2.0 | ✅ | Served from the app's own `ocr/` folder, never a CDN; only the LSTM engines ship. See [ADR-0045](decisions/0045-scans-and-text-in-images.md). |
+| @tesseract.js-data/eng (`4.0.0_best_int`) | English model for the above | 1.0.0 (pinned) | MIT package; model Apache-2.0 (tessdata) | ✅ | 2.9 MB; downloaded by a device only when it first reads an image. |
 | @schedule-x/calendar | Calendar views | 4.9 | MIT core | ⚪ | Not used: Phase 2 built its own agenda/day/week views on our tokens ([ADR-0010](decisions/0010-calendar-contacts.md)). |
 | ical.js | iCal / vCard parsing (web) | 2.2 | MPL-2.0 | ⚪ | Not needed: the Rust core parses everything and the UI gets typed rows. |
 | chrono-node | Natural-language dates (quick add) | 2.10.1 (pinned) | MIT | ✅ | “Lunch with Ana tomorrow 1pm”. |

@@ -23,6 +23,7 @@ import { SplitEditor } from "@/features/mail/splits"
 import { MailView } from "@/features/mail"
 import { Composer, OutboxWatcher } from "@/features/mail/composer"
 import { NotesView } from "@/features/notes"
+import { ImageTextRunner } from "@/features/notes/image-text-runner"
 import { NotesSyncRunner } from "@/features/notes/sync-runner"
 import { useNewNote } from "@/features/notes/use-new-note"
 
@@ -79,6 +80,7 @@ function Root() {
       <OutboxWatcher />
       <ReminderWatcher />
       <NotesSyncRunner />
+      <ImageTextRunner />
     </>
   )
 }

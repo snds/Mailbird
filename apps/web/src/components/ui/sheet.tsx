@@ -95,7 +95,8 @@ const DISMISS_SHARE = 0.3
  * overlay, so the viewport is its container. `className` styles the
  * scrolling content area, not the frame.
  */
-function AdaptiveSheetContent({ className, children, ...props }: SheetPrimitive.Popup.Props) {
+/** `wide`: a wider side panel from `sm` up, for content like a photo; on phones it's the same bottom sheet. */
+function AdaptiveSheetContent({ className, children, wide = false, ...props }: SheetPrimitive.Popup.Props & { wide?: boolean }) {
   const popup = React.useRef<HTMLDivElement>(null)
   const close = React.useRef<HTMLButtonElement>(null)
   const drag = React.useRef<{ y: number; dy: number } | null>(null)
@@ -133,7 +134,8 @@ function AdaptiveSheetContent({ className, children, ...props }: SheetPrimitive.
           // Compact: anchored to the bottom edge, rounded on top, short of the top.
           "max-sm:inset-x-0 max-sm:bottom-0 max-sm:h-(--c-sheet-compact-height) max-sm:rounded-t-(--c-sheet-compact-radius) max-sm:data-ending-style:translate-y-full max-sm:data-starting-style:translate-y-full",
           // Regular: a panel on the right.
-          "sm:inset-y-0 sm:right-0 sm:h-full sm:w-(--c-sheet-regular-width) sm:border-l sm:data-ending-style:translate-x-[2.5rem] sm:data-starting-style:translate-x-[2.5rem]"
+          "sm:inset-y-0 sm:right-0 sm:h-full sm:max-w-full sm:border-l sm:data-ending-style:translate-x-[2.5rem] sm:data-starting-style:translate-x-[2.5rem]",
+          wide ? "sm:w-(--c-sheet-wide-width)" : "sm:w-(--c-sheet-regular-width)"
         )}
         {...props}
       >

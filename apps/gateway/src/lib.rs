@@ -255,7 +255,9 @@ fn csrf_ok(headers: &HeaderMap) -> bool {
 /// Headers on every response: no framing, no sniffing, no referrers, and a
 /// content policy that only lets the app talk to itself (plus a notes relay
 /// over wss, and remote images when you choose to load them).
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' wss: ws://localhost:* ws://127.0.0.1:*; frame-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+// `wasm-unsafe-eval` lets the on-device text reader (Tesseract, ADR-0045) compile its
+// WebAssembly; it doesn't allow `eval` of scripts.
+const CSP: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' wss: ws://localhost:* ws://127.0.0.1:*; frame-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 pub fn router(gw: Gw) -> Router {
     let index = gw.config.web_dir.join("index.html");

@@ -1,5 +1,6 @@
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react"
 import { useState } from "react"
+import { toast } from "sonner"
 
 import { Icon } from "@/components/icon"
 import { Button } from "@/components/ui/button"
@@ -27,6 +28,26 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     const at = getPos()
     const chain = editor.chain().focus()
     ;(typeof at === "number" ? chain.setTextSelection(at + node.nodeSize) : chain).run()
+  }
+  // The text read from the image (ADR-0045), shown on request.
+  const found = file.data?.text ?? ""
+  const [showText, setShowText] = useState(false)
+  const copyText = async () => {
+    try {
+      await navigator.clipboard.writeText(found)
+      toast.success("Copied the text", { duration: 2000 })
+    } catch {
+      toast.error("Couldn't copy: the browser blocked it")
+    }
+  }
+  const insertText = () => {
+    const at = getPos()
+    if (typeof at !== "number") return
+    // Each line its own paragraph, right after the image's.
+    const paragraphs = found.split("\n").filter((l) => l.trim()).map((l) => ({ type: "paragraph", content: [{ type: "text", text: l }] }))
+    const after = editor.state.doc.resolve(at).after()
+    editor.chain().focus().insertContentAt(after, paragraphs).run()
+    setShowText(false)
   }
   const commit = () => {
     if (draft !== null && draft.trim() !== alt) updateAttributes({ alt: draft.trim() })
@@ -83,6 +104,29 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     <NodeViewWrapper as="span" className="my-1 inline-flex max-w-full flex-col gap-1.5 align-bottom" data-drag-handle>
       {body}
       {/* The description is how the image reads aloud, and what search sees. */}
+      {(selected || draft !== null || showText) && editor.isEditable && found && (
+        <span className="flex flex-wrap items-center gap-1.5" contentEditable={false}>
+          <Button type="button" size="xs" variant="outline" aria-expanded={showText} onClick={() => setShowText((v) => !v)}>
+            <Icon name="document_scanner" data-icon="inline-start" /> Text in image
+          </Button>
+        </span>
+      )}
+      {showText && found && (
+        <span role="region" aria-label="Text in image" className="flex w-96 max-w-full flex-col gap-2 rounded-lg border bg-popover p-3 text-sm" contentEditable={false}>
+          <span className="max-h-48 overflow-y-auto whitespace-pre-wrap select-text">{found}</span>
+          <span className="flex flex-wrap justify-end gap-1.5">
+            <Button type="button" size="xs" variant="ghost" onClick={() => setShowText(false)}>
+              Close
+            </Button>
+            <Button type="button" size="xs" variant="outline" onClick={() => void copyText()}>
+              <Icon name="content_copy" data-icon="inline-start" /> Copy
+            </Button>
+            <Button type="button" size="xs" variant="secondary" onClick={insertText}>
+              <Icon name="text_fields" data-icon="inline-start" /> Add to note
+            </Button>
+          </span>
+        </span>
+      )}
       {(selected || draft !== null) && editor.isEditable && (
         <input
           aria-label="Image description"

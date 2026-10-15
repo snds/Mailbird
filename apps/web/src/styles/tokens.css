@@ -205,6 +205,11 @@
   --c-sheet-handle: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
   --c-sheet-close-size: 2.5rem;
   --c-sheet-regular-width: 24rem;
+  /* The wide variant, for a photo or other content that needs room. */
+  --c-sheet-wide-width: 36rem;
+  /* Scan: the page outline over a photo (ADR-0045). Must read on any photo, so it's the ring color, not a neutral. */
+  --c-scan-edge: var(--ring);
+  --c-scan-fill: color-mix(in oklab, var(--ring) 14%, transparent);
 
   /* Calendar */
   --c-event-fallback: var(--vertical-calendar);

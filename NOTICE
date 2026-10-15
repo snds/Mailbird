@@ -1,5 +1,6 @@
 Mailbird (working name)
 Copyright 2026 Sean Sands
 
-This product includes software from shadcn/ui (MIT), Base UI (MIT), and
-Google Material Symbols (Apache-2.0). See docs/oss-stack.md for the full list.
+This product includes software from shadcn/ui (MIT), Base UI (MIT),
+Google Material Symbols (Apache-2.0), and Tesseract OCR with its English
+model (Apache-2.0, via tesseract.js). See docs/oss-stack.md for the full list.

@@ -168,6 +168,9 @@ export function NotesView() {
                   <DropdownMenuCheckboxItem checked={prefs?.sortChecked ?? true} onCheckedChange={(on) => setPrefs.mutate({ sortChecked: on })}>
                     <Icon name="checklist" /> Move checked items down
                   </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={prefs?.readImageText ?? true} onCheckedChange={(on) => setPrefs.mutate({ readImageText: on })}>
+                    <Icon name="document_scanner" /> Find text in images
+                  </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </PaneHeader>

@@ -17,6 +17,7 @@ import { FormatBar } from "../mail/rich-editor"
 import { SortChecked } from "./checklists"
 import { noteExtensions } from "./extensions"
 import { NOTE_FILE } from "./note-src"
+import { ScanSheet } from "./scan-sheet"
 import { notesSync, useSyncStatus } from "./sync"
 import { type Choice, openWikiLink, pickChoice, useWikiChoices, wikiQueryAt } from "./wiki-links"
 import { WikiSuggest } from "./wiki-suggest"
@@ -128,6 +129,7 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
     editorRef.current = editor
   }, [editor])
   const picker = useRef<HTMLInputElement>(null)
+  const [scanning, setScanning] = useState(false)
 
   // Live edits from other devices while this note is open.
   const syncing = useSyncStatus((s) => s.status !== "off")
@@ -170,7 +172,8 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
       <EditorContent editor={editor} className="min-h-0 flex-1 overflow-y-auto [&>div]:min-h-full" />
       {live && <WikiSuggest editor={editor} q={live} choices={choices} active={active} onPick={choose} />}
       <div className="sticky bottom-0 bg-(--note-surface,var(--background)) transition-colors">
-        <FormatBar editor={editor} notes onAddImage={() => picker.current?.click()} />
+        <FormatBar editor={editor} notes onAddImage={() => picker.current?.click()} onScan={() => setScanning(true)} />
+        <ScanSheet open={scanning} onOpenChange={setScanning} onScanned={(f) => void addImages(editor, note.id, [f], undefined, "Scanned document")} />
         <input
           ref={picker}
           type="file"
@@ -196,13 +199,13 @@ const imagesIn = (data: DataTransfer | null) => [...(data?.files ?? [])].filter(
  * Shrinks each image, stores it with the note, and puts it in the text at
  * `at` (or the cursor). A failed one says why; the rest still go in.
  */
-async function addImages(editor: Editor, noteId: string, files: File[], at?: number) {
+async function addImages(editor: Editor, noteId: string, files: File[], at?: number, alt = "") {
   const core = await getCoreClient()
   for (const f of files) {
     try {
       const img = await prepareImage(f)
       const stored = await core.addNoteFile(noteId, img.mime, img.dataBase64, img.width, img.height)
-      const node = { type: "noteImage", attrs: { src: `${NOTE_FILE}${stored.id}`, alt: "" } }
+      const node = { type: "noteImage", attrs: { src: `${NOTE_FILE}${stored.id}`, alt } }
       const chain = editor.chain().focus()
       ;(at === undefined ? chain : chain.setTextSelection(at)).insertContent(node).run()
       at = undefined

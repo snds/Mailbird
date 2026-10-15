@@ -184,6 +184,8 @@ pub const COMMANDS: &[&str] = &[
     "note_file_records",
     "note_file_raw",
     "put_note_file",
+    "set_note_file_text",
+    "note_files_without_text",
     "save_note_folder",
     "delete_note_folder",
     "set_notes_prefs",
@@ -670,6 +672,14 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "put_note_file" => {
             args!(args, file: pim_core::NoteFile, raw_base64: String);
             Output::json(notes_commands::put_note_file(app.clone(), state, file, raw_base64)?)
+        }
+        "set_note_file_text" => {
+            args!(args, id: String, text: String);
+            Output::json(notes_commands::set_note_file_text(app.clone(), state, id, text)?)
+        }
+        "note_files_without_text" => {
+            args!(args, limit: u32);
+            Output::json(notes_commands::note_files_without_text(state, limit)?)
         }
         "save_note_folder" => {
             args!(args, id: Option<String>, input: pim_core::NoteFolderInput);
