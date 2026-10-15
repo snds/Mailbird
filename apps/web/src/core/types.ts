@@ -509,6 +509,45 @@ export interface ContactLabel {
   count: number
 }
 
+/** What a smart group matches; every filled-in rule must hold (ADR-0023). */
+export interface SmartGroupInput {
+  name: string
+  /** Has any of these labels. */
+  labels: string[]
+  /** Company contains these words. */
+  company: string | null
+  /** An email at this domain or its subdomains. */
+  domain: string | null
+  hasPhone: boolean
+  hasBirthday: boolean
+  /** Mail either way in the last this-many days. */
+  inTouchDays: number | null
+}
+
+export interface SmartGroup extends SmartGroupInput {
+  id: string
+  /** Members right now. */
+  count: number
+}
+
+/** What restoring contacts to a point in time would change, by name. */
+export interface ContactsRestore {
+  /** Added since: removed, to Recently deleted. */
+  added: string[]
+  /** Edited since: put back how they were. */
+  edited: string[]
+  /** Deleted since: brought back. */
+  deleted: string[]
+  /** Changes in read-only address books, left alone. */
+  readOnly: number
+}
+
+export interface ContactsRestored {
+  changed: number
+  /** Restoring with `after: mark` undoes this restore. */
+  mark: number
+}
+
 /** A contact in Recently deleted (kept 30 days). */
 export interface DeletedContact {
   id: string

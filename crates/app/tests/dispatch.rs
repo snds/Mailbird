@@ -283,3 +283,39 @@ async fn split_commands() {
     assert_eq!(call("delete_split", json!({ "id": id })).await.unwrap(), json!([]));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn smart_group_and_restore_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-people-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let app = AppHandle::new(TestHost::default());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+    let books = call("list_collections", json!({ "kind": "contacts" })).await.unwrap();
+    let book = books.as_array().unwrap().iter().find(|b| b["writable"] == json!(true) && b["id"] != json!("birthdays")).unwrap()["id"].clone();
+    let since = call("restore_contacts", json!({})).await.unwrap_err();
+    assert!(since.contains("say when"));
+    let start = chrono_free_now() - 5;
+    call("create_contact", json!({ "input": { "bookId": book, "fullName": "Priya Raman", "emails": [{ "value": "priya@studio.example" }] } })).await.unwrap();
+    let g = call("save_smart_group", json!({ "input": { "name": "Studio", "domain": "studio.example" } })).await.unwrap();
+    assert_eq!((g["name"].as_str(), g["count"].as_u64()), (Some("Studio"), Some(1)), "the rule is flattened, with a count");
+    let listed = call("list_contacts", json!({ "group": g["id"] })).await.unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(call("smart_groups", Value::Null).await.unwrap().as_array().unwrap().len(), 1);
+    let preview = call("contacts_restore_preview", json!({ "since": start })).await.unwrap();
+    assert_eq!(preview["added"], json!(["Priya Raman"]));
+    let done = call("restore_contacts", json!({ "since": start })).await.unwrap();
+    assert_eq!(done["changed"], json!(1));
+    assert_eq!(call("list_contacts", Value::Null).await.unwrap(), json!([]));
+    call("restore_contacts", json!({ "after": done["mark"] })).await.unwrap();
+    assert_eq!(call("list_contacts", Value::Null).await.unwrap().as_array().unwrap().len(), 1, "undone");
+    call("delete_smart_group", json!({ "id": g["id"] })).await.unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn chrono_free_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64
+}

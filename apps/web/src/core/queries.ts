@@ -21,7 +21,8 @@ const keys = {
   collections: (kind: CollectionKind) => ["pim", "collections", kind] as const,
   occurrences: (from: number, to: number) => ["pim", "occurrences", from, to] as const,
   event: (id: string, start: number | null) => ["pim", "event", id, start] as const,
-  contacts: (search: string, label: string | null) => ["pim", "contacts", search, label] as const,
+  contacts: (search: string, label: string | null, group: string | null) => ["pim", "contacts", search, label, group] as const,
+  smartGroups: ["pim", "smart-groups"] as const,
   contactLabels: ["pim", "contact-labels"] as const,
   calendarSets: ["pim", "calendar-sets"] as const,
   deletedContacts: ["pim", "contacts-deleted"] as const,
@@ -178,10 +179,10 @@ export function useEvent(id: string | null, start: number | null) {
   })
 }
 
-export function useContacts(search: string, label: string | null = null) {
+export function useContacts(search: string, label: string | null = null, group: string | null = null) {
   return useQuery({
-    queryKey: keys.contacts(search, label),
-    queryFn: () => call((c) => c.listContacts(search || null, label)),
+    queryKey: keys.contacts(search, label, group),
+    queryFn: () => call((c) => c.listContacts(search || null, label, group)),
     placeholderData: (prev) => prev,
   })
 }
@@ -201,6 +202,10 @@ export function useCalendarSets() {
 
 export function useContactLabels() {
   return useQuery({ queryKey: keys.contactLabels, queryFn: () => call((c) => c.contactLabels()) })
+}
+
+export function useSmartGroups() {
+  return useQuery({ queryKey: keys.smartGroups, queryFn: () => call((c) => c.smartGroups()) })
 }
 
 export function useDeletedContacts() {

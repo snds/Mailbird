@@ -94,6 +94,11 @@ pub const COMMANDS: &[&str] = &[
     "get_contact",
     "contact_activity",
     "contact_labels",
+    "smart_groups",
+    "save_smart_group",
+    "delete_smart_group",
+    "contacts_restore_preview",
+    "restore_contacts",
     "deleted_contacts",
     "restore_contact",
     "contact_vcard",
@@ -288,8 +293,25 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(pim_commands::delete_event(app.clone(), state, id, occurrence, scope)?)
         }
         "list_contacts" => {
-            args!(args, search: Option<String>, label: Option<String>);
-            Output::json(pim_commands::list_contacts(state, search, label)?)
+            args!(args, search: Option<String>, label: Option<String>, group: Option<String>);
+            Output::json(pim_commands::list_contacts(state, search, label, group)?)
+        }
+        "smart_groups" => Output::json(pim_commands::smart_groups(state)?),
+        "save_smart_group" => {
+            args!(args, id: Option<String>, input: pim_core::SmartGroupInput);
+            Output::json(pim_commands::save_smart_group(app.clone(), state, id, input)?)
+        }
+        "delete_smart_group" => {
+            args!(args, id: String);
+            Output::json(pim_commands::delete_smart_group(app.clone(), state, id)?)
+        }
+        "contacts_restore_preview" => {
+            args!(args, since: Option<i64>, after: Option<i64>);
+            Output::json(pim_commands::contacts_restore_preview(state, since, after)?)
+        }
+        "restore_contacts" => {
+            args!(args, since: Option<i64>, after: Option<i64>);
+            Output::json(pim_commands::restore_contacts(app.clone(), state, since, after)?)
         }
         "list_splits" => Output::json(commands::list_splits(state)?),
         "save_split" => {

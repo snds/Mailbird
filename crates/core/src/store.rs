@@ -36,7 +36,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 11;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -150,6 +150,28 @@ CREATE INDEX attachments_message ON attachments (message_id);
 
 /// Version 3: string server ids (JMAP) beside IMAP UIDs, and the server's
 /// state string for resuming a JMAP sync.
+/// Schema v11 (mail half): conversations survive a server move. When sync
+/// drops a row (moved to Archive, replaced by the server's copy), its
+/// conversation is remembered by Message-ID, and the copy that comes back
+/// rejoins it, so Undo, snoozes, and reminders keyed by thread still work.
+pub(crate) const MIGRATE_V11_THREADS: &str = r#"
+CREATE TABLE thread_memory (
+  account_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  thread_id  TEXT NOT NULL,
+  at         INTEGER NOT NULL,
+  PRIMARY KEY (account_id, message_id)
+);
+CREATE TRIGGER messages_remember_thread AFTER DELETE ON messages WHEN old.message_id IS NOT NULL
+BEGIN
+  INSERT OR REPLACE INTO thread_memory (account_id, message_id, thread_id, at)
+  VALUES (old.account_id, old.message_id, old.thread_id, CAST(strftime('%s', 'now') AS INTEGER));
+END;
+"#;
+
+/// How long a dropped row's conversation is remembered.
+const THREAD_MEMORY: i64 = 7 * 24 * 3600;
+
 const MIGRATE_V3: &str = r#"
 ALTER TABLE messages ADD COLUMN remote_id TEXT;
 CREATE UNIQUE INDEX messages_remote ON messages (account_id, mailbox, remote_id) WHERE remote_id IS NOT NULL;
@@ -211,6 +233,10 @@ impl Store {
         }
         if version < 10 {
             tx.execute_batch(crate::contacts_store::MIGRATE_V10)?;
+        }
+        if version < 11 {
+            tx.execute_batch(MIGRATE_V11_THREADS)?;
+            tx.execute_batch(crate::people_store::MIGRATE_V11)?;
         }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
@@ -807,6 +833,7 @@ impl Store {
     pub fn apply_sync(&self, account_id: &str, batch: &SyncBatch) -> Result<usize> {
         let tx = self.db.unchecked_transaction()?;
         let cursor = self.sync_cursor(account_id, &batch.mailbox)?;
+        tx.execute("DELETE FROM thread_memory WHERE at < ?1", [now() - THREAD_MEMORY])?;
 
         // UIDVALIDITY changed: every UID we hold is meaningless. Start over.
         if cursor.uid_validity.is_some_and(|v| v != batch.uid_validity) {
@@ -923,6 +950,7 @@ impl Store {
     /// Apply one JMAP sync pass atomically. Returns the number of new messages.
     pub fn apply_remote(&self, account_id: &str, batch: &RemoteBatch) -> Result<usize> {
         let tx = self.db.unchecked_transaction()?;
+        tx.execute("DELETE FROM thread_memory WHERE at < ?1", [now() - THREAD_MEMORY])?;
         if batch.reset {
             tx.execute(
                 "DELETE FROM messages WHERE account_id = ?1 AND remote_id IS NOT NULL",
@@ -1235,6 +1263,17 @@ fn insert_message(
 /// message links two that arrived out of order.
 fn assign_thread(tx: &Connection, account_id: &str, id: &str, message_id: Option<&str>, refs: &BTreeSet<&str>) -> Result<()> {
     let mut threads: BTreeSet<String> = BTreeSet::new();
+    // The conversation this message was in before sync dropped its row.
+    let remembered: Option<String> = match message_id {
+        Some(mid) => {
+            let t = tx
+                .query_row("SELECT thread_id FROM thread_memory WHERE account_id = ?1 AND message_id = ?2", params![account_id, mid], |r| r.get(0))
+                .optional()?;
+            tx.execute("DELETE FROM thread_memory WHERE account_id = ?1 AND message_id = ?2", params![account_id, mid])?;
+            t
+        }
+        None => None,
+    };
     // Parents and ancestors we already have.
     for r in refs {
         let mut stmt = tx.prepare_cached(
@@ -1256,9 +1295,9 @@ fn assign_thread(tx: &Connection, account_id: &str, id: &str, message_id: Option
             threads.insert(t?);
         }
     }
-    let Some(target) = threads.iter().next().cloned() else { return Ok(()) };
+    let Some(target) = remembered.or_else(|| threads.iter().next().cloned()) else { return Ok(()) };
     tx.execute("UPDATE messages SET thread_id = ?1 WHERE id = ?2", params![target, id])?;
-    for other in threads.iter().skip(1) {
+    for other in threads.iter().filter(|t| **t != target) {
         tx.execute("UPDATE messages SET thread_id = ?1 WHERE thread_id = ?2", params![target, other])?;
     }
     Ok(())
@@ -1771,6 +1810,10 @@ mod tests {
         assert_eq!(archived.len(), 1);
         assert_eq!(archived[0].mailbox, ARCHIVE);
         assert_eq!(archived[0].thread_count, 1, "no duplicate of the archived message");
+        assert_eq!(archived[0].thread_id, t, "the server's copy rejoins its conversation");
+        // So Undo by conversation still finds it.
+        s.set_thread_archived(&t, false).unwrap();
+        assert_eq!(inbox(&s).len(), 1);
     }
 
     #[test]

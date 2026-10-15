@@ -6,13 +6,15 @@ import { Icon } from "@/components/icon"
 import { ListRow, SearchField } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { Button } from "@/components/ui/button"
-import { useContactLabels, useContacts, useDeletedContacts, useDuplicates } from "@/core/queries"
+import { useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 
 import { ContactDetailPane } from "./contact-detail"
 import { DuplicatesPane } from "./duplicates"
 import { PersonAvatar } from "./person"
 import { RecentlyDeletedPane } from "./recently-deleted"
+import { RestoreContactsDialog } from "./restore"
+import { SmartGroupChips } from "./smart-groups"
 
 /** Section letter for the A–Z list (accents fold: "Élodie" files under E). */
 const letter = (c: ContactSummary) => {
@@ -46,7 +48,11 @@ export function ContactsView() {
   const { data: labels = [] } = useContactLabels()
   // A label that's gone (its last contact edited or deleted) stops filtering.
   const active = label && labels.some((l) => l.name === label) ? label : null
-  const { data: contacts = [], isPending } = useContacts(query, active)
+  const [group, setGroup] = useState<string | null>(null)
+  const { data: groups = [] } = useSmartGroups()
+  const activeGroup = groups.find((g) => g.id === group) ?? null
+  const [restoring, setRestoring] = useState<number | null>(null)
+  const { data: contacts = [], isPending } = useContacts(query, active, activeGroup?.id ?? null)
   const { data: dupes = [] } = useDuplicates()
   const { data: gone = [] } = useDeletedContacts()
 
@@ -65,7 +71,12 @@ export function ContactsView() {
       onBack={() => setSelected(null)}
       header={
         <>
-          <PaneHeader title="Contacts" />
+          <PaneHeader title="Contacts">
+            <Button size="icon" variant="ghost" aria-label="Restore contacts" onClick={() => setRestoring(Math.floor(Date.now() / 1000))}>
+              <Icon name="history" />
+            </Button>
+          </PaneHeader>
+          <RestoreContactsDialog openedAt={restoring} onClose={() => setRestoring(null)} />
           <div className="px-4 pb-3">
             <SearchField placeholder="Search people" value={search} onChange={setSearch} />
             {labels.length > 0 && (
@@ -78,12 +89,13 @@ export function ContactsView() {
                 ))}
               </div>
             )}
+            <SmartGroupChips active={activeGroup?.id ?? null} onPick={(id) => (setGroup(id), setSelected(null))} />
           </div>
         </>
       }
       list={
         <div role="list" aria-label="Contacts">
-          {dupes.length > 0 && !query && !active && (
+          {dupes.length > 0 && !query && !active && !activeGroup && (
             <button
               type="button"
               onClick={() => setSelected({ kind: "duplicates" })}
@@ -102,7 +114,13 @@ export function ContactsView() {
           )}
           {!isPending && contacts.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-              {query ? `No one matches “${query}”${active ? ` in ${active}` : ""}.` : active ? `No one has the ${active} label.` : "No contacts yet."}
+              {query
+                ? `No one matches “${query}”${active ? ` in ${active}` : activeGroup ? ` in ${activeGroup.name}` : ""}.`
+                : active
+                  ? `No one has the ${active} label${activeGroup ? ` in ${activeGroup.name}` : ""}.`
+                  : activeGroup
+                    ? `No one fits ${activeGroup.name} right now. People join as their cards change.`
+                    : "No contacts yet."}
             </p>
           )}
           {sections.map((s) => (
@@ -121,7 +139,7 @@ export function ContactsView() {
               ))}
             </section>
           ))}
-          {gone.length > 0 && !query && !active && (
+          {gone.length > 0 && !query && !active && !activeGroup && (
             <button
               type="button"
               onClick={() => setSelected({ kind: "deleted" })}

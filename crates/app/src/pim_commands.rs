@@ -60,8 +60,46 @@ pub fn delete_event(app: AppHandle, state: &Shared, id: String, occurrence: Opti
     Ok(())
 }
 
-pub fn list_contacts(state: &Shared, search: Option<String>, label: Option<String>) -> Res<Vec<ContactSummary>> {
-    with_store(state, |s| s.contacts_labeled(search.as_deref(), label.as_deref()))
+pub fn list_contacts(state: &Shared, search: Option<String>, label: Option<String>, group: Option<String>) -> Res<Vec<ContactSummary>> {
+    with_store(state, |s| s.contacts_in(search.as_deref(), label.as_deref(), group.as_deref()))
+}
+
+/// Smart groups with their member counts (ADR-0023).
+pub fn smart_groups(state: &Shared) -> Res<Vec<pim_core::SmartGroup>> {
+    with_store(state, |s| s.smart_groups())
+}
+
+pub fn save_smart_group(app: AppHandle, state: &Shared, id: Option<String>, input: pim_core::SmartGroupInput) -> Res<pim_core::SmartGroup> {
+    let g = with_store(state, |s| s.save_smart_group(id.as_deref(), &input))?;
+    let _ = app.emit(events::PIM_CHANGED, ());
+    Ok(g)
+}
+
+pub fn delete_smart_group(app: AppHandle, state: &Shared, id: String) -> Res<()> {
+    with_store(state, |s| s.delete_smart_group(&id))?;
+    let _ = app.emit(events::PIM_CHANGED, ());
+    Ok(())
+}
+
+/// "Since a time" or "after a mark" (the mark undoes an earlier restore).
+fn restore_point(since: Option<i64>, after: Option<i64>) -> Res<pim_core::RestorePoint> {
+    match (since, after) {
+        (_, Some(m)) => Ok(pim_core::RestorePoint::After(m)),
+        (Some(t), None) => Ok(pim_core::RestorePoint::Since(t)),
+        (None, None) => Err("say when to restore to".into()),
+    }
+}
+
+pub fn contacts_restore_preview(state: &Shared, since: Option<i64>, after: Option<i64>) -> Res<pim_core::ContactsRestore> {
+    let point = restore_point(since, after)?;
+    with_store(state, |s| s.contacts_restore_preview(point))
+}
+
+pub fn restore_contacts(app: AppHandle, state: &Shared, since: Option<i64>, after: Option<i64>) -> Res<pim_core::ContactsRestored> {
+    let point = restore_point(since, after)?;
+    let done = with_store(state, |s| s.restore_contacts(point))?;
+    edited(&app, state);
+    Ok(done)
 }
 
 /// Every label in use, with counts (ADR-0020).
