@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useNotesLock } from "@/core/queries"
 import type { NotesLockInfo } from "@/core/types"
@@ -106,14 +106,14 @@ function SetForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => voi
           {error}
         </p>
       )}
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
+      <DialogActions>
+        <DialogAction kind="cancel" type="button" onClick={onCancel}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={busy || !pass || !again}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={busy || !pass || !again}>
           Set passphrase
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

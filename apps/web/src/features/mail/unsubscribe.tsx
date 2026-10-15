@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions } from "@unicron/ui"
 import { useMailAction } from "@/core/queries"
 import type { MessageDetail, Unsubscribe, UnsubscribeMethod } from "@/core/types"
 
@@ -43,11 +43,11 @@ export function UnsubscribeAction({ message, onArchive }: { message: MessageDeta
               {unsubscribe.error.message}
             </p>
           )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>
+          <DialogActions>
+            <DialogAction kind="cancel" onClick={() => setOpen(false)}>
               Cancel
-            </Button>
-            <Button
+            </DialogAction>
+            <DialogAction
               disabled={unsubscribe.isPending}
               onClick={() =>
                 unsubscribe.mutate(message.id, {
@@ -62,8 +62,8 @@ export function UnsubscribeAction({ message, onArchive }: { message: MessageDeta
               }
             >
               {unsubscribe.isPending ? "Unsubscribing…" : "Unsubscribe"}
-            </Button>
-          </DialogFooter>
+            </DialogAction>
+          </DialogActions>
         </DialogContent>
       </Dialog>
     </>

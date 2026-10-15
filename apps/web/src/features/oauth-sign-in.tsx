@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, type IconName, Button, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, Spinner } from "@unicron/ui"
+import { Icon, type IconName, Button, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, Spinner, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { OAuthClientInfo, OAuthIssuer } from "@/core/types"
 
@@ -205,25 +205,21 @@ function ClientForm({ issuer, copy, current, onClose }: { issuer: OAuthIssuer; c
           </Field>
         )}
       </FieldGroup>
-      <DialogFooter className="items-center sm:justify-between">
-        {current && !current.builtIn ? (
-          <Button type="button" variant="link" size="sm" className="px-0 text-destructive" onClick={() => save.mutate(null)}>
+      <DialogActions>
+        {current && !current.builtIn && (
+          <DialogAction kind="destructive" type="button" onClick={() => save.mutate(null)}>
             Remove saved {copy.clientNoun}
-          </Button>
-        ) : (
-          <span />
+          </DialogAction>
         )}
-        <div className="flex gap-2">
-          {current && (
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-          )}
-          <Button type="submit" disabled={!clientId.trim() || save.isPending}>
-            Save {copy.clientNoun}
-          </Button>
-        </div>
-      </DialogFooter>
+        {current && (
+          <DialogAction kind="cancel" type="button" onClick={onClose}>
+            Cancel
+          </DialogAction>
+        )}
+        <DialogAction type="submit" disabled={!clientId.trim() || save.isPending}>
+          Save {copy.clientNoun}
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

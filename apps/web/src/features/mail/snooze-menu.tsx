@@ -17,7 +17,7 @@ export function SnoozeMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60 bg-popover">
+      <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuGroup>
         <DropdownMenuLabel>Snooze until…</DropdownMenuLabel>
         {options.map((o) => (

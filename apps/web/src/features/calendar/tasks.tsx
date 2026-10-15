@@ -3,7 +3,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Icon, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useCollections, useNoteTasks, useNotesPrefs } from "@/core/queries"
 import type { NoteTask, TimeSlot } from "@/core/types"
@@ -203,14 +203,14 @@ function PlanForm({ task, onDone, onOpen }: { task: NoteTask; onDone: () => void
           </NativeSelect>
         </label>
       </div>
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onDone}>
+      <DialogActions>
+        <DialogAction kind="cancel" type="button" onClick={onDone}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={busy || !writable.length}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={busy || !writable.length}>
           Plan it
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

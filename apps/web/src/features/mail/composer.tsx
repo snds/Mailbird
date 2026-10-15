@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode 
 import { toast } from "sonner"
 
 import { useUi, type ComposerDraft } from "@/app/ui-store"
-import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle } from "@unicron/ui"
+import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore, useLocalTimes, useSignatures, useTemplates } from "@/core/queries"
 import type { Draft, LocalTime, OutgoingAttachment, Template } from "@/core/types"
@@ -401,7 +401,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
           <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="Templates" />}>
             <Icon name="article" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64 bg-popover">
+          <DropdownMenuContent align="start" className="w-64">
             {templates.length > 0 && (
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Insert a template</DropdownMenuLabel>
@@ -491,14 +491,14 @@ function SaveTemplateDialog({ open, onOpenChange, subject, html }: { open: boole
               {error}
             </p>
           )}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <DialogActions>
+            <DialogAction kind="cancel" type="button" onClick={() => onOpenChange(false)}>
               Cancel
-            </Button>
-            <Button type="submit" disabled={!name.trim()}>
+            </DialogAction>
+            <DialogAction type="submit" disabled={!name.trim()}>
               Save template
-            </Button>
-          </DialogFooter>
+            </DialogAction>
+          </DialogActions>
         </form>
       </DialogContent>
     </Dialog>

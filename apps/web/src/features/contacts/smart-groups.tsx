@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Switch } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Switch, DialogAction, DialogActions } from "@unicron/ui"
 import { useContactLabels, usePimAction, useSmartGroups } from "@/core/queries"
 import type { SmartGroup, SmartGroupInput } from "@/core/types"
 
@@ -153,19 +153,19 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
         </span>
         <Switch checked={inTouch} onCheckedChange={setInTouch} aria-label="In touch recently" />
       </div>
-      <DialogFooter className="flex-row items-center">
+      <DialogActions>
         {group && (
-          <Button type="button" variant="ghost-destructive" className="mr-auto" onClick={() => void del()}>
+          <DialogAction kind="destructive" type="button" onClick={() => void del()}>
             Delete group
-          </Button>
+          </DialogAction>
         )}
-        <Button type="button" variant="outline" onClick={() => onDone()}>
+        <DialogAction kind="cancel" type="button" onClick={() => onDone()}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={save.isPending}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={save.isPending}>
           {group ? "Save" : "Add group"}
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

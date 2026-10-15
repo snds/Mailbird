@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { usePimAction } from "@/core/queries"
 
@@ -93,14 +93,14 @@ function RestoreForm({ openedAt, onDone }: { openedAt: number; onDone: () => voi
           </p>
         )}
       </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onDone}>
+      <DialogActions>
+        <DialogAction kind="cancel" onClick={onDone}>
           Cancel
-        </Button>
-        <Button disabled={total === 0 || restore.isPending} onClick={() => void run()}>
+        </DialogAction>
+        <DialogAction disabled={total === 0 || restore.isPending} onClick={() => void run()}>
           Restore {total > 0 ? total : ""}
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </div>
   )
 }

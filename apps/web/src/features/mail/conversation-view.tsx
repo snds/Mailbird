@@ -265,7 +265,7 @@ export function ConversationView({
               <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Sender options" />}>
                 <Icon name="more_vert" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 bg-popover">
+              <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="truncate">{displayName(target.from)}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup value={row.category ?? "people"} onValueChange={(v) => senders.move(target.from, v as Category)}>

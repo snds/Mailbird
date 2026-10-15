@@ -17,7 +17,7 @@ export function RemindMenu({ value, onPick }: { value: number | null; onPick: (a
         <DropdownMenuTrigger render={<IconButton label={label} />}>
           <Icon name={value ? "notifications_active" : "notification_add"} className="size-5" fill={!!value} />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64 bg-popover">
+        <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Remind me…</DropdownMenuLabel>
             {snoozeOptions().map((o) => (

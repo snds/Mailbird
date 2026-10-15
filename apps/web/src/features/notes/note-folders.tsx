@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions } from "@unicron/ui"
 import { useNoteAction, useNoteFolders, useNoteTags } from "@/core/queries"
 import { NOTE_COLORS, type NoteColor, type NoteFolder, type NoteFolderInput } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -161,19 +161,19 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
         Has to-dos left
         <Switch checked={hasOpenTasks} onCheckedChange={setHasOpenTasks} aria-label="Has to-dos left" />
       </label>
-      <DialogFooter className="flex-row items-center">
+      <DialogActions>
         {folder && (
-          <Button type="button" variant="ghost-destructive" className="mr-auto" onClick={() => void del()}>
+          <DialogAction kind="destructive" type="button" onClick={() => void del()}>
             Delete folder
-          </Button>
+          </DialogAction>
         )}
-        <Button type="button" variant="outline" onClick={() => onDone()}>
+        <DialogAction kind="cancel" type="button" onClick={() => onDone()}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={save.isPending}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={save.isPending}>
           {folder ? "Save" : "Add folder"}
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

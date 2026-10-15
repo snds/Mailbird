@@ -2,7 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useInboxOverview, useMailAction, useSplits } from "@/core/queries"
 import type { Split, SplitInput } from "@/core/types"
@@ -143,19 +143,19 @@ function SplitForm({ id, initial, onDone }: { id?: string; initial: Partial<Spli
         </span>
         <Switch checked={exclusive} onCheckedChange={setExclusive} aria-label="Keep out of All" />
       </label>
-      <DialogFooter className="flex-row items-center">
+      <DialogActions>
         {id && (
-          <Button type="button" variant="ghost-destructive" className="mr-auto" onClick={() => void del()}>
+          <DialogAction kind="destructive" type="button" onClick={() => void del()}>
             Delete split
-          </Button>
+          </DialogAction>
         )}
-        <Button type="button" variant="outline" onClick={onDone}>
+        <DialogAction kind="cancel" type="button" onClick={onDone}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={save.isPending}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={save.isPending}>
           {id ? "Save" : "Add split"}
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

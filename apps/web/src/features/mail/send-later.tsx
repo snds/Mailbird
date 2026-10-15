@@ -1,6 +1,6 @@
 import { useState, type ReactElement, type ReactNode } from "react"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldDescription, FieldLabel, Input } from "@unicron/ui"
+import { Icon, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldDescription, FieldLabel, Input, DialogAction, DialogActions } from "@unicron/ui"
 import { useNowSecs } from "@/hooks/use-now"
 import { FOLLOW_UP_OPTIONS, fromLocalInput, longTime, sendLaterOptions, snoozeOptions, toLocalInput } from "@/lib/time"
 
@@ -32,7 +32,7 @@ export function SendLaterMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64 bg-popover">
+        <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Send later…</DropdownMenuLabel>
             {sendLaterOptions().map((o) => (
@@ -82,7 +82,7 @@ export function FollowUpAfterMenu({ trigger, children, value, onChange }: { trig
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60 bg-popover">
+      <DropdownMenuContent align="start" className="w-60">
         <DropdownMenuGroup>
           <DropdownMenuLabel>Remind me if no reply in…</DropdownMenuLabel>
           {FOLLOW_UP_OPTIONS.map((o) => (
@@ -113,7 +113,7 @@ export function FollowUpAtMenu({ trigger, children, onPick }: { trigger: ReactEl
     <>
       <DropdownMenu>
         <DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64 bg-popover">
+        <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Remind me if no reply…</DropdownMenuLabel>
             {snoozeOptions().map((o) => (
@@ -187,14 +187,14 @@ export function PickTimeDialog({
             <Input id="pick-time" type="datetime-local" required value={value} onChange={(e) => setValue(e.target.value)} />
             {tooSoon && <FieldDescription className="text-destructive">Pick a time at least a minute from now.</FieldDescription>}
           </Field>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <DialogActions>
+            <DialogAction kind="cancel" type="button" onClick={() => onOpenChange(false)}>
               Cancel
-            </Button>
-            <Button type="submit" disabled={at === null || tooSoon}>
+            </DialogAction>
+            <DialogAction type="submit" disabled={at === null || tooSoon}>
               {action}
-            </Button>
-          </DialogFooter>
+            </DialogAction>
+          </DialogActions>
         </form>
       </DialogContent>
     </Dialog>
