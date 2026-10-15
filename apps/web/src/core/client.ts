@@ -23,6 +23,7 @@ import type {
   KeyBindings,
   ExportedNote,
   SenderProfile,
+  LocalTime,
   Booked,
   BookingLink,
   BookingLinkInput,
@@ -213,6 +214,8 @@ export interface CoreClient {
   contactActivity(id: string): Promise<ContactActivity>
   /** Who sent mail from an address: their card, or their name, and your history together (ADR-0036). */
   senderProfile(email: string): Promise<SenderProfile>
+  /** The clocks of the people a message is going to, for those whose mail says (ADR-0041). */
+  localTimes(emails: string[]): Promise<LocalTime[]>
   /** Reminders that came due while the app was closed; each is returned once. */
   takeMissedReminders(): Promise<DueReminder[]>
   listSplits(): Promise<Split[]>
@@ -381,6 +384,7 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     getContact: (id) => call("get_contact", { id }),
     contactActivity: (id) => call("contact_activity", { id }),
     senderProfile: (email) => call("sender_profile", { email }),
+    localTimes: (emails) => call("local_times", { emails }),
     takeMissedReminders: () => call("take_missed_reminders"),
     listSplits: () => call("list_splits"),
     saveSplit: (id, input) => call("save_split", { id, input }),

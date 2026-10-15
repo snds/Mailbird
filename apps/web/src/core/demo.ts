@@ -6,6 +6,7 @@ import type {
   SplitInput,
   SwipeActions,
   KeyBindings,
+  LocalTime,
 } from "./types"
 import { DEFAULT_KEYS, KEY_COMMANDS, keyProblem, mergedKeys } from "@/lib/keys"
 import { createDemoNotes } from "./demo-notes"
@@ -503,6 +504,19 @@ export function createDemoClient(): CoreClient {
         localOffset: own?.tzOffset ?? null,
         offsetSeen: own?.date ?? null,
       })
+    },
+    // Recipients' clocks (ADR-0041), as the core reads them.
+    localTimes: async (emails) => {
+      const out: LocalTime[] = []
+      for (const raw of emails.slice(0, 20)) {
+        const email = raw.trim().toLowerCase()
+        if (!email.includes("@") || out.some((t) => t.email === email)) continue
+        const own = state.messages
+          .filter((m) => m.from.email.toLowerCase() === email && m.mailbox !== SENT && categoryOf(m) === "people" && (m as DemoMessage).tzOffset != null)
+          .sort((a, b) => b.date - a.date)[0] as DemoMessage | undefined
+        if (own) out.push({ email, name: own.from.name, offset: own.tzOffset!, seen: own.date })
+      }
+      return later(out)
     },
     ...notes,
     respondToInvite: async (messageId, response, calendarId) => {

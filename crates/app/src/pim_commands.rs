@@ -247,6 +247,11 @@ pub fn sender_profile(state: &Shared, email: String) -> Res<pim_core::SenderProf
     with_store(state, |s| s.sender_profile(&email))
 }
 
+/// The clocks of the people a message is going to (ADR-0041).
+pub fn local_times(state: &Shared, emails: Vec<String>) -> Res<Vec<pim_core::LocalTime>> {
+    with_store(state, |s| s.local_times(&emails))
+}
+
 /// The reminders missed while the app was closed, once: a second call gets none.
 pub fn take_missed_reminders(state: &Shared) -> Vec<pim_core::DueReminder> {
     state.missed_reminders.lock().map(|mut m| std::mem::take(&mut *m)).unwrap_or_default()

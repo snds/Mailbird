@@ -98,6 +98,7 @@ pub const COMMANDS: &[&str] = &[
     "get_contact",
     "contact_activity",
     "sender_profile",
+    "local_times",
     "contact_labels",
     "contact_copies",
     "contact_photos",
@@ -461,6 +462,10 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "sender_profile" => {
             args!(args, email: String);
             Output::json(pim_commands::sender_profile(state, email)?)
+        }
+        "local_times" => {
+            args!(args, emails: Vec<String>);
+            Output::json(pim_commands::local_times(state, emails)?)
         }
         "take_missed_reminders" => Output::json(pim_commands::take_missed_reminders(state)),
         "create_contact" => {
