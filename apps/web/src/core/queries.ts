@@ -2,7 +2,7 @@ import { QueryClient, keepPreviousData, useInfiniteQuery, useMutation, useQuery,
 import { useEffect } from "react"
 
 import { getCoreClient, type CoreClient } from "./client"
-import type { CollectionKind, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
+import type { CollectionKind, KeyBindings, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -219,6 +219,19 @@ export function useSetSwipeActions() {
   return useMutation({
     mutationFn: (a: SwipeActions) => call((c) => c.setSwipeActions(a)),
     onSuccess: (a) => qc.setQueryData(["settings", "swipes"], a),
+  })
+}
+
+/** Your single keys; shared like swipes (ADR-0032). */
+export function useKeyBindings() {
+  return useQuery({ queryKey: ["settings", "keys"], queryFn: () => call((c) => c.keyBindings()), staleTime: Infinity })
+}
+
+export function useSetKeyBindings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (b: KeyBindings) => call((c) => c.setKeyBindings(b)),
+    onSuccess: (b) => qc.setQueryData(["settings", "keys"], b),
   })
 }
 

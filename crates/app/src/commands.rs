@@ -183,6 +183,15 @@ pub fn set_swipe_actions(state: &Shared, actions: pim_core::SwipeActions) -> Res
     with_store(state, |s| s.set_swipe_actions(&actions))
 }
 
+/// Every command's single key (ADR-0032).
+pub fn key_bindings(state: &Shared) -> Res<pim_core::KeyBindings> {
+    with_store(state, |s| s.key_bindings())
+}
+
+pub fn set_key_bindings(state: &Shared, bindings: pim_core::KeyBindings) -> Res<pim_core::KeyBindings> {
+    with_store(state, |s| s.set_key_bindings(&bindings))
+}
+
 pub fn unarchive_bundle(app: AppHandle, state: &Shared, keys: Vec<String>) -> Res<()> {
     with_store(state, |s| s.unarchive_bundle(&keys))?;
     changed(&app, state);

@@ -102,6 +102,7 @@ export function MailView() {
     focusSearch: () => searchRef.current?.focus(),
     triage,
     selected: row,
+    verb,
   })
 
   return (

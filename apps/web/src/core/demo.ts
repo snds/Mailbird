@@ -5,7 +5,9 @@ import type {
   Split,
   SplitInput,
   SwipeActions,
+  KeyBindings,
 } from "./types"
+import { DEFAULT_KEYS, KEY_COMMANDS, keyProblem, mergedKeys } from "@/lib/keys"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
 import { signatureFromMessage } from "./demo-signature"
@@ -354,6 +356,7 @@ export function createDemoClient(): CoreClient {
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
   let swipes: SwipeActions = { right: "read", rightLong: "none", left: "archive", leftLong: "none" }
+  let keysSaved: KeyBindings = {}
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
   const { noteLinks, suggestFor, setMailSource, ...pimApi } = pim
   // Smart groups' "in touch": anyone you've had mail from, or sent mail to.
@@ -576,6 +579,25 @@ export function createDemoClient(): CoreClient {
       if (bad) throw new Error(`“${bad}” isn't something a swipe can do`)
       swipes = { ...a }
       return later(swipes)
+    },
+    // Keys (ADR-0032): the same checks as the core.
+    keyBindings: async () => later(mergedKeys(keysSaved)),
+    setKeyBindings: async (b) => {
+      for (const [id, key] of Object.entries(b)) {
+        if (!KEY_COMMANDS.some((c) => c.id === id)) throw new Error(`“${id}” isn't a command a key can do`)
+        const why = keyProblem(key)
+        if (why) throw new Error(why)
+      }
+      const all = mergedKeys(b)
+      const seen = new Map<string, string>()
+      for (const [id, key] of Object.entries(all)) {
+        if (!key) continue
+        const at = `${id.split(".")[0]} ${key}`
+        if (seen.has(at)) throw new Error(`“${key}” is already the key for ${seen.get(at)}`)
+        seen.set(at, id)
+      }
+      keysSaved = Object.fromEntries(Object.entries(all).filter(([id, k]) => DEFAULT_KEYS[id] !== k))
+      return later(all)
     },
     inboxOverview: async (accountId) => {
       const t = now()

@@ -19,17 +19,17 @@ export interface MailVerb {
 
 /**
  * The swipe-able part of the shared mail vocabulary (ADR-0025): what each
- * action is called in Settings, and the key that does the same thing on a
- * keyboard, so a gesture is never the only way in.
+ * action is called in Settings, and the key command that does the same
+ * thing (ADR-0032), so a gesture is never the only way in.
  */
-export const SWIPE_CHOICES: { id: SwipeActionId; label: string; key?: string }[] = [
-  { id: "read", label: "Read / unread", key: "U" },
-  { id: "archive", label: "Archive", key: "E" },
-  { id: "star", label: "Star", key: "S" },
-  { id: "snooze-tomorrow", label: "Snooze until tomorrow", key: "H" },
-  { id: "snooze-next-week", label: "Snooze until next week" },
-  { id: "remind", label: "Remind me in 3 days if nobody replies" },
-  { id: "newsletters", label: "Always in Newsletters" },
+export const SWIPE_CHOICES: { id: SwipeActionId; label: string; command?: string }[] = [
+  { id: "read", label: "Read / unread", command: "mail.unread" },
+  { id: "archive", label: "Archive", command: "mail.archive" },
+  { id: "star", label: "Star", command: "mail.star" },
+  { id: "snooze-tomorrow", label: "Snooze until tomorrow", command: "mail.snooze-tomorrow" },
+  { id: "snooze-next-week", label: "Snooze until next week", command: "mail.snooze-next-week" },
+  { id: "remind", label: "Remind me in 3 days if nobody replies", command: "mail.remind" },
+  { id: "newsletters", label: "Always in Newsletters", command: "mail.newsletters" },
   { id: "none", label: "Nothing" },
 ]
 

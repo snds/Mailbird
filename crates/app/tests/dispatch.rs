@@ -357,5 +357,18 @@ async fn swipe_action_commands() {
     assert_eq!(call("set_swipe_actions", json!({ "actions": mine })).await.unwrap(), mine);
     assert!(call("set_swipe_actions", json!({ "actions": { "right": "explode", "rightLong": "none", "left": "archive", "leftLong": "none" } })).await.is_err());
     assert_eq!(call("swipe_actions", Value::Null).await.unwrap(), mine);
+
+    // Keys (ADR-0032): defaults, a swap, a refusal, and a reset.
+    let keys = call("key_bindings", Value::Null).await.unwrap();
+    assert_eq!((&keys["mail.archive"], &keys["calendar.previous"]), (&json!("e"), &json!("ArrowLeft")));
+    let mut swapped = keys.clone();
+    swapped["mail.archive"] = json!("s");
+    swapped["mail.star"] = json!("e");
+    assert_eq!(call("set_key_bindings", json!({ "bindings": swapped })).await.unwrap(), swapped);
+    let mut clash = swapped.clone();
+    clash["mail.compose"] = json!("e");
+    assert!(call("set_key_bindings", json!({ "bindings": clash })).await.unwrap_err().to_string().contains("already the key"));
+    assert_eq!(call("key_bindings", Value::Null).await.unwrap(), swapped);
+    assert_eq!(call("set_key_bindings", json!({ "bindings": {} })).await.unwrap(), keys);
     let _ = std::fs::remove_dir_all(dir);
 }

@@ -20,6 +20,7 @@ import type {
   ContactsRestore,
   InterestingCalendar,
   SwipeActions,
+  KeyBindings,
   Booked,
   BookingLink,
   BookingLinkInput,
@@ -163,6 +164,9 @@ export interface CoreClient {
   managedBooking(token: string, code: string): Promise<ManagedBooking>
   changeBooking(token: string, code: string, change: BookingChange): Promise<ManagedBooking>
   setSwipeActions(actions: SwipeActions): Promise<SwipeActions>
+  /** Your single keys (ADR-0032). `{}` resets to the defaults. */
+  keyBindings(): Promise<KeyBindings>
+  setKeyBindings(bindings: KeyBindings): Promise<KeyBindings>
   addInterestingCalendar(id: string): Promise<void>
   removeInterestingCalendar(id: string): Promise<void>
   /** Occurrences overlapping [from, to), in seconds. */
@@ -331,6 +335,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     managedBooking: (token, code) => call("managed_booking", { token, code }),
     changeBooking: (token, code, change) => call("change_booking", { token, code, change }),
     setSwipeActions: (actions) => call("set_swipe_actions", { actions }),
+    keyBindings: () => call("key_bindings"),
+    setKeyBindings: (bindings) => call("set_key_bindings", { bindings }),
     addInterestingCalendar: (id) => call("add_interesting_calendar", { id }),
     removeInterestingCalendar: (id) => call("remove_interesting_calendar", { id }),
     listOccurrences: (from, to) => call("list_occurrences", { from, to }),
