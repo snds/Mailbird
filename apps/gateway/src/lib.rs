@@ -183,6 +183,11 @@ pub struct Config {
     pub web_dir: PathBuf,
     /// Mark the cookie `Secure`. Off only for plain http on this machine.
     pub secure_cookies: bool,
+    /// The address people reach this gateway at ("https://cal.example"),
+    /// when set: booking invitations then carry their manage link (ADR-0031).
+    /// From configuration only, never from a request, so a booker can't
+    /// point someone else's invitation at another site.
+    pub public_url: Option<String>,
 }
 
 pub struct Gateway {
@@ -267,6 +272,8 @@ pub fn router(gw: Gw) -> Router {
         .route("/api/attachments/{id}", get(attachment))
         // Public: a scheduling link's page reads its free times and books one (ADR-0026).
         .route("/api/book/{token}", get(booking_page).post(booking))
+        // Public too: a booking's own page, opened by its private code (ADR-0031).
+        .route("/api/book/{token}/b/{code}", get(managed_booking).post(change_booking))
         .route("/api/{*rest}", axum::routing::any(|| async { err(StatusCode::NOT_FOUND, "no such API") }))
         .fallback_service(spa)
         .layer(SetResponseHeaderLayer::overriding(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP)))
@@ -426,7 +433,37 @@ async fn booking(State(gw): State<Gw>, UrlPath(token): UrlPath<String>, headers:
         b.1 += 1;
     }
     let Ok(request) = serde_json::from_slice::<Value>(&body) else { return err(StatusCode::BAD_REQUEST, "that booking wasn't readable") };
-    public_result(pim_app::dispatch(&gw.app, &gw.state, "book_slot", json!({ "token": token, "request": request })).await)
+    let manage_base = gw.config.public_url.as_deref().map(|u| format!("{}/book/{token}/b/", u.trim_end_matches('/')));
+    public_result(pim_app::dispatch(&gw.app, &gw.state, "book_slot", json!({ "token": token, "request": request, "manageBase": manage_base })).await)
+}
+
+async fn managed_booking(State(gw): State<Gw>, UrlPath((token, code)): UrlPath<(String, String)>) -> Response {
+    if !token_ok(&token) || !token_ok(&code) {
+        return err(StatusCode::NOT_FOUND, "this booking link isn't active");
+    }
+    public_result(pim_app::dispatch(&gw.app, &gw.state, "managed_booking", json!({ "token": token, "code": code })).await)
+}
+
+async fn change_booking(State(gw): State<Gw>, UrlPath((token, code)): UrlPath<(String, String)>, headers: HeaderMap, body: Bytes) -> Response {
+    if !csrf_ok(&headers) {
+        return err(StatusCode::FORBIDDEN, "missing the X-Mailbird header");
+    }
+    if !token_ok(&token) || !token_ok(&code) {
+        return err(StatusCode::NOT_FOUND, "this booking link isn't active");
+    }
+    // Changes count against the same limit as new bookings.
+    {
+        let mut b = gw.bookings.lock().expect("bookings lock");
+        if b.0.elapsed() >= BOOKING_WINDOW {
+            *b = (Instant::now(), 0);
+        }
+        if b.1 >= MAX_BOOKINGS {
+            return err(StatusCode::TOO_MANY_REQUESTS, "lots of bookings just now — try again in a few minutes");
+        }
+        b.1 += 1;
+    }
+    let Ok(change) = serde_json::from_slice::<Value>(&body) else { return err(StatusCode::BAD_REQUEST, "that change wasn't readable") };
+    public_result(pim_app::dispatch(&gw.app, &gw.state, "change_booking", json!({ "token": token, "code": code, "change": change })).await)
 }
 
 /// An attachment as a download, with its own file name.

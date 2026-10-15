@@ -35,6 +35,13 @@ async fn main() {
     let address = env("GATEWAY_ADDRESS").unwrap_or_else(|| "127.0.0.1:8080".into());
     // Plain http is only for this machine; behind https, cookies are Secure.
     let secure_cookies = env("GATEWAY_INSECURE_COOKIES").is_none();
+    // Where people reach the gateway; booking invitations then link to their manage page.
+    let public_url = env("GATEWAY_PUBLIC_URL").map(|u| {
+        if !(u.starts_with("https://") || u.starts_with("http://localhost") || u.starts_with("http://127.0.0.1")) {
+            fail("GATEWAY_PUBLIC_URL must start with https:// (or http://localhost for this machine)");
+        }
+        u.trim_end_matches('/').to_string()
+    });
 
     let state = pim_app::AppState::open(&data).unwrap_or_else(|e| fail(e));
     // The mail database is readable by its owner only, like the sealed secrets.
@@ -45,7 +52,7 @@ async fn main() {
     }
     let secrets = SealedFile::open(data.join("secrets.json"), &key).unwrap_or_else(|e| fail(e));
     pim_app::secrets::install(Box::new(secrets));
-    let gw = Gateway::new(state, Config { password, web_dir, secure_cookies });
+    let gw = Gateway::new(state, Config { password, web_dir, secure_cookies, public_url });
 
     eprintln!("gateway {} on {address}, data in {}", env!("CARGO_PKG_VERSION"), data.display());
     let listener = tokio::net::TcpListener::bind(&address).await.unwrap_or_else(|e| fail(format!("can't listen on {address}: {e}")));

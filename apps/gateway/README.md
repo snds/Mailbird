@@ -55,6 +55,7 @@ GATEWAY_PASSWORD=… GATEWAY_KEY=… GATEWAY_WEB=apps/web/dist ./target/release/
 | `GATEWAY_WEB` | | The built web app (`apps/web/dist`). Default `./web` (`/web` in Docker). |
 | `GATEWAY_ADDRESS` | | Where to listen. Default `127.0.0.1:8080` (`0.0.0.0:8080` inside Docker). |
 | `GATEWAY_INSECURE_COOKIES` | | Set to `1` for plain http on this machine only. |
+| `GATEWAY_PUBLIC_URL` | | The address people reach the gateway at, like `https://cal.example`. With it, booking invitations carry a link to change or cancel the booking. Without it, the link is shown only on the confirmation page. |
 
 ## Adding accounts
 

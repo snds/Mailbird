@@ -100,8 +100,19 @@ pub fn public_booking(state: &Shared, token: String) -> Res<pim_core::PublicBook
 }
 
 /// A visitor's booking: the only thing a visitor can write.
-pub fn book_slot(app: AppHandle, state: &Shared, token: String, request: pim_core::BookingRequest) -> Res<pim_core::Booked> {
-    let done = with_store(state, |s| s.book(&token, &request))?;
+/// A booking's manage page, and changing it from there (ADR-0031).
+pub fn managed_booking(state: &Shared, token: String, code: String) -> Res<pim_core::ManagedBooking> {
+    with_store(state, |s| s.managed_booking(&token, &code))
+}
+
+pub fn change_booking(app: AppHandle, state: &Shared, token: String, code: String, change: pim_core::BookingChange) -> Res<pim_core::ManagedBooking> {
+    let done = with_store(state, |s| s.change_booking(&token, &code, &change))?;
+    edited(&app, state);
+    Ok(done)
+}
+
+pub fn book_slot(app: AppHandle, state: &Shared, token: String, request: pim_core::BookingRequest, manage_base: Option<String>) -> Res<pim_core::Booked> {
+    let done = with_store(state, |s| s.book(&token, &request, manage_base.as_deref()))?;
     edited(&app, state);
     Ok(done)
 }

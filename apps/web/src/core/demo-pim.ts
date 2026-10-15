@@ -21,6 +21,8 @@ import type {
   ContactSummary,
   DeletedContact,
   DueReminder,
+  ManagedBooking,
+  BookingChange,
   MeetingPrefs,
   EditScope,
   EventDetail,
@@ -316,14 +318,31 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   // Scheduling links (ADR-0026), on the device clock: free half hours inside
   // the link's hours, two hours out through its days ahead.
   let links: BookingLink[] = []
-  const busyBetween = (from: number, to: number) =>
-    events.filter((e) => visible(e.calendarId) && !e.allDay).flatMap((e) => expand(e, from, to).map((o) => [o.start - (e.travel ?? 0) * 60, o.end] as const))
-  const freeSlots = (l: BookingLink) => {
+  const busyBetween = (from: number, to: number, except?: string) =>
+    events.filter((e) => visible(e.calendarId) && !e.allDay && e.id !== except).flatMap((e) => expand(e, from, to).map((o) => [o.start - (e.travel ?? 0) * 60, o.end] as const))
+  const bookings: { code: string; linkId: string; eventId: string; start: number; end: number; name: string; moves: number; cancelled: boolean }[] = []
+  const bookingOf = (token: string, code: string) => {
+    const l = links.find((x) => x.token === token)
+    const b = l && bookings.find((x) => x.code === code && x.linkId === l.id)
+    if (!l || !b) throw new Error("this booking link isn't active")
+    return { l, b }
+  }
+  const managed = (token: string, code: string): ManagedBooking => {
+    const { l, b } = bookingOf(token, code)
+    const live = !b.cancelled && events.some((e) => e.id === b.eventId)
+    const past = b.start <= Math.floor(Date.now() / 1000)
+    return {
+      title: l.title, host: HOST, name: b.name, start: b.start, end: b.end, minutes: l.minutes, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      cancelled: !live, past, movesLeft: live ? Math.max(0, 5 - b.moves) : 0,
+      slots: live && !past && b.moves < 5 ? freeSlots(l, b.eventId).filter((t) => t.start !== b.start) : [],
+    }
+  }
+  const freeSlots = (l: BookingLink, except?: string) => {
     const GRID = 1800, len = l.minutes * 60
     const nowS = Math.floor(Date.now() / 1000)
     const from = Math.floor((nowS + 7200) / GRID) * GRID + GRID
     const until = from + l.daysAhead * 86_400
-    const busy = busyBetween(from - 86_400, until + 86_400)
+    const busy = busyBetween(from - 86_400, until + 86_400, except)
     const out: { start: number; end: number }[] = []
     for (let d = 0; d <= l.daysAhead; d++) {
       const day = new Date(from * 1000)
@@ -725,8 +744,31 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       e.notes = `Booked by ${name} <${email}> through “${l.title}”.${req.note?.trim() ? `\n\n${req.note.trim()}` : ""}`
       events.push(e)
       l.bookedAt.push(Math.floor(Date.now() / 1000))
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
+      bookings.push({ code, linkId: l.id, eventId: e.id, start: slot.start, end: slot.end, name, moves: 0, cancelled: false })
       changed()
-      return later({ start: slot.start, end: slot.end, title: l.title, host: HOST, invited: false })
+      return later({ start: slot.start, end: slot.end, title: l.title, host: HOST, invited: false, code })
+    },
+    // A booking's own page (ADR-0031), as the core keeps it: by link and code, five moves at most.
+    managedBooking: async (token: string, code: string) => later(managed(token, code)),
+    changeBooking: async (token: string, code: string, change: BookingChange) => {
+      const { l, b } = bookingOf(token, code)
+      const live = !b.cancelled && events.some((e) => e.id === b.eventId)
+      if (!live) throw new Error("this booking was cancelled")
+      if (b.start <= Math.floor(Date.now() / 1000)) throw new Error("this booking has already started")
+      if (change.action === "cancel") {
+        events.splice(events.findIndex((e) => e.id === b.eventId), 1)
+        b.cancelled = true
+      } else {
+        if (b.moves >= 5) throw new Error("this booking has moved as often as it can; write to your host instead")
+        const slot = freeSlots(l, b.eventId).find((t) => t.start === change.start && t.start !== b.start)
+        if (!slot) throw new Error("that time was just taken; pick another")
+        const e = events.find((x) => x.id === b.eventId)!
+        Object.assign(e, { start: slot.start, end: slot.end })
+        Object.assign(b, { start: slot.start, end: slot.end, moves: b.moves + 1 })
+      }
+      changed()
+      return later(managed(token, code))
     },
     addInterestingCalendar: async (id: string) => {
       const c = catalog().find((x) => x.id === id)

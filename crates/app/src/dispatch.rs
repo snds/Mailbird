@@ -105,6 +105,8 @@ pub const COMMANDS: &[&str] = &[
     "delete_booking_link",
     "public_booking",
     "book_slot",
+    "managed_booking",
+    "change_booking",
     "add_interesting_calendar",
     "remove_interesting_calendar",
     "save_smart_group",
@@ -330,8 +332,16 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(pim_commands::public_booking(state, token)?)
         }
         "book_slot" => {
-            args!(args, token: String, request: pim_core::BookingRequest);
-            Output::json(pim_commands::book_slot(app.clone(), state, token, request)?)
+            args!(args, token: String, request: pim_core::BookingRequest, manage_base: Option<String>);
+            Output::json(pim_commands::book_slot(app.clone(), state, token, request, manage_base)?)
+        }
+        "managed_booking" => {
+            args!(args, token: String, code: String);
+            Output::json(pim_commands::managed_booking(state, token, code)?)
+        }
+        "change_booking" => {
+            args!(args, token: String, code: String, change: pim_core::BookingChange);
+            Output::json(pim_commands::change_booking(app.clone(), state, token, code, change)?)
         }
         "add_interesting_calendar" => {
             args!(args, id: String);

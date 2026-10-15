@@ -29,7 +29,7 @@ async fn gateway_end_to_end() {
     let secrets = SealedFile::open(dir.join("secrets.json"), &key()).unwrap();
     pim_app::secrets::install(Box::new(secrets));
     let state = pim_app::AppState::open(&dir.join("data")).unwrap();
-    let gw = Gateway::new(state, Config { password: PASSWORD.into(), web_dir: web.clone(), secure_cookies: false });
+    let gw = Gateway::new(state, Config { password: PASSWORD.into(), web_dir: web.clone(), secure_cookies: false, public_url: Some("https://cal.example".into()) });
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", l.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(l, router(gw)).await.unwrap() });
@@ -129,6 +129,24 @@ async fn gateway_end_to_end() {
     assert_eq!(again.status(), 400, "that time is taken now");
     let occ: Value = core(&http, "list_occurrences", json!({ "from": slot - 1, "to": slot + 3600 })).await.unwrap().json().await.unwrap();
     assert!(occ.as_array().unwrap().iter().any(|o| o["title"] == "Intro call with Ana"), "the booking is in the owner's calendar");
+
+    // The booker's own page (ADR-0031): by its private code, no sign-in.
+    let code = done["code"].as_str().unwrap().to_owned();
+    let ev_id = occ.as_array().unwrap().iter().find(|o| o["title"] == "Intro call with Ana").unwrap()["eventId"].as_str().unwrap().to_owned();
+    let ev: Value = core(&http, "get_event", json!({ "id": ev_id })).await.unwrap().json().await.unwrap();
+    assert!(ev["notes"].as_str().unwrap().contains(&format!("https://cal.example/book/{token}/b/{code}")), "the invitation links to it, at the configured address");
+    let manage = format!("{base}/api/book/{token}/b/{code}");
+    let mine: Value = anon.get(&manage).send().await.unwrap().json().await.unwrap();
+    assert_eq!((mine["name"].as_str(), mine["start"].as_i64(), mine["cancelled"].as_bool()), (Some("Ana"), Some(slot), Some(false)));
+    assert_eq!(anon.get(format!("{base}/api/book/{token}/b/{}", "0".repeat(32))).send().await.unwrap().status(), 404, "a wrong code finds nothing");
+    assert_eq!(anon.post(&manage).json(&json!({ "action": "cancel" })).send().await.unwrap().status(), 403, "changes need the header");
+    let to = mine["slots"][2]["start"].as_i64().unwrap();
+    let moved: Value = anon.post(&manage).header("X-Mailbird", "1").json(&json!({ "action": "reschedule", "start": to })).send().await.unwrap().json().await.unwrap();
+    assert_eq!(moved["start"].as_i64(), Some(to), "moved");
+    let gone: Value = anon.post(&manage).header("X-Mailbird", "1").json(&json!({ "action": "cancel" })).send().await.unwrap().json().await.unwrap();
+    assert_eq!(gone["cancelled"].as_bool(), Some(true), "cancelled");
+    let occ: Value = core(&http, "list_occurrences", json!({ "from": slot - 1, "to": to + 3600 })).await.unwrap().json().await.unwrap();
+    assert!(!occ.as_array().unwrap().iter().any(|o| o["title"] == "Intro call with Ana"), "and gone from the owner's calendar");
 
     // Sign out: the session ends.
     assert_eq!(http.delete(format!("{base}/api/session")).header("X-Mailbird", "1").send().await.unwrap().status(), 204);
