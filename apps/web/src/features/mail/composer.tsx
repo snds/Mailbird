@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import { useUi, type ComposerDraft } from "@/app/ui-store"
@@ -20,15 +20,16 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { getCoreClient } from "@/core/client"
-import { useAccounts, useCore, useSignatures, useTemplates } from "@/core/queries"
-import type { Draft, OutgoingAttachment, Template } from "@/core/types"
+import { useAccounts, useCore, useLocalTimes, useSignatures, useTemplates } from "@/core/queries"
+import type { Draft, LocalTime, OutgoingAttachment, Template } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
-import { FOLLOW_UP_OPTIONS, longTime } from "@/lib/time"
+import { useNowSecs } from "@/hooks/use-now"
+import { FOLLOW_UP_OPTIONS, longTime, nextLocalHour, partOfDay, timeThere, utcLabel } from "@/lib/time"
 
 import { UNDO_SECONDS, formatRecipients, formatSize, parseRecipients } from "./format"
 import { RecipientInput } from "./recipient-input"
 import { FormatBar, RichEditor } from "./rich-editor"
-import { FollowUpAfterMenu, SendLaterMenu } from "./send-later"
+import { FollowUpAfterMenu, SendLaterMenu, type TheirMorning } from "./send-later"
 import { signatureBlock, withSignature } from "./signature"
 import { useRichEditor } from "./use-rich-editor"
 import { htmlToText, textToHtml } from "./rich-text"
@@ -48,6 +49,34 @@ function readFile(file: File): Promise<OutgoingAttachment> {
     }
     reader.readAsDataURL(file)
   })
+}
+
+const firstName = (t: LocalTime) => t.name?.trim().split(/\s+/)[0] || t.email
+
+/** "Night there", "Weekend there", …, or null in their working hours. */
+const dayThere = (t: LocalTime, now: number) => {
+  const there = new Date((now + t.offset * 60) * 1000)
+  return partOfDay(there.getUTCHours(), there.getUTCDay())
+}
+
+/** 9:00 AM on each recipient's next workday, for those in another zone than
+ * yours: one per offset, at most two, so the menu stays short (ADR-0041). */
+function theirMornings(times: LocalTime[], now: number): (TheirMorning & { offset: number })[] {
+  const mine = -new Date(now * 1000).getTimezoneOffset()
+  const seen = new Set<number>()
+  const out: (TheirMorning & { offset: number })[] = []
+  for (const t of times) {
+    if (t.offset === mine || seen.has(t.offset) || out.length === 2) continue
+    seen.add(t.offset)
+    const at = nextLocalHour(t.offset, now)
+    out.push({
+      offset: t.offset,
+      at,
+      label: `${timeThere(t.offset, at)} for ${firstName(t)}`,
+      detail: new Date(at * 1000).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }),
+    })
+  }
+  return out
 }
 
 /** Mounted once at the app root; opens whenever `useUi().composer` is set. */
@@ -124,6 +153,12 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
   const [subject, setSubject] = useState(initial.subject ?? "")
   const [sendAt, setSendAt] = useState<number | null>(initial.sendAt ?? null)
   const [followUp, setFollowUp] = useState<number | null>(initial.followUpAfter ?? null)
+  // Their clocks (ADR-0041): who in To lives somewhere else, from their own mail.
+  const toEmails = useDeferredValue(useMemo(() => parseRecipients(to).map((a) => a.email.toLowerCase()).slice(0, 10), [to]))
+  const { data: localTimes = [] } = useLocalTimes(toEmails)
+  const now = useNowSecs(30_000)
+  const theirs = useMemo(() => theirMornings(localTimes, now), [localTimes, now])
+  const late = localTimes.map((t) => ({ t, day: dayThere(t, now) })).find((x) => x.day)
   const [savingTemplate, setSavingTemplate] = useState(false)
   // Each account's signature, as the editor renders it.
   const blocks = useMemo(() => new Map((signatures ?? []).map((s) => [s.accountId, signatureBlock(s.html)])), [signatures])
@@ -292,7 +327,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
           <Button type="submit" disabled={sending || accounts.length === 0 || totalBytes > MAX_ATTACHMENTS} aria-keyshortcuts="Control+Enter Meta+Enter">
             <Icon name={sendAt === null ? "send" : "schedule_send"} data-icon="inline-start" /> {sendAt === null ? "Send" : "Schedule"}
           </Button>
-          <SendLaterMenu onPick={setSendAt} trigger={<Button type="button" size="icon" aria-label="Send later" disabled={sending || accounts.length === 0} />}>
+          <SendLaterMenu onPick={setSendAt} theirs={theirs} trigger={<Button type="button" size="icon" aria-label="Send later" disabled={sending || accounts.length === 0} />}>
             <Icon name="keyboard_arrow_down" />
           </SendLaterMenu>
         </ButtonGroup>
@@ -330,6 +365,21 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         <Row label="Cc" htmlFor="composer-cc">
           <RecipientInput id="composer-cc" className={bare} value={cc} onChange={setCc} inputMode="email" />
         </Row>
+      )}
+      {late && (
+        // Outside their working hours: say so, and offer their morning (ADR-0041).
+        <p data-slot="recipient-local-time" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/40 px-4 py-2 text-sm">
+          <Icon name={late.day === "Night there" ? "bedtime" : "schedule"} className="size-4 text-muted-foreground" />
+          {/* On phones the sentence gets the line and the offer drops under it, aligned with the text. */}
+          <span className="min-w-0 flex-1 max-sm:basis-[calc(100%-1.5rem)]">
+            It's {timeThere(late.t.offset, now)} for {firstName(late.t)} <span className="text-muted-foreground">· {late.day} · {utcLabel(late.t.offset)}</span>
+          </span>
+          {sendAt === null && theirs[0] && theirs[0].offset === late.t.offset && (
+            <Button type="button" variant="outline" size="sm" className="max-sm:ml-6" onClick={() => setSendAt(theirs[0]!.at)}>
+              <Icon name="schedule_send" data-icon="inline-start" /> Send {theirs[0].label}
+            </Button>
+          )}
+        </p>
       )}
       <Row label="Subject" htmlFor="composer-subject">
         <input id="composer-subject" className={bare} value={subject} onChange={(e) => setSubject(e.target.value)} />

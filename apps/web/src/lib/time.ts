@@ -142,3 +142,18 @@ export const gapLabel = (offset: number, mine: number) => {
 /** Outside working hours, a word for what their day is doing; nothing between 8 and 6. */
 export const partOfDay = (hour: number, weekday: number) =>
   hour >= 22 || hour < 5 ? "Night there" : hour < 8 ? "Early morning there" : weekday === 0 || weekday === 6 ? "Weekend there" : hour >= 18 ? "Evening there" : null
+
+/** The next `hour`:00 on a weekday in someone's own time, at least 15 minutes
+ * away, as Unix seconds: "9:00 AM their time" for send later (ADR-0041). */
+export function nextLocalHour(offset: number, nowSecs: number, hour = 9) {
+  // Work in their wall clock (UTC fields shifted by their offset), then shift back.
+  const there = new Date((nowSecs + offset * 60) * 1000)
+  const t = new Date(Date.UTC(there.getUTCFullYear(), there.getUTCMonth(), there.getUTCDate(), hour))
+  const soonest = there.getTime() + 15 * 60_000
+  while (t.getTime() < soonest || t.getUTCDay() === 0 || t.getUTCDay() === 6) t.setUTCDate(t.getUTCDate() + 1)
+  return t.getTime() / 1000 - offset * 60
+}
+
+/** Someone's wall-clock time, formatted in their zone: "12:30 AM". */
+export const timeThere = (offset: number, secs: number, opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" }) =>
+  new Date((secs + offset * 60) * 1000).toLocaleString(undefined, { ...opts, timeZone: "UTC" })

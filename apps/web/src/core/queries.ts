@@ -269,6 +269,16 @@ export function useContact(id: string | null) {
   return useQuery({ queryKey: keys.contact(id ?? ""), queryFn: () => call((c) => c.getContact(id!)), enabled: id !== null })
 }
 
+/** The clocks of the people you're writing to (ADR-0041); refreshes with mail. */
+export function useLocalTimes(emails: string[]) {
+  return useQuery({
+    queryKey: ["pim", "activity", "local-times", emails],
+    queryFn: () => call((c) => c.localTimes(emails)),
+    enabled: emails.length > 0,
+    placeholderData: keepPreviousData,
+  })
+}
+
 /** Who sent mail from an address (ADR-0036); refreshes with mail and contacts. */
 export function useSenderProfile(email: string | null) {
   return useQuery({ queryKey: ["pim", "activity", "sender", email], queryFn: () => call((c) => c.senderProfile(email!)), enabled: !!email })

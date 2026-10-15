@@ -457,6 +457,16 @@ export interface SenderProfile {
   offsetSeen: number | null
 }
 
+/** Someone's clock, from their own mail (ADR-0040), for the composer (ADR-0041). */
+export interface LocalTime {
+  email: string
+  name: string | null
+  /** Minutes east of UTC. */
+  offset: number
+  /** When the message it came from was sent. */
+  seen: number
+}
+
 export interface ContactActivity {
   /** Newest first, one row per conversation. */
   threads: MessageSummary[]

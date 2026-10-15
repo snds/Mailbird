@@ -176,6 +176,26 @@ impl Store {
         Ok(crate::SenderProfile { email, name, contact, received, first_seen, activity, local_offset, offset_seen })
     }
 
+    /// The clocks of the people you're writing to (ADR-0041), for those whose
+    /// own mail says. Order follows `emails`; unknown ones are left out.
+    pub fn local_times(&self, emails: &[String]) -> Result<Vec<crate::LocalTime>> {
+        let mut out = Vec::new();
+        for raw in emails.iter().take(20) {
+            let email = raw.trim().to_lowercase();
+            if !email.contains('@') || out.iter().any(|t: &crate::LocalTime| t.email == email) {
+                continue;
+            }
+            if let Some((offset, seen)) = self.sender_offset(std::slice::from_ref(&email))? {
+                let name = self
+                    .db
+                    .query_row("SELECT from_name FROM messages WHERE lower(from_email) = ?1 AND trim(coalesce(from_name, '')) <> '' ORDER BY date DESC LIMIT 1", [&email], |r| r.get(0))
+                    .optional()?;
+                out.push(crate::LocalTime { email, name, offset, seen });
+            }
+        }
+        Ok(out)
+    }
+
     /// Their UTC offset, from the newest message they wrote themselves (the
     /// People category): a newsletter's Date is its server's clock, not theirs.
     /// Messages from before version 15 are read once and the offset kept.
@@ -482,6 +502,9 @@ mod tests {
         assert_eq!(s.sender_profile("lena@example.de").unwrap().local_offset, Some(120));
         let kept: Option<i32> = s.db.query_row("SELECT tz_offset FROM messages WHERE message_id = 's4@x'", [], |r| r.get(0)).unwrap();
         assert_eq!(kept, Some(120));
+        // The composer's lookup (ADR-0041): known ones in order, once each.
+        let times = s.local_times(&["Lena@Example.de".into(), "nobody@x.test".into(), "ana@example.com".into(), "lena@example.de".into(), "bad".into()]).unwrap();
+        assert_eq!(times.iter().map(|t| (t.email.as_str(), t.offset, t.name.as_deref())).collect::<Vec<_>>(), [("lena@example.de", 120, Some("Lena")), ("ana@example.com", 0, Some("Ana"))]);
 
         let nobody = s.sender_profile("new@example.org").unwrap();
         assert_eq!((nobody.received, nobody.first_seen, nobody.name), (0, None, None));

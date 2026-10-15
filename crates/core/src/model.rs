@@ -906,6 +906,19 @@ pub struct SenderProfile {
     pub offset_seen: Option<i64>,
 }
 
+/// Someone's clock, from their own mail (ADR-0040), for the composer (ADR-0041).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalTime {
+    pub email: String,
+    /// The name on their newest message, if any.
+    pub name: Option<String>,
+    /// Minutes east of UTC.
+    pub offset: i32,
+    /// When the message it came from was sent.
+    pub seen: i64,
+}
+
 /// What you've done with someone: recent conversations, and meetings they're in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

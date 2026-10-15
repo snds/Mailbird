@@ -17,11 +17,29 @@ import { Input } from "@/components/ui/input"
 import { useNowSecs } from "@/hooks/use-now"
 import { FOLLOW_UP_OPTIONS, fromLocalInput, longTime, sendLaterOptions, snoozeOptions, toLocalInput } from "@/lib/time"
 
+/** "9:00 AM for Priya", and when that is for you. */
+export interface TheirMorning {
+  label: string
+  at: number
+  detail: string
+}
+
 /**
  * Send-later presets plus "Pick a time…". Each preset shows its exact time,
  * like the snooze menu, so "Tomorrow morning" is never ambiguous.
  */
-export function SendLaterMenu({ trigger, children, onPick }: { trigger: ReactElement; children: ReactNode; onPick: (at: number) => void }) {
+export function SendLaterMenu({
+  trigger,
+  children,
+  onPick,
+  theirs = [],
+}: {
+  trigger: ReactElement
+  children: ReactNode
+  onPick: (at: number) => void
+  /** Recipients in another time zone: offers 9:00 AM on their next workday (ADR-0041). */
+  theirs?: TheirMorning[]
+}) {
   const [custom, setCustom] = useState(false)
   return (
     <>
@@ -38,6 +56,21 @@ export function SendLaterMenu({ trigger, children, onPick }: { trigger: ReactEle
               </DropdownMenuItem>
             ))}
           </DropdownMenuGroup>
+          {theirs.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Their time</DropdownMenuLabel>
+                {theirs.map((t) => (
+                  <DropdownMenuItem key={t.label} onClick={() => onPick(t.at)}>
+                    <Icon name="schedule" />
+                    <span className="flex-1">{t.label}</span>
+                    <span className="text-xs text-muted-foreground">{t.detail}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setCustom(true)}>
             <Icon name="calendar_month" />

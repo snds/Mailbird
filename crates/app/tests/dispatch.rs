@@ -96,6 +96,8 @@ async fn every_command_routes_and_works() {
     assert!(dispatch(&app, &state, "sender_profile", json!({ "email": "nope" })).await.is_err());
     let linking = json_of(dispatch(&app, &state, "notes_linking_to", json!({ "title": "Hello", "except": note["id"] })).await.unwrap());
     assert_eq!(linking[0]["id"], other["id"]);
+    // Recipients' clocks (ADR-0041): nobody here has written yet.
+    assert_eq!(json_of(dispatch(&app, &state, "local_times", json!({ "emails": ["a@x.test"] })).await.unwrap()), json!([]));
     // Card colors and the grid (ADR-0038).
     let colored = json_of(dispatch(&app, &state, "set_note_meta", json!({ "id": note["id"], "meta": { "color": "teal" } })).await.unwrap());
     assert_eq!(colored["color"], "teal");
