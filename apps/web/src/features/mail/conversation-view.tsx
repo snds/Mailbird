@@ -6,7 +6,7 @@ import { Icon, type IconName } from "@/components/icon"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import { AdaptiveSheetContent, Sheet, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCoreClient } from "@/core/client"
@@ -411,7 +411,7 @@ function AboutSender({ from, threadId, onOpenThread }: { from: MessageDetail["fr
         <ToolbarButton icon="account_circle" label={`About ${displayName(from)}`} onClick={() => setOpen(true)} />
       </span>
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto p-6 sm:max-w-sm">
+        <AdaptiveSheetContent className="px-6 pb-6 sm:pt-6">
           <SheetTitle className="sr-only">About {displayName(from)}</SheetTitle>
           {open && (
             <SenderProfile
@@ -426,7 +426,7 @@ function AboutSender({ from, threadId, onOpenThread }: { from: MessageDetail["fr
               }
             />
           )}
-        </SheetContent>
+        </AdaptiveSheetContent>
       </Sheet>
     </>
   )

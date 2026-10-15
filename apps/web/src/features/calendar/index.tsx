@@ -5,7 +5,7 @@ import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon } from "@/components/icon"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import { AdaptiveSheetContent, Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useAccounts, useCollections, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
 import type { Collection, Occurrence } from "@/core/types"
@@ -326,12 +326,12 @@ export function CalendarView() {
       )}
 
       <Sheet open={listOpen} onOpenChange={setListOpen}>
-        <SheetContent side="bottom" className="max-h-[80dvh] pb-[env(safe-area-inset-bottom)]">
-          <SheetTitle className="px-4 pt-4">Calendars</SheetTitle>
-          <div className="overflow-y-auto pt-2">
+        <AdaptiveSheetContent>
+          <SheetTitle className="px-4 pt-1 sm:pt-4">Calendars</SheetTitle>
+          <div className="pt-2">
             <CalendarList calendars={calendars} onOpen={openEvent} />
           </div>
-        </SheetContent>
+        </AdaptiveSheetContent>
       </Sheet>
     </div>
   )

@@ -81,6 +81,106 @@ function SheetContent({
   )
 }
 
+/** How far down (px), or what share of its height, a drag must go to dismiss. */
+const DISMISS_PX = 120
+const DISMISS_SHARE = 0.3
+
+/**
+ * One sheet, two metaphors: on phones a bottom sheet (full width, short of
+ * the top, a grab handle, and a floating close button at thumb height); from
+ * `sm` up a panel on the right with its close button at the top.
+ *
+ * The switch is a viewport media query, not a container query: a sheet is an
+ * overlay, so the viewport is its container. `className` styles the
+ * scrolling content area, not the frame.
+ */
+function AdaptiveSheetContent({ className, children, ...props }: SheetPrimitive.Popup.Props) {
+  const popup = React.useRef<HTMLDivElement>(null)
+  const close = React.useRef<HTMLButtonElement>(null)
+  const drag = React.useRef<{ y: number; dy: number } | null>(null)
+
+  // Dragging the handle down follows the finger; far enough lets go.
+  const onPointerDown = (e: React.PointerEvent) => {
+    drag.current = { y: e.clientY, dy: 0 }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!drag.current || !popup.current) return
+    drag.current.dy = Math.max(0, e.clientY - drag.current.y)
+    popup.current.style.transition = "none"
+    popup.current.style.transform = `translateY(${drag.current.dy}px)`
+  }
+  const onPointerUp = () => {
+    const d = drag.current
+    drag.current = null
+    const el = popup.current
+    if (!d || !el) return
+    el.style.transition = ""
+    el.style.transform = ""
+    if (d.dy > DISMISS_PX || d.dy > el.offsetHeight * DISMISS_SHARE) close.current?.click()
+  }
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Popup
+        ref={popup}
+        data-slot="sheet-content"
+        data-side="adaptive"
+        className={cn(
+          "bg-popover text-popover-foreground fixed z-50 flex flex-col overflow-hidden bg-clip-padding text-sm shadow-lg transition duration-200 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0",
+          // Compact: anchored to the bottom edge, rounded on top, short of the top.
+          "max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-(--c-sheet-compact-max-height) max-sm:rounded-t-(--c-sheet-compact-radius) max-sm:data-ending-style:translate-y-full max-sm:data-starting-style:translate-y-full",
+          // Regular: a panel on the right.
+          "sm:inset-y-0 sm:right-0 sm:h-full sm:w-(--c-sheet-regular-width) sm:border-l sm:data-ending-style:translate-x-[2.5rem] sm:data-starting-style:translate-x-[2.5rem]"
+        )}
+        {...props}
+      >
+        <div
+          aria-hidden
+          className="flex h-6 shrink-0 cursor-grab touch-none items-center justify-center sm:hidden"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <span className="h-1.5 w-10 rounded-full bg-(--c-sheet-handle)" />
+        </div>
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            // Room under the content for the floating close button and the home indicator.
+            "max-sm:pb-[calc(var(--c-sheet-close-size)+2rem+env(safe-area-inset-bottom))]",
+            className
+          )}
+        >
+          {children}
+        </div>
+        <SheetPrimitive.Close
+          data-slot="sheet-close"
+          render={
+            <Button
+              ref={close}
+              variant="secondary"
+              size="icon"
+              className={cn(
+                "absolute rounded-full shadow-md",
+                // Compact: floating at the bottom, centered, within thumb reach.
+                "max-sm:bottom-[calc(1rem+env(safe-area-inset-bottom))] max-sm:left-1/2 max-sm:size-(--c-sheet-close-size) max-sm:-translate-x-1/2",
+                // Regular: the usual corner.
+                "sm:top-3 sm:right-3 sm:size-8 sm:bg-transparent sm:shadow-none"
+              )}
+            />
+          }
+        >
+          <Icon name="close" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Popup>
+    </SheetPortal>
+  )
+}
+
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -129,6 +229,7 @@ export {
   SheetTrigger,
   SheetClose,
   SheetContent,
+  AdaptiveSheetContent,
   SheetHeader,
   SheetFooter,
   SheetTitle,
