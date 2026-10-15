@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { toast } from "sonner"
 
+import { useUi } from "@/app/ui-store"
 import { useCore } from "@/core/queries"
 import type { DueReminder } from "@/core/types"
 
@@ -17,9 +18,23 @@ let missedOnce: Promise<DueReminder[]> | null = null
  */
 export function ReminderWatcher() {
   const { data: core } = useCore()
+  const jumpTo = useUi((s) => s.jumpTo)
   useEffect(() => {
     if (!core) return
     const show = (r: DueReminder, missed = false) => {
+      // A note coming back (ADR-0039): no start to count down to, one tap to open it.
+      if (r.noteId) {
+        const id = r.noteId
+        const title = r.title || "New note"
+        toast(missed ? `Missed: ${title}` : title, {
+          id: `reminder-note-${id}-${r.fireAt}`,
+          description: "From your notes",
+          duration: missed ? Infinity : 15_000,
+          closeButton: missed,
+          action: { label: "Open", onClick: () => jumpTo({ kind: "note", id }) },
+        })
+        return
+      }
       const minutes = Math.round((r.start - (missed ? Date.now() / 1000 : r.fireAt)) / 60)
       const when = missed
         ? minutes > 0
@@ -50,6 +65,6 @@ export function ReminderWatcher() {
       live = false
       off()
     }
-  }, [core])
+  }, [core, jumpTo])
   return null
 }

@@ -6,7 +6,7 @@
 //! saves both together. Sync merges Yjs documents through a relay (see
 //! ADR-0012). The store only keeps the bytes.
 //!
-//! Everything else about a note (pinned, archived, color, tags, links, deleted) is
+//! Everything else about a note (pinned, archived, color, reminder, tags, links, deleted) is
 //! its *record*, which syncs as a whole: the newest `updated` wins. Deletes
 //! leave a tombstone so they can reach other devices.
 
@@ -59,6 +59,15 @@ END;
 /// Version 13: a card color per note (ADR-0038).
 pub(crate) const MIGRATE_V13: &str = "ALTER TABLE notes ADD COLUMN color TEXT;";
 
+/// Version 14: a reminder per note (ADR-0039).
+pub(crate) const MIGRATE_V14: &str = "ALTER TABLE notes ADD COLUMN remind_at INTEGER;
+CREATE INDEX notes_remind ON notes (remind_at) WHERE remind_at IS NOT NULL;";
+
+/// A reminder time, or `None` for none (`0` or less clears one).
+fn clean_remind(t: Option<i64>) -> Option<i64> {
+    t.filter(|t| *t > 0)
+}
+
 /// The colors a note's card can take: Google Keep's palette by name, so
 /// Keep imports keep theirs. The app chooses the shades, per theme.
 pub const NOTE_COLORS: &[&str] = &["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "gray"];
@@ -72,9 +81,9 @@ fn clean_color(c: Option<&str>) -> Option<String> {
 
 const SNIPPET_CHARS: usize = 140;
 
-const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color";
+const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color, n.remind_at";
 /// The first column a query selects after [`NOTE_COLS`].
-const AFTER_COLS: usize = 10;
+const AFTER_COLS: usize = 11;
 
 fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
     Ok(NoteSummary {
@@ -84,6 +93,7 @@ fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
         pinned: r.get(3)?,
         archived: r.get(4)?,
         color: r.get(9)?,
+        remind_at: r.get(10)?,
         tags: from_json(r.get(5)?),
         links: from_json(r.get(6)?),
         created: r.get(7)?,
@@ -282,9 +292,13 @@ impl Store {
             Some(c) => clean_color(Some(c)),
             None => n.color,
         };
+        let remind_at = match meta.remind_at {
+            Some(t) => clean_remind(Some(t)),
+            None => n.remind_at,
+        };
         self.db.execute(
-            "UPDATE notes SET pinned = ?2, archived = ?3, tags = ?4, links = ?5, color = ?7, updated = MAX(?6, updated + 1) WHERE id = ?1",
-            params![id, meta.pinned.unwrap_or(n.pinned), meta.archived.unwrap_or(n.archived), json(&tags), json(&links), now(), color],
+            "UPDATE notes SET pinned = ?2, archived = ?3, tags = ?4, links = ?5, color = ?7, remind_at = ?8, updated = MAX(?6, updated + 1) WHERE id = ?1",
+            params![id, meta.pinned.unwrap_or(n.pinned), meta.archived.unwrap_or(n.archived), json(&tags), json(&links), now(), color, remind_at],
         )?;
         Ok(self.note(id)?.summary)
     }
@@ -350,11 +364,23 @@ impl Store {
         Ok(())
     }
 
+    /// Note reminders that fall in `(after, until]`, for the same loop that
+    /// fires event reminders (ADR-0039). Archived and deleted notes stay quiet.
+    pub(crate) fn due_note_reminders(&self, after: i64, until: i64) -> Result<Vec<crate::DueReminder>> {
+        let mut st = self.db.prepare("SELECT id, title, remind_at FROM notes WHERE deleted = 0 AND archived = 0 AND remind_at > ?1 AND remind_at <= ?2 ORDER BY remind_at")?;
+        Ok(st
+            .query_map(params![after, until], |r| {
+                let at: i64 = r.get(2)?;
+                Ok(crate::DueReminder { event_id: String::new(), title: r.get(1)?, location: None, start: at, fire_at: at, leave: false, note_id: Some(r.get(0)?) })
+            })?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
     // ── Sync ──────────────────────────────────────────────────────────────
 
     /// Every note's record, tombstones included, for the sync index.
     pub fn note_records(&self) -> Result<Vec<NoteRecord>> {
-        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated, color FROM notes")?;
+        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated, color, remind_at FROM notes")?;
         Ok(st
             .query_map([], |r| {
                 Ok(NoteRecord {
@@ -363,6 +389,7 @@ impl Store {
                     archived: r.get(2)?,
                     deleted: r.get(3)?,
                     color: r.get(8)?,
+                    remind_at: r.get(9)?,
                     tags: from_json(r.get(4)?),
                     links: from_json(r.get(5)?),
                     created: r.get(6)?,
@@ -384,12 +411,15 @@ impl Store {
                 if rec.deleted {
                     self.db.execute("UPDATE notes SET deleted = 1 WHERE id = ?1", [&rec.id])?;
                 }
+                if let Some(t) = clean_remind(rec.remind_at) {
+                    self.db.execute("UPDATE notes SET remind_at = ?2 WHERE id = ?1", params![rec.id, t])?;
+                }
                 Ok(true)
             }
             Some(u) if u < rec.updated => {
                 self.db.execute(
-                    "UPDATE notes SET pinned = ?2, archived = ?3, deleted = ?4, tags = ?5, links = ?6, updated = ?7, color = ?8 WHERE id = ?1",
-                    params![rec.id, rec.pinned, rec.archived, rec.deleted, json(&clean_tags(&rec.tags)), json(&links), rec.updated, clean_color(rec.color.as_deref())],
+                    "UPDATE notes SET pinned = ?2, archived = ?3, deleted = ?4, tags = ?5, links = ?6, updated = ?7, color = ?8, remind_at = ?9 WHERE id = ?1",
+                    params![rec.id, rec.pinned, rec.archived, rec.deleted, json(&clean_tags(&rec.tags)), json(&links), rec.updated, clean_color(rec.color.as_deref()), clean_remind(rec.remind_at)],
                 )?;
                 Ok(true)
             }
@@ -696,6 +726,7 @@ mod tests {
             archived: false,
             deleted: false,
             color: None,
+            remind_at: None,
             tags: vec![],
             links: vec![NoteLink { kind: NoteLinkKind::Contact, key: "nobody".into(), label: "Ada".into(), target: Some("bogus".into()) }],
             created: 1,
@@ -765,6 +796,42 @@ mod tests {
         let all = s.notes(&NoteQuery::default()).unwrap();
         let color = |t: &str| all.iter().find(|n| n.title == t).and_then(|n| n.color.clone());
         assert_eq!((color("Sky").as_deref(), color("Sun").as_deref()), (Some("blue"), Some("yellow")));
+    }
+
+    #[test]
+    fn reminders_fire_once_sync_and_clear() {
+        let s = store();
+        let a = note(&s, "Call the plumber");
+        let id = a.summary.id.clone();
+        let set = |t: i64| s.set_note_meta(&id, &NoteMeta { remind_at: Some(t), ..Default::default() }).unwrap();
+        assert_eq!(set(1_000).remind_at, Some(1_000));
+        assert_eq!(s.set_note_meta(&id, &NoteMeta { pinned: Some(true), ..Default::default() }).unwrap().remind_at, Some(1_000), "other changes leave it");
+        // It joins the event reminders' window, once.
+        let due = s.due_reminders(900, 1_000).unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!((due[0].note_id.as_deref(), due[0].title.as_str(), due[0].fire_at, due[0].event_id.as_str()), (Some(id.as_str()), "Call the plumber", 1_000, ""));
+        assert!(s.due_reminders(1_000, 2_000).unwrap().is_empty(), "the next window doesn't fire it again");
+        assert_eq!(s.note(&id).unwrap().summary.remind_at, Some(1_000), "it stays set, so the note shows as due");
+        // Missed while closed: kept however long ago, unlike an event's.
+        s.set_reminders_checked(500).unwrap();
+        let missed = s.missed_reminders(100_000).unwrap();
+        assert_eq!(missed.iter().filter(|r| r.note_id.is_some()).count(), 1);
+        // Archived notes stay quiet; 0 clears.
+        s.set_note_meta(&id, &NoteMeta { archived: Some(true), ..Default::default() }).unwrap();
+        assert!(s.due_reminders(900, 1_000).unwrap().is_empty());
+        s.set_note_meta(&id, &NoteMeta { archived: Some(false), ..Default::default() }).unwrap();
+        assert_eq!(set(0).remind_at, None);
+        // It rides the sync record, both ways.
+        set(5_000);
+        let mut rec = s.note_records().unwrap().into_iter().find(|r| r.id == id).unwrap();
+        assert_eq!(rec.remind_at, Some(5_000));
+        rec.remind_at = Some(6_000);
+        rec.updated += 10;
+        s.apply_note_record(&rec).unwrap();
+        assert_eq!(s.note(&id).unwrap().summary.remind_at, Some(6_000));
+        let fresh = NoteRecord { id: "n7".into(), remind_at: Some(7_000), ..rec };
+        s.apply_note_record(&fresh).unwrap();
+        assert_eq!(s.note("n7").unwrap().summary.remind_at, Some(7_000));
     }
 
     #[test]

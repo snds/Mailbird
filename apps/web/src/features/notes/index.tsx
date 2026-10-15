@@ -11,7 +11,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { getCoreClient } from "@/core/client"
 import { useNoteAction, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
 import type { NoteSummary, NotesPrefs } from "@/core/types"
-import { shortTime } from "@/lib/time"
+import { useNowSecs } from "@/hooks/use-now"
+import { reminderLabel, shortTime } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
 import { ImportDialog } from "./import-dialog"
@@ -49,8 +50,13 @@ export function NotesView() {
     }
   }
 
-  const pinned = notes.filter((n) => n.pinned)
-  const rest = notes.filter((n) => !n.pinned)
+  // A reminder that has come due lifts its note above everything, pinned
+  // included, until it's marked done (ADR-0039).
+  const now = useNowSecs(30_000)
+  const isDue = (n: NoteSummary) => !!n.remindAt && n.remindAt <= now
+  const due = archived ? [] : notes.filter(isDue).sort((a, b) => a.remindAt! - b.remindAt!)
+  const pinned = notes.filter((n) => n.pinned && !due.includes(n))
+  const rest = notes.filter((n) => !n.pinned && !due.includes(n))
   const empty = archived ? "Archived notes show up here." : query || tag ? "No notes match." : "No notes yet. Start one, or import from Apple Notes, Keep, or a Markdown folder."
 
   const open = (n: NoteSummary) => setSelected({ id: n.id, fresh: false })
@@ -77,8 +83,16 @@ export function NotesView() {
         }
         meta={shortTime(n.updated)}
         supporting={
-          n.snippet || n.tags.length || n.links.length ? (
+          n.snippet || n.tags.length || n.links.length || n.remindAt ? (
             <>
+              {n.remindAt && (
+                <Icon
+                  name={isDue(n) ? "notifications_active" : "schedule"}
+                  fill={isDue(n)}
+                  className={cn("mr-1 inline size-3.5 align-[-2px]", isDue(n) && "text-vertical-notes")}
+                  label={`${isDue(n) ? "Due" : "Reminder"} ${reminderLabel(n.remindAt)}`}
+                />
+              )}
               {n.links.length > 0 && <Icon name="link" className="mr-1 inline size-3.5 align-[-2px]" label={`${n.links.length} linked`} />}
               {n.snippet || <span className="italic">No more text</span>}
             </>
@@ -167,18 +181,20 @@ export function NotesView() {
         list={
           <div role="list" aria-label="Notes" className={cn(grid && "px-3 pb-4")}>
             {!isPending && notes.length === 0 && <p className="px-6 py-8 text-center text-sm text-muted-foreground">{empty}</p>}
-            {pinned.length > 0 && (
-              <section aria-label="Pinned">
-                <h3 className={cn("py-1 text-xs font-semibold text-muted-foreground", grid ? "px-1" : "px-4")}>Pinned</h3>
-                <Group grid={grid}>{pinned.map((n) => (grid ? <NoteCard key={n.id} note={n} selected={n.id === selected?.id} onOpen={() => open(n)} /> : row(n)))}</Group>
-              </section>
-            )}
-            {rest.length > 0 && (
-              <section aria-label={pinned.length ? "Others" : "All notes"}>
-                {pinned.length > 0 && <h3 className={cn("pt-3 pb-1 text-xs font-semibold text-muted-foreground", grid ? "px-1" : "px-4")}>Others</h3>}
-                <Group grid={grid}>{rest.map((n) => (grid ? <NoteCard key={n.id} note={n} selected={n.id === selected?.id} onOpen={() => open(n)} /> : row(n)))}</Group>
-              </section>
-            )}
+            {[
+              { label: "Due", notes: due, heading: true },
+              { label: "Pinned", notes: pinned, heading: true },
+              { label: due.length || pinned.length ? "Others" : "All notes", notes: rest, heading: due.length + pinned.length > 0 },
+            ]
+              .filter((s) => s.notes.length > 0)
+              .map((s, i) => (
+                <section key={s.label} aria-label={s.label}>
+                  {s.heading && <h3 className={cn("pb-1 text-xs font-semibold text-muted-foreground", i > 0 ? "pt-3" : "pt-1", grid ? "px-1" : "px-4")}>{s.label}</h3>}
+                  <Group grid={grid}>
+                    {s.notes.map((n) => (grid ? <NoteCard key={n.id} note={n} due={isDue(n)} selected={n.id === selected?.id} onOpen={() => open(n)} /> : row(n)))}
+                  </Group>
+                </section>
+              ))}
           </div>
         }
         detail={selected && <NoteDetailPane key={selected.id} id={selected.id} fresh={selected.fresh} onClosed={() => setSelected(null)} />}
@@ -202,7 +218,7 @@ function Group({ grid, children }: { grid: boolean; children: ReactNode }) {
   )
 }
 
-function NoteCard({ note: n, selected, onOpen }: { note: NoteSummary; selected: boolean; onOpen: () => void }) {
+function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: boolean; selected: boolean; onOpen: () => void }) {
   return (
     <div role="listitem" className="mb-3 break-inside-avoid">
       <button
@@ -220,8 +236,14 @@ function NoteCard({ note: n, selected, onOpen }: { note: NoteSummary; selected: 
           {n.pinned && <Icon name="keep" fill className="size-4 shrink-0 text-vertical-notes" label="Pinned" />}
         </span>
         {n.snippet && <span className="line-clamp-6 text-sm break-words text-foreground/80">{n.snippet}</span>}
-        {(n.tags.length > 0 || n.links.length > 0) && (
+        {(n.tags.length > 0 || n.links.length > 0 || n.remindAt) && (
           <span className="flex flex-wrap items-center gap-1 pt-0.5 text-xs text-foreground/70">
+            {n.remindAt && (
+              <span data-slot="note-reminder" className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-foreground/8 px-2 py-0.5", due && "font-medium text-foreground")}>
+                <Icon name={due ? "notifications_active" : "schedule"} fill={due} className="size-3.5" />
+                {due ? `Due · ${reminderLabel(n.remindAt)}` : reminderLabel(n.remindAt)}
+              </span>
+            )}
             {n.links.length > 0 && <Icon name="link" className="size-3.5" label={`${n.links.length} linked`} />}
             {n.tags.map((t) => (
               <span key={t} className="rounded-full bg-foreground/8 px-2 py-0.5">

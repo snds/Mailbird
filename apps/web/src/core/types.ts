@@ -436,6 +436,8 @@ export interface DueReminder {
   fireAt: number
   /** "Time to leave": its travel time begins now (ADR-0029). */
   leave?: boolean
+  /** A note's own reminder (ADR-0039): `eventId` is empty and `start` is the reminder time. */
+  noteId?: string | null
 }
 
 /** What you have going on with one contact. */
@@ -800,6 +802,8 @@ export interface NoteSummary {
   archived: boolean
   /** `null` is the plain card. */
   color: NoteColor | null
+  /** When the note comes back. Stays set after it fires, so the note shows as due until it's done. */
+  remindAt: number | null
   tags: string[]
   links: NoteLink[]
   created: number
@@ -825,6 +829,8 @@ export interface NoteMeta {
   archived?: boolean
   /** A color, or `""` for none. */
   color?: NoteColor | ""
+  /** A reminder time, or `0` for none. */
+  remindAt?: number
   tags?: string[]
   links?: NoteLink[]
 }
@@ -869,6 +875,8 @@ export interface NoteRecord {
   deleted: boolean
   /** Left out by devices from before colors. */
   color?: NoteColor | null
+  /** Left out by devices from before note reminders. */
+  remindAt?: number | null
   tags: string[]
   links: NoteLink[]
   created: number

@@ -105,3 +105,17 @@ export function fromLocalInput(value: string): number | null {
   const t = new Date(value).getTime()
   return Number.isNaN(t) ? null : Math.floor(t / 1000)
 }
+
+/** A reminder's time, as short as it can be without being vague:
+ * "Today, 3:00 PM", "Tomorrow, 8:00 AM", "Tue, 8:00 AM", "Oct 21, 8:00 AM". */
+export function reminderLabel(secs: number, now = new Date()) {
+  const d = toDate(secs)
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+  const days = Math.round((startOfDay(d).getTime() - startOfDay(now).getTime()) / 86_400_000)
+  if (days === 0) return `Today, ${time}`
+  if (days === 1) return `Tomorrow, ${time}`
+  if (days === -1) return `Yesterday, ${time}`
+  if (days > 1 && days < 7) return `${d.toLocaleDateString(undefined, { weekday: "short" })}, ${time}`
+  const sameYear = d.getFullYear() === now.getFullYear()
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) })}, ${time}`
+}
