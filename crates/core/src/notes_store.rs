@@ -104,10 +104,20 @@ impl Store {
     /// most recently changed first. Matching ignores case, as Obsidian does.
     pub fn note_backlinks(&self, id: &str) -> Result<Vec<NoteSummary>> {
         let title: Option<String> = self.db.query_row("SELECT title FROM notes WHERE id = ?1 AND deleted = 0", [id], |r| r.get(0)).optional()?;
-        let Some(title) = title.filter(|t| !t.trim().is_empty()) else { return Ok(Vec::new()) };
+        let Some(title) = title else { return Ok(Vec::new()) };
+        self.notes_linking_to(&title, Some(id))
+    }
+
+    /// Notes that link to `title` with `[[title]]`, except `except`. Used for
+    /// Linked from, and to find the links a rename should update (ADR-0035).
+    pub fn notes_linking_to(&self, title: &str, except: Option<&str>) -> Result<Vec<NoteSummary>> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Ok(Vec::new());
+        }
         // A cheap filter in SQL, then the exact parse, so `[[Trip]]` doesn't match `[[Trip plan]]`.
-        let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 AND n.id <> ?1 AND instr(lower(n.body), '[[') > 0 ORDER BY n.updated DESC"))?;
-        let rows = st.query_map([id], |r| Ok((summary_row(r)?, r.get::<_, String>(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 AND n.id <> ?1 AND instr(n.body, '[[') > 0 ORDER BY n.updated DESC"))?;
+        let rows = st.query_map([except.unwrap_or("")], |r| Ok((summary_row(r)?, r.get::<_, String>(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut out = Vec::new();
         for (mut n, body) in rows {
             if wikilinks(&body).iter().any(|(t, _)| t.to_lowercase() == title.to_lowercase()) {
@@ -739,6 +749,8 @@ mod tests {
         assert!(back.contains(&a) && back.contains(&b));
         s.delete_note(&a).unwrap();
         assert_eq!(s.note_backlinks(&trip).unwrap().len(), 1, "deleted notes don't count");
+        assert_eq!(s.notes_linking_to("TRIP", None).unwrap().len(), 2, "by title: the note itself counts when not excluded");
+        assert!(s.notes_linking_to(" ", None).unwrap().is_empty());
 
         assert_eq!(s.find_note("TRIP").unwrap(), Some(trip.clone()));
         assert_eq!(s.find_note("Trip#Day 1").unwrap(), Some(trip));

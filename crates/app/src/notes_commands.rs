@@ -79,6 +79,11 @@ pub fn note_backlinks(state: &Shared, id: String) -> Res<Vec<NoteSummary>> {
     with_store(state, |s| s.note_backlinks(&id))
 }
 
+/// Notes that link to a title, except one: the links a rename would update (ADR-0035).
+pub fn notes_linking_to(state: &Shared, title: String, except: Option<String>) -> Res<Vec<NoteSummary>> {
+    with_store(state, |s| s.notes_linking_to(&title, except.as_deref()))
+}
+
 /// The note a `[[title]]` link opens, if there is one.
 pub fn find_note(state: &Shared, title: String) -> Res<Option<String>> {
     with_store(state, |s| s.find_note(&title))

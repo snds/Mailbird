@@ -157,6 +157,7 @@ pub const COMMANDS: &[&str] = &[
     "note_tags",
     "note_backlinks",
     "find_note",
+    "notes_linking_to",
     "export_notes",
     "save_notes_export",
     "note_tasks",
@@ -576,6 +577,10 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "find_note" => {
             args!(args, title: String);
             Output::json(notes_commands::find_note(state, title)?)
+        }
+        "notes_linking_to" => {
+            args!(args, title: String, except: Option<String>);
+            Output::json(notes_commands::notes_linking_to(state, title, except)?)
         }
         "export_notes" => Output::json(notes_commands::export_notes(state)?),
         "save_notes_export" => Output::json(notes_commands::save_notes_export(app.clone(), state)?),

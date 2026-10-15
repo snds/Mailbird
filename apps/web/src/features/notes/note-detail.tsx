@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { useUi, type Jump } from "@/app/ui-store"
@@ -14,7 +14,11 @@ import { useNote, useNoteAction, useNoteBacklinks, useNoteTags } from "@/core/qu
 import type { NoteLink, NoteLinkKind, NoteMeta } from "@/core/types"
 import { longTime } from "@/lib/time"
 
+import { titleAndSnippet } from "@/core/demo-notes"
+
+import { LinkPicker } from "./link-picker"
 import { NoteEditor } from "./note-editor"
+import { renameLinks } from "./rename-links"
 
 const LINK_ICON: Record<NoteLinkKind, IconName> = { event: "event", contact: "person", thread: "mail" }
 const LINK_JUMP: Record<NoteLinkKind, Jump["kind"]> = { event: "event", contact: "contact", thread: "thread" }
@@ -27,12 +31,49 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   const restore = useNoteAction<void>((c) => c.restoreNote(id))
   const jumpTo = useUi((s) => s.jumpTo)
   const [meta, setLocal] = useState<NoteMeta | null>(null)
+  const [picking, setPicking] = useState(false)
   const markdownRef = useRef<string | null>(null)
   const refresh = () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" })
+
+  // Renames (ADR-0035): the title other notes' links use, and a pending
+  // check that runs once the title has stopped changing (or the note closes).
+  const linkedTitle = useRef<string | null>(null)
+  const renameCheck = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const offerRename = useCallback(() => {
+    clearTimeout(renameCheck.current)
+    renameCheck.current = undefined
+    const old = linkedTitle.current
+    const next = markdownRef.current === null ? null : titleAndSnippet(markdownRef.current)[0]
+    if (!old?.trim() || !next?.trim() || old === next) return
+    void getCoreClient()
+      .then((c) => c.notesLinkingTo(old, id))
+      .then((linking) => {
+        if (linking.length === 0) return void (linkedTitle.current = next)
+        const many = linking.length === 1 ? "1 note links" : `${linking.length} notes link`
+        toast(`${many} to “${old}”`, {
+          id: `rename-${id}`,
+          description: `Point ${linking.length === 1 ? "it" : "them"} at “${next}” instead?`,
+          duration: 12_000,
+          action: {
+            label: "Update links",
+            onClick: () =>
+              void renameLinks(old, next, id).then(
+                (n) => {
+                  linkedTitle.current = next
+                  toast.success(`Updated links in ${n === 1 ? "1 note" : `${n} notes`}`, { duration: 2500 })
+                },
+                (e: unknown) => toast.error(e instanceof Error ? e.message : String(e)),
+              ),
+          },
+        })
+      })
+  }, [id])
+  useEffect(() => () => void (renameCheck.current !== undefined && offerRename()), [offerRename])
 
   // A new note left empty is thrown away when you leave it, like Apple Notes.
   useEffect(() => {
     if (note && markdownRef.current === null) markdownRef.current = note.markdown
+    if (note && linkedTitle.current === null) linkedTitle.current = note.title
   }, [note])
   useEffect(
     () => () => {
@@ -136,7 +177,20 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
           <LinkChip key={`${l.kind}:${l.key}`} link={l} onOpen={(target) => void open(l.kind, target)} onRemove={() => void update({ links: current.links.filter((x) => x !== l) })} />
         ))}
         <TagEditor tags={current.tags} onChange={(tags) => void update({ tags })} />
+        <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" aria-label="Link to an event, person, or conversation" onClick={() => setPicking(true)}>
+          <Icon name="add_link" data-icon="inline-start" /> Link
+        </Button>
       </div>
+      <LinkPicker
+        open={picking}
+        onOpenChange={setPicking}
+        linked={current.links}
+        onLink={(link) => {
+          setPicking(false)
+          if (current.links.some((l) => l.kind === link.kind && l.key === link.key)) return
+          void update({ links: [...current.links, link] }).then(() => toast.success(`Linked to ${link.label}`, { duration: 2000 }))
+        }}
+      />
       <LinkedFrom id={id} />
 
       <NoteEditor
@@ -145,6 +199,10 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
         onSaved={(md) => {
           markdownRef.current = md
           refresh()
+          if (linkedTitle.current !== null && titleAndSnippet(md)[0] !== linkedTitle.current) {
+            clearTimeout(renameCheck.current)
+            renameCheck.current = setTimeout(offerRename, 1500)
+          }
         }}
       />
     </article>

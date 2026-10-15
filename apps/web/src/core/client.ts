@@ -249,6 +249,8 @@ export interface CoreClient {
   getNote(id: string): Promise<NoteDetail>
   /** Notes that link here with `[[title]]` (ADR-0034). */
   noteBacklinks(id: string): Promise<NoteSummary[]>
+  /** Notes that link to a title, except one: what a rename updates (ADR-0035). */
+  notesLinkingTo(title: string, except: string | null): Promise<NoteSummary[]>
   /** The note a `[[title]]` link opens, if any. */
   findNote(title: string): Promise<string | null>
   /** Saves every note as Markdown files; returns where they went (ADR-0034). */
@@ -403,6 +405,7 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     getNote: (id) => call("get_note", { id }),
     noteBacklinks: (id) => call("note_backlinks", { id }),
     findNote: (title) => call("find_note", { title }),
+    notesLinkingTo: (title, except) => call("notes_linking_to", { title, except }),
     // The desktop writes a folder into Downloads.
     exportNotes: () => call("save_notes_export"),
     createNote: (input) => call("create_note", { input }),
