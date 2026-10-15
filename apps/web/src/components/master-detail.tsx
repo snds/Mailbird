@@ -14,20 +14,28 @@ interface MasterDetailProps {
   onBack: () => void
   emptyIcon: IconName
   emptyLabel: string
+  /** The list takes the whole width while nothing is open (a card grid);
+   * then Back shows at every size, to return to it. */
+  listFills?: boolean
+  /** A background for the detail pane, edge to edge (a note's color). */
+  detailTint?: string
 }
 
 /**
  * The list → detail pattern every vertical shares.
  * Phone: one pane at a time; selecting an item pushes the detail, Back pops it.
  * Tablet and up: both panes side by side; the detail shows an empty state.
+ * With `listFills`, the list has the room until something opens.
  */
-export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLabel }: MasterDetailProps) {
+export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLabel, listFills = false, detailTint }: MasterDetailProps) {
   const hasDetail = detail !== null
+  const wide = listFills && !hasDetail
   return (
     <div className="flex min-h-0 flex-1">
       <section
         className={cn(
-          "flex min-w-0 flex-1 flex-col bg-surface-chrome md:w-(--c-shell-list-width) md:flex-none md:border-r",
+          "flex min-w-0 flex-1 flex-col bg-surface-chrome",
+          !wide && "md:w-(--c-shell-list-width) md:flex-none md:border-r",
           hasDetail && "hidden md:flex"
         )}
       >
@@ -36,10 +44,13 @@ export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLab
           {list}
         </div>
       </section>
-      <section className={cn("min-w-0 flex-1 flex-col", hasDetail ? "flex" : "hidden md:flex")}>
+      <section
+        className={cn("min-w-0 flex-1 flex-col transition-colors", hasDetail ? "flex" : wide ? "hidden" : "hidden md:flex")}
+        style={hasDetail && detailTint ? { background: detailTint } : undefined}
+      >
         {hasDetail ? (
           <>
-            <div className="flex h-14 shrink-0 items-center gap-1 px-2 md:hidden">
+            <div className={cn("flex h-14 shrink-0 items-center gap-1 px-2", !listFills && "md:hidden")}>
               <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
                 <Icon name="arrow_back" className="size-5" />
               </Button>

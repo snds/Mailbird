@@ -6,7 +6,7 @@
 //! saves both together. Sync merges Yjs documents through a relay (see
 //! ADR-0012). The store only keeps the bytes.
 //!
-//! Everything else about a note (pinned, archived, tags, links, deleted) is
+//! Everything else about a note (pinned, archived, color, tags, links, deleted) is
 //! its *record*, which syncs as a whole: the newest `updated` wins. Deletes
 //! leave a tombstone so they can reach other devices.
 
@@ -56,9 +56,25 @@ CREATE TRIGGER notes_au AFTER UPDATE OF title, body, tags ON notes BEGIN
 END;
 "#;
 
+/// Version 13: a card color per note (ADR-0038).
+pub(crate) const MIGRATE_V13: &str = "ALTER TABLE notes ADD COLUMN color TEXT;";
+
+/// The colors a note's card can take: Google Keep's palette by name, so
+/// Keep imports keep theirs. The app chooses the shades, per theme.
+pub const NOTE_COLORS: &[&str] = &["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "gray"];
+
+/// A known color name, or `None`. A color this version doesn't know (from a
+/// newer device) shows as the plain card rather than failing.
+fn clean_color(c: Option<&str>) -> Option<String> {
+    let c = c?.trim().to_ascii_lowercase();
+    NOTE_COLORS.contains(&c.as_str()).then_some(c)
+}
+
 const SNIPPET_CHARS: usize = 140;
 
-const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated";
+const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color";
+/// The first column a query selects after [`NOTE_COLS`].
+const AFTER_COLS: usize = 10;
 
 fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
     Ok(NoteSummary {
@@ -67,6 +83,7 @@ fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
         snippet: r.get(2)?,
         pinned: r.get(3)?,
         archived: r.get(4)?,
+        color: r.get(9)?,
         tags: from_json(r.get(5)?),
         links: from_json(r.get(6)?),
         created: r.get(7)?,
@@ -117,7 +134,7 @@ impl Store {
         }
         // A cheap filter in SQL, then the exact parse, so `[[Trip]]` doesn't match `[[Trip plan]]`.
         let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 AND n.id <> ?1 AND instr(n.body, '[[') > 0 ORDER BY n.updated DESC"))?;
-        let rows = st.query_map([except.unwrap_or("")], |r| Ok((summary_row(r)?, r.get::<_, String>(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = st.query_map([except.unwrap_or("")], |r| Ok((summary_row(r)?, r.get::<_, String>(AFTER_COLS)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut out = Vec::new();
         for (mut n, body) in rows {
             if wikilinks(&body).iter().any(|(t, _)| t.to_lowercase() == title.to_lowercase()) {
@@ -142,7 +159,7 @@ impl Store {
     /// this app's own importer read it (ADR-0034).
     pub fn export_notes(&self) -> Result<Vec<ExportedNote>> {
         let mut st = self.db.prepare(&format!("SELECT {NOTE_COLS}, n.body FROM notes n WHERE n.deleted = 0 ORDER BY n.created, n.rowid"))?;
-        let rows = st.query_map([], |r| Ok((summary_row(r)?, r.get::<_, String>(9)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = st.query_map([], |r| Ok((summary_row(r)?, r.get::<_, String>(AFTER_COLS)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut taken = std::collections::HashSet::new();
         let mut out = Vec::new();
         for (n, body) in rows {
@@ -166,6 +183,9 @@ impl Store {
             }
             if n.archived {
                 fm.push_str("archived: true\n");
+            }
+            if let Some(c) = &n.color {
+                fm.push_str(&format!("color: {c}\n"));
             }
             fm.push_str("---\n");
             out.push(ExportedNote { path, contents: format!("{fm}{}\n", body.trim_end()) });
@@ -206,7 +226,7 @@ impl Store {
         let row = self
             .db
             .query_row(&format!("SELECT {NOTE_COLS}, n.body, n.ydoc FROM notes n WHERE n.id = ?1 AND n.deleted = 0"), [id], |r| {
-                Ok((summary_row(r)?, r.get::<_, String>(9)?, r.get::<_, Option<Vec<u8>>>(10)?))
+                Ok((summary_row(r)?, r.get::<_, String>(AFTER_COLS)?, r.get::<_, Option<Vec<u8>>>(AFTER_COLS + 1)?))
             })
             .optional()?;
         let (mut summary, markdown, ydoc) = row.ok_or_else(|| Error::NotFound("that note is gone".into()))?;
@@ -217,17 +237,17 @@ impl Store {
     pub fn create_note(&self, input: &NoteInput) -> Result<NoteDetail> {
         let id = uuid::Uuid::new_v4().to_string();
         let t = now();
-        self.insert_note(&id, &input.markdown, input.pinned, false, &clean_tags(&input.tags), &clean_links(&input.links), None, t, t)?;
+        self.insert_note(&id, &input.markdown, input.pinned, false, None, &clean_tags(&input.tags), &clean_links(&input.links), None, t, t)?;
         self.note(&id)
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn insert_note(&self, id: &str, markdown: &str, pinned: bool, archived: bool, tags: &[String], links: &[NoteLink], source: Option<&str>, created: i64, updated: i64) -> Result<()> {
+    fn insert_note(&self, id: &str, markdown: &str, pinned: bool, archived: bool, color: Option<&str>, tags: &[String], links: &[NoteLink], source: Option<&str>, created: i64, updated: i64) -> Result<()> {
         let (title, snippet) = title_and_snippet(markdown);
         self.db.execute(
-            "INSERT INTO notes (id, title, snippet, body, pinned, archived, tags, links, source, created, updated)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            params![id, title, snippet, markdown, pinned, archived, json(&tags), json(&links), source, created, updated],
+            "INSERT INTO notes (id, title, snippet, body, pinned, archived, tags, links, source, created, updated, color)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![id, title, snippet, markdown, pinned, archived, json(&tags), json(&links), source, created, updated, clean_color(color)],
         )?;
         Ok(())
     }
@@ -258,9 +278,13 @@ impl Store {
         let n = self.note(id)?.summary;
         let tags = meta.tags.as_deref().map(clean_tags).unwrap_or(n.tags);
         let links = meta.links.as_deref().map(clean_links).unwrap_or(n.links);
+        let color = match &meta.color {
+            Some(c) => clean_color(Some(c)),
+            None => n.color,
+        };
         self.db.execute(
-            "UPDATE notes SET pinned = ?2, archived = ?3, tags = ?4, links = ?5, updated = MAX(?6, updated + 1) WHERE id = ?1",
-            params![id, meta.pinned.unwrap_or(n.pinned), meta.archived.unwrap_or(n.archived), json(&tags), json(&links), now()],
+            "UPDATE notes SET pinned = ?2, archived = ?3, tags = ?4, links = ?5, color = ?7, updated = MAX(?6, updated + 1) WHERE id = ?1",
+            params![id, meta.pinned.unwrap_or(n.pinned), meta.archived.unwrap_or(n.archived), json(&tags), json(&links), now(), color],
         )?;
         Ok(self.note(id)?.summary)
     }
@@ -330,7 +354,7 @@ impl Store {
 
     /// Every note's record, tombstones included, for the sync index.
     pub fn note_records(&self) -> Result<Vec<NoteRecord>> {
-        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated FROM notes")?;
+        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated, color FROM notes")?;
         Ok(st
             .query_map([], |r| {
                 Ok(NoteRecord {
@@ -338,6 +362,7 @@ impl Store {
                     pinned: r.get(1)?,
                     archived: r.get(2)?,
                     deleted: r.get(3)?,
+                    color: r.get(8)?,
                     tags: from_json(r.get(4)?),
                     links: from_json(r.get(5)?),
                     created: r.get(6)?,
@@ -355,7 +380,7 @@ impl Store {
         let links: Vec<NoteLink> = clean_links(&rec.links);
         match ours {
             None => {
-                self.insert_note(&rec.id, "", rec.pinned, rec.archived, &clean_tags(&rec.tags), &links, None, rec.created, rec.updated)?;
+                self.insert_note(&rec.id, "", rec.pinned, rec.archived, rec.color.as_deref(), &clean_tags(&rec.tags), &links, None, rec.created, rec.updated)?;
                 if rec.deleted {
                     self.db.execute("UPDATE notes SET deleted = 1 WHERE id = ?1", [&rec.id])?;
                 }
@@ -363,8 +388,8 @@ impl Store {
             }
             Some(u) if u < rec.updated => {
                 self.db.execute(
-                    "UPDATE notes SET pinned = ?2, archived = ?3, deleted = ?4, tags = ?5, links = ?6, updated = ?7 WHERE id = ?1",
-                    params![rec.id, rec.pinned, rec.archived, rec.deleted, json(&clean_tags(&rec.tags)), json(&links), rec.updated],
+                    "UPDATE notes SET pinned = ?2, archived = ?3, deleted = ?4, tags = ?5, links = ?6, updated = ?7, color = ?8 WHERE id = ?1",
+                    params![rec.id, rec.pinned, rec.archived, rec.deleted, json(&clean_tags(&rec.tags)), json(&links), rec.updated, clean_color(rec.color.as_deref())],
                 )?;
                 Ok(true)
             }
@@ -401,7 +426,7 @@ impl Store {
                 continue;
             }
             let id = uuid::Uuid::new_v4().to_string();
-            self.insert_note(&id, &n.markdown, n.pinned, n.archived, &clean_tags(&n.tags), &[], Some(&n.source), n.created, n.updated)?;
+            self.insert_note(&id, &n.markdown, n.pinned, n.archived, n.color.as_deref(), &clean_tags(&n.tags), &[], Some(&n.source), n.created, n.updated)?;
             report.imported += 1;
         }
         tx.commit()?;
@@ -670,6 +695,7 @@ mod tests {
             pinned: false,
             archived: false,
             deleted: false,
+            color: None,
             tags: vec![],
             links: vec![NoteLink { kind: NoteLinkKind::Contact, key: "nobody".into(), label: "Ada".into(), target: Some("bogus".into()) }],
             created: 1,
@@ -706,6 +732,39 @@ mod tests {
         s.save_note_body("n2", "From the laptop", Some("AAE="), false).unwrap();
         let n2 = s.note("n2").unwrap();
         assert_eq!((n2.summary.title.as_str(), n2.summary.updated), ("From the laptop", 50));
+    }
+
+    #[test]
+    fn colors_set_clear_sync_and_export() {
+        let s = store();
+        let a = note(&s, "Packing list");
+        let set = |c: &str| s.set_note_meta(&a.summary.id, &NoteMeta { color: Some(c.into()), ..Default::default() }).unwrap();
+        assert_eq!(set(" Teal ").color.as_deref(), Some("teal"), "names are forgiving");
+        assert_eq!(s.set_note_meta(&a.summary.id, &NoteMeta { pinned: Some(true), ..Default::default() }).unwrap().color.as_deref(), Some("teal"), "other changes leave it");
+        assert_eq!(set("chartreuse").color, None, "unknown names are the plain card");
+        set("pink");
+        assert!(s.export_notes().unwrap()[0].contents.contains("\ncolor: pink\n"));
+        // The color rides the record; a record without one (an older device) clears it.
+        let mut rec = s.note_records().unwrap().remove(0);
+        assert_eq!(rec.color.as_deref(), Some("pink"));
+        let old: NoteRecord = serde_json::from_str(r#"{"id":"x","pinned":false,"archived":false,"deleted":false,"tags":[],"links":[],"created":1,"updated":2}"#).unwrap();
+        assert_eq!(old.color, None);
+        rec.color = Some("blue".into());
+        rec.updated += 10;
+        s.apply_note_record(&rec).unwrap();
+        assert_eq!(s.note(&a.summary.id).unwrap().summary.color.as_deref(), Some("blue"));
+        let fresh = NoteRecord { id: "n9".into(), color: Some("green".into()), ..rec };
+        s.apply_note_record(&fresh).unwrap();
+        assert_eq!(s.note("n9").unwrap().summary.color.as_deref(), Some("green"));
+        // Imports carry theirs: Keep's names, and front matter.
+        let files = vec![
+            ImportFile { path: "Takeout/Keep/a.json".into(), contents: r#"{"color":"CERULEAN","isTrashed":false,"isPinned":false,"isArchived":false,"title":"Sky","textContent":"x","userEditedTimestampUsec":1000000,"createdTimestampUsec":1000000}"#.into(), modified: None },
+            ImportFile { path: "Vault/b.md".into(), contents: "---\ntitle: Sun\ncolor: yellow\n---\nSun".into(), modified: Some(5) },
+        ];
+        s.import_notes(&files).unwrap();
+        let all = s.notes(&NoteQuery::default()).unwrap();
+        let color = |t: &str| all.iter().find(|n| n.title == t).and_then(|n| n.color.clone());
+        assert_eq!((color("Sky").as_deref(), color("Sun").as_deref()), (Some("blue"), Some("yellow")));
     }
 
     #[test]

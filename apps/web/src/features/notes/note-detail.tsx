@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { useUi, type Jump } from "@/app/ui-store"
@@ -17,6 +17,8 @@ import { longTime } from "@/lib/time"
 import { titleAndSnippet } from "@/core/demo-notes"
 
 import { LinkPicker } from "./link-picker"
+import { noteFill } from "./note-color"
+import { NoteColorMenu } from "./note-color-menu"
 import { NoteEditor } from "./note-editor"
 import { renameLinks } from "./rename-links"
 
@@ -97,6 +99,8 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   if (error || !note) return <p className="p-6 text-sm text-muted-foreground">{error instanceof Error ? error.message : "That note is gone."}</p>
 
   const current = { pinned: note.pinned, archived: note.archived, tags: note.tags, links: note.links, ...meta }
+  // Local changes say "" for none; the note says null.
+  const color = (meta?.color ?? note.color) || null
   const update = async (change: NoteMeta) => {
     setLocal({ ...meta, ...change })
     try {
@@ -140,72 +144,81 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   }
 
   return (
-    <article className="mx-auto flex h-full w-full max-w-3xl flex-col" aria-label="Note">
-      <div className="flex shrink-0 items-center gap-1 px-3 pt-2 md:px-6 md:pt-4">
-        <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground">
-          {current.archived ? "Archived · " : ""}Edited {longTime(note.updated)}
-        </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={<Toggle size="sm" aria-label="Pin" pressed={current.pinned} onPressedChange={(pinned) => void update({ pinned })} />}
-          >
-            <Icon name="keep" fill={current.pinned} className={current.pinned ? "text-vertical-notes" : undefined} />
-          </TooltipTrigger>
-          <TooltipContent>{current.pinned ? "Unpin" : "Pin to the top"}</TooltipContent>
-        </Tooltip>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Note actions" />}>
-            <Icon name="more_horiz" className="size-5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => void archive()}>
-              <Icon name={current.archived ? "unarchive" : "archive"} /> {current.archived ? "Unarchive" : "Archive"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void copy()}>
-              <Icon name="content_copy" /> Copy as Markdown
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => void del()}>
-              <Icon name="delete" /> Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+    // The note takes its card's tint, as an open Keep note does; the pane
+    // around it follows from the list (MasterDetail's detailTint).
+    <div
+      className="min-h-full transition-colors"
+      style={color ? ({ background: noteFill(color), "--note-surface": noteFill(color) } as CSSProperties) : undefined}
+      data-note-color={color ?? undefined}
+    >
+      <article className="mx-auto flex h-full w-full max-w-3xl flex-col" aria-label="Note">
+        <div className="flex shrink-0 items-center gap-1 px-3 pt-2 md:px-6 md:pt-4">
+          <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground">
+            {current.archived ? "Archived · " : ""}Edited {longTime(note.updated)}
+          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={<Toggle size="sm" aria-label="Pin" pressed={current.pinned} onPressedChange={(pinned) => void update({ pinned })} />}
+            >
+              <Icon name="keep" fill={current.pinned} className={current.pinned ? "text-vertical-notes" : undefined} />
+            </TooltipTrigger>
+            <TooltipContent>{current.pinned ? "Unpin" : "Pin to the top"}</TooltipContent>
+          </Tooltip>
+          <NoteColorMenu value={color} onChange={(c) => void update({ color: c ?? "" })} />
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Note actions" />}>
+              <Icon name="more_horiz" className="size-5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => void archive()}>
+                <Icon name={current.archived ? "unarchive" : "archive"} /> {current.archived ? "Unarchive" : "Archive"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void copy()}>
+                <Icon name="content_copy" /> Copy as Markdown
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => void del()}>
+                <Icon name="delete" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pt-1 md:px-8">
-        {current.links.map((l) => (
-          <LinkChip key={`${l.kind}:${l.key}`} link={l} onOpen={(target) => void open(l.kind, target)} onRemove={() => void update({ links: current.links.filter((x) => x !== l) })} />
-        ))}
-        <TagEditor tags={current.tags} onChange={(tags) => void update({ tags })} />
-        <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" aria-label="Link to an event, person, or conversation" onClick={() => setPicking(true)}>
-          <Icon name="add_link" data-icon="inline-start" /> Link
-        </Button>
-      </div>
-      <LinkPicker
-        open={picking}
-        onOpenChange={setPicking}
-        linked={current.links}
-        onLink={(link) => {
-          setPicking(false)
-          if (current.links.some((l) => l.kind === link.kind && l.key === link.key)) return
-          void update({ links: [...current.links, link] }).then(() => toast.success(`Linked to ${link.label}`, { duration: 2000 }))
-        }}
-      />
-      <LinkedFrom id={id} />
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pt-1 md:px-8">
+          {current.links.map((l) => (
+            <LinkChip key={`${l.kind}:${l.key}`} link={l} onOpen={(target) => void open(l.kind, target)} onRemove={() => void update({ links: current.links.filter((x) => x !== l) })} />
+          ))}
+          <TagEditor tags={current.tags} onChange={(tags) => void update({ tags })} />
+          <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" aria-label="Link to an event, person, or conversation" onClick={() => setPicking(true)}>
+            <Icon name="add_link" data-icon="inline-start" /> Link
+          </Button>
+        </div>
+        <LinkPicker
+          open={picking}
+          onOpenChange={setPicking}
+          linked={current.links}
+          onLink={(link) => {
+            setPicking(false)
+            if (current.links.some((l) => l.kind === link.kind && l.key === link.key)) return
+            void update({ links: [...current.links, link] }).then(() => toast.success(`Linked to ${link.label}`, { duration: 2000 }))
+          }}
+        />
+        <LinkedFrom id={id} />
 
-      <NoteEditor
-        note={note}
-        autoFocus={fresh}
-        onSaved={(md) => {
-          markdownRef.current = md
-          refresh()
-          if (linkedTitle.current !== null && titleAndSnippet(md)[0] !== linkedTitle.current) {
-            clearTimeout(renameCheck.current)
-            renameCheck.current = setTimeout(offerRename, 1500)
-          }
-        }}
-      />
-    </article>
+        <NoteEditor
+          note={note}
+          autoFocus={fresh}
+          onSaved={(md) => {
+            markdownRef.current = md
+            refresh()
+            if (linkedTitle.current !== null && titleAndSnippet(md)[0] !== linkedTitle.current) {
+              clearTimeout(renameCheck.current)
+              renameCheck.current = setTimeout(offerRename, 1500)
+            }
+          }}
+        />
+      </article>
+    </div>
   )
 }
 
