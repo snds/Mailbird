@@ -18,6 +18,7 @@ import type {
   ContactLabel,
   ContactsRestore,
   InterestingCalendar,
+  SwipeActions,
   ContactsRestored,
   SmartGroup,
   SmartGroupInput,
@@ -140,6 +141,8 @@ export interface CoreClient {
   listCollections(kind: CollectionKind): Promise<Collection[]>
   setCollectionHidden(id: string, hidden: boolean): Promise<void>
   interestingCalendars(): Promise<InterestingCalendar[]>
+  swipeActions(): Promise<SwipeActions>
+  setSwipeActions(actions: SwipeActions): Promise<SwipeActions>
   addInterestingCalendar(id: string): Promise<void>
   removeInterestingCalendar(id: string): Promise<void>
   /** Occurrences overlapping [from, to), in seconds. */
@@ -288,6 +291,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     listCollections: (kind) => call("list_collections", { kind }),
     setCollectionHidden: (id, hidden) => call("set_collection_hidden", { id, hidden }),
     interestingCalendars: () => call("interesting_calendars"),
+    swipeActions: () => call("swipe_actions"),
+    setSwipeActions: (actions) => call("set_swipe_actions", { actions }),
     addInterestingCalendar: (id) => call("add_interesting_calendar", { id }),
     removeInterestingCalendar: (id) => call("remove_interesting_calendar", { id }),
     listOccurrences: (from, to) => call("list_occurrences", { from, to }),

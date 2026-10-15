@@ -509,6 +509,17 @@ export interface ContactLabel {
   count: number
 }
 
+/** A mail action a swipe can do (ADR-0025). */
+export type SwipeActionId = "none" | "read" | "archive" | "star" | "snooze-tomorrow" | "snooze-next-week" | "remind" | "newsletters"
+
+/** Your swipes, short and long, each way. A long swipe of "none" does the short one's action. */
+export interface SwipeActions {
+  right: SwipeActionId
+  rightLong: SwipeActionId
+  left: SwipeActionId
+  leftLong: SwipeActionId
+}
+
 /** A holiday or moon-phase calendar you can add (ADR-0024). */
 export interface InterestingCalendar {
   id: string

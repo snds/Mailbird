@@ -341,3 +341,21 @@ async fn interesting_calendar_commands() {
     call("remove_interesting_calendar", json!({ "id": "interesting:holidays-us" })).await.unwrap();
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn swipe_action_commands() {
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-swipes-{}", std::process::id()));
+    let state = AppState::open(&dir).unwrap();
+    let app = AppHandle::new(TestHost::default());
+    let call = |name: &'static str, args: Value| {
+        let (app, state) = (app.clone(), state.clone());
+        async move { dispatch(&app, &state, name, args).await.map(json_of) }
+    };
+    assert_eq!(call("swipe_actions", Value::Null).await.unwrap(), json!({ "right": "read", "rightLong": "none", "left": "archive", "leftLong": "none" }));
+    let mine = json!({ "right": "star", "rightLong": "remind", "left": "snooze-tomorrow", "leftLong": "archive" });
+    assert_eq!(call("set_swipe_actions", json!({ "actions": mine })).await.unwrap(), mine);
+    assert!(call("set_swipe_actions", json!({ "actions": { "right": "explode", "rightLong": "none", "left": "archive", "leftLong": "none" } })).await.is_err());
+    assert_eq!(call("swipe_actions", Value::Null).await.unwrap(), mine);
+    let _ = std::fs::remove_dir_all(dir);
+}

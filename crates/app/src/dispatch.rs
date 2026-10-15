@@ -50,6 +50,8 @@ pub const COMMANDS: &[&str] = &[
     "bundle_mark_read",
     "bundle_archive",
     "unarchive_bundle",
+    "swipe_actions",
+    "set_swipe_actions",
     "provider_capabilities",
     "list_accounts",
     "add_account",
@@ -326,6 +328,11 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(pim_commands::restore_contacts(app.clone(), state, since, after)?)
         }
         "list_splits" => Output::json(commands::list_splits(state)?),
+        "swipe_actions" => Output::json(commands::swipe_actions(state)?),
+        "set_swipe_actions" => {
+            args!(args, actions: pim_core::SwipeActions);
+            Output::json(commands::set_swipe_actions(state, actions)?)
+        }
         "save_split" => {
             args!(args, id: Option<String>, input: pim_core::SplitInput);
             Output::json(commands::save_split(app.clone(), state, id, input)?)
