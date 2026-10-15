@@ -276,7 +276,8 @@ impl Store {
                 out.push(Occurrence {
                     event_id: id.clone(),
                     calendar_id: calendar_id.clone(),
-                    meeting_url: o.location.as_deref().and_then(|l| crate::meeting::meeting_link([l])),
+                    meeting_url: o.meeting_url.clone(),
+                    meeting_app_url: None,
                     contact_id: None,
                     title: o.title,
                     location: o.location,
@@ -288,6 +289,9 @@ impl Store {
                     travel: o.travel,
                 });
             }
+        }
+        for o in &mut out {
+            o.meeting_app_url = o.meeting_url.as_deref().and_then(crate::meeting::app_link);
         }
         out.extend(self.birthdays(from, to)?);
         out.extend(self.interesting_occurrences(from, to)?);
@@ -316,12 +320,16 @@ impl Store {
             .or(instances.first())
             .cloned()
             .ok_or_else(|| Error::NotFound("that occurrence is gone".into()))?;
-        let meeting_url = crate::meeting::meeting_link([inst.location.as_deref(), meta.url.as_deref(), meta.notes.as_deref()].into_iter().flatten());
+        // Conference properties first: they're the server's own record of the call.
+        let texts: Vec<&str> = meta.conference.iter().map(String::as_str).chain([inst.location.as_deref(), meta.url.as_deref(), meta.notes.as_deref()].into_iter().flatten()).collect();
+        let meeting = crate::meeting::meeting_info(texts.iter().copied());
+        let manage = crate::meeting::manage_links([meta.notes.as_deref(), meta.url.as_deref(), inst.location.as_deref()].into_iter().flatten());
         Ok(EventDetail {
             occurrence: Occurrence {
                 event_id: id.to_string(),
                 calendar_id: calendar_id.clone(),
-                meeting_url,
+                meeting_url: meeting.as_ref().map(|m| m.url.clone()),
+                meeting_app_url: meeting.as_ref().and_then(|m| m.app_url.clone()),
                 contact_id: None,
                 travel: inst.travel,
                 title: inst.title,
@@ -340,6 +348,8 @@ impl Store {
             url: meta.url,
             writable: self.collection(&calendar_id)?.writable,
             reminders: meta.reminders,
+            meeting,
+            manage,
         })
     }
 
@@ -363,6 +373,7 @@ impl Store {
             url: None,
             reminders: vec![],
             travel: None,
+            conference: vec![],
         })
     }
 
@@ -1029,6 +1040,28 @@ mod tests {
         let f = s.create_event(&far).unwrap();
         let fs = f.occurrence.start;
         assert!(s.due_reminders(fs - 7201, fs - 7200).unwrap().iter().any(|r| r.leave && r.event_id == f.occurrence.event_id));
+    }
+
+    #[test]
+    fn events_describe_their_call_and_booking_links() {
+        let s = store();
+        let cal = local(&s, CollectionKind::Calendar);
+        let mut call = event(&cal, "2026-10-14T18:00", "2026-10-14T18:30");
+        call.location = Some("Zoom".into());
+        call.notes = Some("Join: https://us02web.zoom.us/j/85012345678?pwd=Ab12\nPasscode: 4242\n\nCancel: https://calendly.com/cancellations/X1\nReschedule: https://calendly.com/reschedulings/X1".into());
+        let e = s.create_event(&call).unwrap();
+        let m = e.meeting.as_ref().unwrap();
+        assert_eq!((m.service.as_str(), m.passcode.as_deref()), ("zoom", Some("4242")));
+        assert_eq!(e.occurrence.meeting_app_url.as_deref(), Some("zoommtg://us02web.zoom.us/join?action=join&confno=85012345678&pwd=Ab12"));
+        assert_eq!(e.manage.iter().map(|l| l.action.as_str()).collect::<Vec<_>>(), ["cancel", "reschedule"]);
+        // Lists find the call too: in the location here, in the description above.
+        let mut listed = event(&cal, "2026-10-15T09:00", "2026-10-15T09:30");
+        listed.location = Some("https://teams.microsoft.com/l/meetup-join/19%3ax/0".into());
+        let l = s.create_event(&listed).unwrap();
+        let o = s.occurrences(l.occurrence.start - 1, l.occurrence.start + 1).unwrap().into_iter().find(|o| o.event_id == l.occurrence.event_id).unwrap();
+        assert_eq!(o.meeting_app_url.as_deref(), Some("msteams:/l/meetup-join/19%3ax/0"));
+        let z = s.occurrences(e.occurrence.start - 1, e.occurrence.start + 1).unwrap().into_iter().find(|o| o.event_id == e.occurrence.event_id).unwrap();
+        assert_eq!(z.meeting_url.as_deref(), Some("https://us02web.zoom.us/j/85012345678?pwd=Ab12"), "a link only in the description still gets Join in lists");
     }
 
     #[test]

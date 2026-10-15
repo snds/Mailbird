@@ -151,6 +151,9 @@ pub const COMMANDS: &[&str] = &[
     "restore_note",
     "note_tags",
     "note_tasks",
+    "meeting_prefs",
+    "set_meeting_prefs",
+    "open_meeting",
     "notes_prefs",
     "set_notes_prefs",
     "note_link_for",
@@ -545,6 +548,15 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(notes_commands::note_tasks(state, done.unwrap_or(false))?)
         }
         "notes_prefs" => Output::json(notes_commands::notes_prefs(state)?),
+        "meeting_prefs" => Output::json(pim_commands::meeting_prefs(state)?),
+        "set_meeting_prefs" => {
+            args!(args, prefs: pim_core::meeting::MeetingPrefs);
+            Output::json(pim_commands::set_meeting_prefs(app.clone(), state, prefs)?)
+        }
+        "open_meeting" => {
+            args!(args, url: String);
+            Output::json(pim_commands::open_meeting(app.clone(), url)?)
+        }
         "set_notes_prefs" => {
             args!(args, prefs: pim_core::NotesPrefs);
             Output::json(notes_commands::set_notes_prefs(app.clone(), state, prefs)?)

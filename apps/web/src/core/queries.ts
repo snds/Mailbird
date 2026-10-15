@@ -290,6 +290,10 @@ export function useNoteTasks(done = false) {
   return useQuery({ queryKey: keys.noteTasks(done), queryFn: () => call((c) => c.noteTasks(done)) })
 }
 
+export function useMeetingPrefs() {
+  return useQuery({ queryKey: ["pim", "meeting-prefs"], queryFn: () => call((c) => c.meetingPrefs()), staleTime: Infinity })
+}
+
 export function useNotesPrefs() {
   return useQuery({ queryKey: keys.notesPrefs, queryFn: () => call((c) => c.notesPrefs()), staleTime: Infinity })
 }

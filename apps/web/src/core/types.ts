@@ -372,6 +372,39 @@ export interface Occurrence {
   contactId?: string | null
   /** Minutes to get there, blocked out before `start` (ADR-0029). */
   travel?: number | null
+  /** `meetingUrl` in its service's app (Zoom, Teams), when it has one (ADR-0030). */
+  meetingAppUrl?: string | null
+}
+
+/** What an invitation says about its call (ADR-0030). */
+export interface MeetingInfo {
+  /** "zoom", "meet", "teams", "webex", "jitsi", "whereby", "facetime", "goto", "chime". */
+  service: string
+  url: string
+  appUrl: string | null
+  meetingId: string | null
+  passcode: string | null
+  dialIn: DialIn[]
+}
+
+export interface DialIn {
+  number: string
+  label: string | null
+  /** Dials the number, then the meeting ID and PIN. */
+  tel: string
+}
+
+/** A booking tool's link to change the booking (Calendly, Cal.com …). */
+export interface ManageLink {
+  /** "reschedule", "cancel", or "manage". */
+  action: string
+  tool: string
+  url: string
+}
+
+export interface MeetingPrefs {
+  /** Open calls in Zoom's or Teams' app when there's a link for it. */
+  openInApps: boolean
 }
 
 export interface Attendee {
@@ -391,6 +424,8 @@ export interface EventDetail extends Occurrence {
   writable: boolean
   /** Minutes before the start. */
   reminders: number[]
+  meeting?: MeetingInfo | null
+  manage?: ManageLink[]
 }
 
 export interface DueReminder {
@@ -446,6 +481,9 @@ export interface Invite {
   answered?: "accepted" | "declined" | null
   /** For an invitation: the new time you proposed. */
   proposed?: TimeSlot | null
+  /** The call the invitation is for, and its booking tool's links (ADR-0030). */
+  meeting?: MeetingInfo | null
+  manage?: ManageLink[]
 }
 
 /** A free stretch of time, from "find a time". */

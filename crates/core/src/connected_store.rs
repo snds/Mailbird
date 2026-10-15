@@ -87,6 +87,7 @@ impl Store {
                     meeting_url: None,
                     contact_id: Some(id.clone()),
                     travel: None,
+                    meeting_app_url: None,
                 });
             }
         }
@@ -101,7 +102,7 @@ impl Store {
             .into_iter()
             .find(|o| o.contact_id.as_deref() == Some(contact_id))
             .ok_or_else(|| crate::Error::NotFound("that contact has no birthday".into()))?;
-        Ok(EventDetail { occurrence, notes: None, repeat: Repeat::Yearly, time_zone: None, organizer: None, attendees: vec![], url: None, writable: false, reminders: vec![] })
+        Ok(EventDetail { occurrence, notes: None, repeat: Repeat::Yearly, time_zone: None, organizer: None, attendees: vec![], url: None, writable: false, reminders: vec![], meeting: None, manage: vec![] })
     }
 
     /// Fill in birthdays for contacts stored before the column existed.
@@ -155,12 +156,13 @@ impl Store {
         let mut past = Vec::new();
         for (id, calendar_id, ics, all_day, recurring) in events {
             for o in ical::occurrences(&ics, &tz, t - ACTIVITY_WINDOW, t + ACTIVITY_WINDOW).unwrap_or_default() {
-                let occ = Occurrence {
+                let mut occ = Occurrence {
                     event_id: id.clone(),
                     calendar_id: calendar_id.clone(),
-                    meeting_url: o.location.as_deref().and_then(|l| crate::meeting::meeting_link([l])),
+                    meeting_url: o.meeting_url.clone(),
                     contact_id: None,
-                    travel: None,
+                    travel: o.travel,
+                    meeting_app_url: None,
                     title: o.title,
                     location: o.location,
                     start: o.start,
@@ -169,6 +171,7 @@ impl Store {
                     all_day,
                     recurring,
                 };
+                occ.meeting_app_url = occ.meeting_url.as_deref().and_then(crate::meeting::app_link);
                 if occ.end > t { upcoming.push(occ) } else { past.push(occ) }
             }
         }

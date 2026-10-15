@@ -212,7 +212,7 @@ function Activity({ activity: { threads, upcoming, past } }: { activity: Contact
           {dayLabel(fromSecs(o.start))} · {rangeLabel(o.start, o.end, o.allDay)}
         </span>
       </button>
-      {o.meetingUrl && o.end > now && <JoinButton url={o.meetingUrl} variant="outline" className="shrink-0" />}
+      {o.meetingUrl && o.end > now && <JoinButton url={o.meetingUrl} appUrl={o.meetingAppUrl} variant="outline" className="shrink-0" />}
     </li>
   )
   if (!threads.length && !upcoming.length && !past.length) return null

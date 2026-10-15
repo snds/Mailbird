@@ -21,6 +21,7 @@ import type {
   ContactSummary,
   DeletedContact,
   DueReminder,
+  MeetingPrefs,
   EditScope,
   EventDetail,
   EventInput,
@@ -41,6 +42,7 @@ import type {
   SignatureCard,
 } from "./types"
 import { parseSignature } from "./demo-signature"
+import { appLink, manageLinks, meetingInfo, meetingLink } from "@/lib/meeting-info"
 import { zonedDate } from "@/lib/zoned"
 
 interface DemoEvent {
@@ -82,6 +84,8 @@ export interface DemoInviteSeed {
   /** "counter": a guest (`attendees[0]`) proposes another time for your event. */
   method?: "request" | "counter"
   comment?: string
+  /** The invitation's description: its call details, a booking tool's links. */
+  notes?: string
 }
 
 type DemoContact = ContactDetail
@@ -132,32 +136,6 @@ function expand(e: DemoEvent, from: number, to: number): Slot[] {
   return out
 }
 
-/** Known video-call hosts, and the path a meeting link starts with (like the core's `meeting::meeting_link`). */
-const MEETING_HOSTS: [string, string[]][] = [
-  ["zoom.us", ["/j/", "/my/", "/w/", "/s/"]],
-  ["zoomgov.com", ["/j/"]],
-  ["meet.google.com", ["/"]],
-  ["teams.microsoft.com", ["/l/meetup-join/", "/meet/"]],
-  ["teams.live.com", ["/meet/"]],
-  ["webex.com", ["/meet/", "/join/", "/wbxmjs/"]],
-  ["meet.jit.si", ["/"]],
-  ["whereby.com", ["/"]],
-  ["facetime.apple.com", ["/join"]],
-]
-
-function meetingLink(...texts: (string | null | undefined)[]): string | null {
-  for (const t of texts) {
-    for (const token of (t ?? "").split(/[\s<>"'()[\]{}|]+/)) {
-      const url = token.replace(/[.,;:!?]+$/, "")
-      const m = /^https:\/\/([^/?#]+)([^]*)$/.exec(url)
-      if (!m) continue
-      const host = m[1]!.toLowerCase()
-      const path = m[2]!
-      if (MEETING_HOSTS.some(([h, paths]) => (host === h || host.endsWith(`.${h}`)) && path.length > 1 && paths.some((x) => path.startsWith(x) || (x === "/" && path.length > 3)))) return url
-    }
-  }
-  return null
-}
 
 const BIRTHDAY = "birthday:"
 const BIRTHDAYS = "birthdays"
@@ -203,7 +181,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   const events: DemoEvent[] = [
     ev("cal-work", "Standup", at(0, 9, 30), at(0, 9, 45), { repeat: "weekly", location: "Studio, room 2", reminders: [5] }),
     ev("cal-work", "Token audit review", at(0, 12), at(0, 13), {
-      notes: "Walk through the semantic tier sheet. Decide on the three surface tokens that collapse in dark mode.\n\nJoin Zoom: https://us02web.zoom.us/j/81234567890?pwd=tok3ns",
+      notes: "Walk through the semantic tier sheet. Decide on the three surface tokens that collapse in dark mode.\n\nJoin Zoom Meeting\nhttps://us02web.zoom.us/j/81234567890?pwd=tok3ns\n\nMeeting ID: 812 3456 7890\nPasscode: 271828\n\nOne tap mobile\n+16699006833,,81234567890#,,,,*271828# US (San Jose)\n+19292056099,,81234567890#,,,,*271828# US (New York)",
       organizer: priya,
       attendees: [
         { ...priya, status: "accepted" },
@@ -212,6 +190,11 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       ],
     }),
     ev("cal-personal", "Lunch with Ana", at(0, 12, 30), at(0, 13, 30), { location: "Café Lisboa" }),
+    // Booked through someone's Calendly page: the invitation carries its own reschedule and cancel links.
+    ev("cal-work", "Intro call with Dana Wells", at(1, 11), at(1, 11, 30), {
+      location: "Microsoft Teams Meeting",
+      notes: "Event Name: 30 Minute Intro\n\nJoin on your computer: https://teams.microsoft.com/l/meetup-join/19%3ameeting_ZGFuYQ%40thread.v2/0?context=%7b%22Tid%22%3a%22d%22%7d\nMeeting ID: 245 118 902 334\nPasscode: Wq7xLs\n\nNeed to make changes to this event?\nCancel: https://calendly.com/cancellations/9f2c-intro\nReschedule: https://calendly.com/reschedulings/9f2c-intro\n\nPowered by Calendly.com",
+    }),
     ev("cal-work", "Design review", at(1, 15), at(1, 16, 30), { location: "https://meet.google.com/kfp-wqzr-xmd", organizer: priya, attendees: team("accepted") }),
     ev("cal-personal", "Climbing", at(2, 18), at(2, 19, 30), { repeat: "weekly", location: "North Wall gym" }),
     ev("cal-personal", "Ferry to the cabin", at(untilSaturday, 8, 15), at(untilSaturday, 9), { location: "Pier 3", notes: "Booking reference FX-2210. Arrive 30 minutes early.", travel: 30 }),
@@ -275,8 +258,8 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   }
   const occurrence = (e: DemoEvent, o: Slot): Occurrence => ({
     eventId: e.id, calendarId: e.calendarId, title: o.title, location: o.location, start: o.start, end: o.end,
-    originalStart: o.original, allDay: e.allDay, recurring: e.repeat !== "none", meetingUrl: meetingLink(o.location), contactId: null,
-    travel: e.allDay ? null : e.travel,
+    originalStart: o.original, allDay: e.allDay, recurring: e.repeat !== "none", meetingUrl: meetingLink(o.location, e.notes), contactId: null,
+    travel: e.allDay ? null : e.travel, meetingAppUrl: (() => { const u = meetingLink(o.location, e.notes); return u ? appLink(u) : null })(),
   })
 
   // Birthdays: a yearly all-day occurrence per contact with a birthday.
@@ -382,7 +365,8 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     const all = expand(e, start != null ? start - 86_400 : -Infinity, Infinity)
     const o = all.find((x) => x.start === start || x.original === start) ?? all[0] ?? { start: e.start, end: e.end, original: e.start, title: e.title, location: e.location }
     return {
-      ...occurrence(e, o), meetingUrl: meetingLink(o.location, e.notes), notes: e.notes, repeat: e.repeat, timeZone: e.allDay ? null : e.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...occurrence(e, o), meetingUrl: meetingLink(o.location, e.notes), meetingAppUrl: (() => { const u = meetingLink(o.location, e.notes); return u ? appLink(u) : null })(),
+      meeting: meetingInfo(o.location, e.notes), manage: manageLinks(e.notes), notes: e.notes, repeat: e.repeat, timeZone: e.allDay ? null : e.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       organizer: e.organizer, attendees: e.attendees, url: null, writable: calendar(e.calendarId).writable, reminders: [...e.reminders].sort((a, b) => a - b),
     }
   }
@@ -578,6 +562,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
       myStatus: people.find((a) => normEmail(a.email) === normEmail(myEmail))?.status ?? null,
       eventId: copy?.id ?? null, outdated: false, from: null,
       conflicts: conflicts(seed.start, seed.end, seed.uid), proposed: proposals.get(seed.uid) ?? null,
+      meeting: meetingInfo(seed.location, seed.notes), manage: manageLinks(seed.notes),
     }
   }
   /** A guest's COUNTER, from the demo's mail. */
@@ -651,6 +636,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
   }
 
   /** Stable keys for note links: the event's UID, the contact's id (demo cards have no UID). */
+  let meetingPrefs: MeetingPrefs = { openInApps: true }
   const noteLinks = {
     event: (id: string) => events.find((e) => e.id === id) ?? null,
     eventByUid: (uid: string) => events.find((e) => e.uid === uid)?.id ?? null,
@@ -665,6 +651,14 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     proposeFor,
     answerCounter,
     findTimes: async (q: FindTimes) => later(findTimes(q)),
+    meetingPrefs: async () => later({ ...meetingPrefs }),
+    setMeetingPrefs: async (p: MeetingPrefs) => {
+      meetingPrefs = { ...p }
+      changed()
+      return later({ ...meetingPrefs })
+    },
+    // The browser opens calls itself (Join is a link); this is the desktop's path.
+    openMeeting: async (url: string) => void window.open(url, "_blank", "noopener"),
     calendarSets: async () => later(sets),
     saveCalendarSet: async (name: string) => {
       const n = name.trim()

@@ -17,6 +17,7 @@ import { longTime } from "@/lib/time"
 
 import { OAuthSignIn } from "./oauth-sign-in"
 import { PushSettingsSection } from "./push-settings"
+import { MeetingSettingsSection } from "./meeting-settings"
 import { ScreenerSettingsSection } from "./screener-settings"
 
 interface Preset {
@@ -232,6 +233,8 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         </span>
         <Icon name="chevron_right" className="size-5 text-muted-foreground" />
       </button>
+
+      <MeetingSettingsSection />
 
       {accounts.length > 0 && <ScreenerSettingsSection />}
 

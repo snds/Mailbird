@@ -56,6 +56,7 @@ import type {
   NoteRecord,
   NoteSummary,
   NoteTask,
+  MeetingPrefs,
   NotesPrefs,
   NoteTarget,
   RelayConfig,
@@ -243,6 +244,10 @@ export interface CoreClient {
   noteTags(): Promise<TagCount[]>
   /** Checklist items across notes; done ones only with `done`. */
   noteTasks(done?: boolean): Promise<NoteTask[]>
+  /** How Join opens calls; open one with the system (desktop) (ADR-0030). */
+  meetingPrefs(): Promise<MeetingPrefs>
+  setMeetingPrefs(prefs: MeetingPrefs): Promise<MeetingPrefs>
+  openMeeting(url: string): Promise<void>
   notesPrefs(): Promise<NotesPrefs>
   setNotesPrefs(prefs: NotesPrefs): Promise<NotesPrefs>
   /** The link to put on a note for something on this device. */
@@ -380,6 +385,9 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     restoreNote: (id) => call("restore_note", { id }),
     noteTags: () => call("note_tags"),
     noteTasks: (done) => call("note_tasks", { done: done ?? false }),
+    meetingPrefs: () => call("meeting_prefs"),
+    setMeetingPrefs: (prefs) => call("set_meeting_prefs", { prefs }),
+    openMeeting: (url) => call("open_meeting", { url }),
     notesPrefs: () => call("notes_prefs"),
     setNotesPrefs: (prefs) => call("set_notes_prefs", { prefs }),
     noteLinkFor: (target) => call("note_link_for", { target }),
