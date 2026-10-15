@@ -859,6 +859,28 @@ export interface NoteQuery {
   tag?: string | null
   archived?: boolean
   linked?: NoteTarget | null
+  /** Only notes in this smart folder (ADR-0042). */
+  folder?: string | null
+}
+
+/** What a note needs to be in a smart folder: every part filled in (any of the tags). */
+export interface NoteFolderInput {
+  name: string
+  tags: string[]
+  words: string | null
+  /** "event", "contact", "thread", or "any". */
+  linked: NoteLinkKind | "any" | null
+  /** A card color, or "any". */
+  color: NoteColor | "any" | null
+  hasReminder: boolean
+  hasOpenTasks: boolean
+}
+
+/** A saved search that keeps itself up to date (ADR-0042). */
+export interface NoteFolder extends NoteFolderInput {
+  id: string
+  /** Notes in it now, archived ones aside. */
+  count: number
 }
 
 export interface TagCount {

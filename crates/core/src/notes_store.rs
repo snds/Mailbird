@@ -209,10 +209,50 @@ impl Store {
         let mut sql = format!("SELECT {NOTE_COLS} FROM notes n");
         let mut clauses = vec!["n.deleted = 0".to_string(), "n.archived = ?".to_string()];
         let mut args: Vec<Value> = vec![Value::from(q.archived)];
-        if let Some(search) = q.search.as_deref().map(fts_query).filter(|s| !s.is_empty()) {
+        let folder = q.folder.as_deref().map(|id| self.note_folder_rule(id)).transpose()?;
+        // A folder's words and the search field are one full-text query: FTS
+        // takes a single MATCH, and its terms are ANDed.
+        let search = [q.search.as_deref(), folder.as_ref().and_then(|f| f.words.as_deref())]
+            .into_iter()
+            .flatten()
+            .map(fts_query)
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !search.is_empty() {
             sql.push_str(" JOIN notes_fts f ON f.rowid = n.rowid");
             clauses.push("notes_fts MATCH ?".into());
             args.push(Value::from(search));
+        }
+        if let Some(f) = &folder {
+            if !f.tags.is_empty() {
+                let marks = vec!["?"; f.tags.len()].join(", ");
+                clauses.push(format!("EXISTS (SELECT 1 FROM json_each(n.tags) t WHERE lower(t.value) IN ({marks}))"));
+                args.extend(f.tags.iter().map(|t| Value::from(t.to_lowercase())));
+            }
+            match f.linked.as_deref() {
+                Some("any") => clauses.push("json_array_length(n.links) > 0".into()),
+                Some(kind) => {
+                    clauses.push("EXISTS (SELECT 1 FROM json_each(n.links) l WHERE l.value ->> 'kind' = ?)".into());
+                    args.push(Value::from(kind.to_string()));
+                }
+                None => {}
+            }
+            match f.color.as_deref() {
+                Some("any") => clauses.push("n.color IS NOT NULL".into()),
+                Some(c) => {
+                    clauses.push("n.color = ?".into());
+                    args.push(Value::from(c.to_string()));
+                }
+                None => {}
+            }
+            if f.has_reminder {
+                clauses.push("n.remind_at IS NOT NULL".into());
+            }
+            if f.has_open_tasks {
+                // An unchecked Markdown checklist item, as tasks_in reads them.
+                clauses.push("(n.body LIKE '%- [ ]%' OR n.body LIKE '%* [ ]%' OR n.body LIKE '%+ [ ]%')".into());
+            }
         }
         if let Some(tag) = q.tag.as_deref() {
             clauses.push("EXISTS (SELECT 1 FROM json_each(n.tags) t WHERE t.value = ? COLLATE NOCASE)".into());

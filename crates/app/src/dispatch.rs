@@ -167,6 +167,9 @@ pub const COMMANDS: &[&str] = &[
     "set_meeting_prefs",
     "open_meeting",
     "notes_prefs",
+    "note_folders",
+    "save_note_folder",
+    "delete_note_folder",
     "set_notes_prefs",
     "note_link_for",
     "import_notes",
@@ -599,6 +602,15 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(notes_commands::note_tasks(state, done.unwrap_or(false))?)
         }
         "notes_prefs" => Output::json(notes_commands::notes_prefs(state)?),
+        "note_folders" => Output::json(notes_commands::note_folders(state)?),
+        "save_note_folder" => {
+            args!(args, id: Option<String>, input: pim_core::NoteFolderInput);
+            Output::json(notes_commands::save_note_folder(app.clone(), state, id, input)?)
+        }
+        "delete_note_folder" => {
+            args!(args, id: String);
+            Output::json(notes_commands::delete_note_folder(app.clone(), state, id)?)
+        }
         "meeting_prefs" => Output::json(pim_commands::meeting_prefs(state)?),
         "set_meeting_prefs" => {
             args!(args, prefs: pim_core::meeting::MeetingPrefs);

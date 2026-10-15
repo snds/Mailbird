@@ -1137,6 +1137,9 @@ pub struct NoteQuery {
     pub archived: bool,
     /// Only notes linked to this target.
     pub linked: Option<NoteTarget>,
+    /// Only notes in this smart folder (ADR-0042).
+    #[serde(default)]
+    pub folder: Option<String>,
 }
 
 /// An event, contact, or conversation by its id on this device.

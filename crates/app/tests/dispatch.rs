@@ -105,6 +105,13 @@ async fn every_command_routes_and_works() {
     assert_eq!(cleared["color"], Value::Null);
     let prefs = json_of(dispatch(&app, &state, "set_notes_prefs", json!({ "prefs": { "sortChecked": true, "grid": true } })).await.unwrap());
     assert_eq!(prefs["grid"], true);
+    // Smart folders (ADR-0042): one that matches, then gone.
+    let folder = json_of(dispatch(&app, &state, "save_note_folder", json!({ "id": null, "input": { "name": "Greetings", "words": "hello" } })).await.unwrap());
+    assert_eq!(folder["count"], 2, "the note and the one linking to it");
+    let inside = json_of(dispatch(&app, &state, "list_notes", json!({ "query": { "folder": folder["id"] } })).await.unwrap());
+    assert!(inside.as_array().unwrap().iter().any(|n| n["title"] == "Hello"));
+    dispatch(&app, &state, "delete_note_folder", json!({ "id": folder["id"] })).await.unwrap();
+    assert_eq!(json_of(dispatch(&app, &state, "note_folders", Value::Null).await.unwrap()), json!([]));
     // Note reminders (ADR-0039): set, then 0 clears.
     let reminded = json_of(dispatch(&app, &state, "set_note_meta", json!({ "id": note["id"], "meta": { "remindAt": 4_000_000_000_i64 } })).await.unwrap());
     assert_eq!(reminded["remindAt"], 4_000_000_000_i64);

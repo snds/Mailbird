@@ -7,7 +7,7 @@ import { downloadNotes } from "@/lib/download"
 
 import type { CoreEvent } from "./client"
 import { NOTE_COLORS } from "./types"
-import type { ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
+import type { ImportFile, ImportReport, NoteDetail, NoteFolder, NoteFolderInput, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
 
 interface DemoNote extends NoteRecord {
   markdown: string
@@ -182,6 +182,27 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     const hay = [...words(x.markdown), ...x.tags.flatMap(words)]
     return words(search).every((w) => hay.some((h) => h.startsWith(w)))
   }
+  // Smart folders (ADR-0042), with the core's rules and checks.
+  let folders: NoteFolder[] = []
+  const inFolder = (x: DemoNote, f: NoteFolderInput) =>
+    (!f.tags.length || x.tags.some((t) => f.tags.some((g) => g.toLowerCase() === t.toLowerCase()))) &&
+    (!f.words || matches(x, f.words)) &&
+    (!f.linked || (f.linked === "any" ? x.links.length > 0 : x.links.some((l) => l.kind === f.linked))) &&
+    (!f.color || (f.color === "any" ? !!x.color : x.color === f.color)) &&
+    (!f.hasReminder || !!x.remindAt) &&
+    (!f.hasOpenTasks || /^\s*[-*+] \[ \]/m.test(x.markdown))
+  const folderCount = (f: NoteFolderInput) => notes.filter((x) => !x.deleted && !x.archived && inFolder(x, f)).length
+  const checkFolder = (i: NoteFolderInput): NoteFolderInput => {
+    const name = i.name.trim()
+    if (!name) throw new Error("give the folder a name")
+    const tags: string[] = []
+    for (const t of i.tags.map((t) => t.trim().replace(/^#+/, "")).filter(Boolean)) if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) tags.push(t)
+    const words = i.words?.trim() || null
+    if (!tags.length && !words && !i.linked && !i.color && !i.hasReminder && !i.hasOpenTasks) {
+      throw new Error("say which notes belong in it: a tag, some words, a link, a color, or one of the checks")
+    }
+    return { name, tags, words, linked: i.linked, color: i.color, hasReminder: i.hasReminder, hasOpenTasks: i.hasOpenTasks }
+  }
   const linkingTo = (title: string, except: string | null) => {
     const t = title.trim().toLowerCase()
     if (!t) return []
@@ -199,8 +220,11 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
         linkKey = links.linkFor(q.linked)
         if (!linkKey) return later([])
       }
+      const folder = q.folder ? folders.find((f) => f.id === q.folder) : null
+      if (q.folder && !folder) throw new Error("that folder was deleted")
       const out = notes
         .filter((x) => !x.deleted && x.archived === !!q.archived)
+        .filter((x) => !folder || inFolder(x, folder))
         .filter((x) => !q.search?.trim() || matches(x, q.search))
         .filter((x) => !q.tag || x.tags.some((g) => g.toLowerCase() === q.tag!.toLowerCase()))
         .filter((x) => !linkKey || x.links.some((l) => l.kind === linkKey.kind && l.key === linkKey.key))
@@ -309,6 +333,22 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
         })
       }
       return later(out)
+    },
+    noteFolders: async () => later(folders.map((f) => ({ ...f, count: folderCount(f) }))),
+    saveNoteFolder: async (id: string | null, input: NoteFolderInput) => {
+      const rule = checkFolder(input)
+      const folder: NoteFolder = { id: id ?? crypto.randomUUID(), ...rule, count: 0 }
+      const at = folders.findIndex((f) => f.id === folder.id)
+      if (at >= 0) folders[at] = folder
+      else if (id) throw new Error("that folder was deleted")
+      else folders = [...folders, folder]
+      changed()
+      return later({ ...folder, count: folderCount(folder) })
+    },
+    deleteNoteFolder: async (id: string) => {
+      folders = folders.filter((f) => f.id !== id)
+      changed()
+      return later(undefined)
     },
     notesPrefs: async () => later({ ...prefs }),
     setNotesPrefs: async (p: NotesPrefs) => {
