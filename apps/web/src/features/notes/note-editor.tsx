@@ -11,13 +11,17 @@ import { getCoreClient } from "@/core/client"
 import { queryClient, useNotesPrefs } from "@/core/queries"
 import type { NoteDetail, NotesPrefs } from "@/core/types"
 
+import { toBase64 } from "@/lib/base64"
 import { prepareImage } from "@/lib/image"
+import { type Sketch, SVG_MIME, toSvg } from "@/lib/sketch"
 
 import { FormatBar } from "../mail/rich-editor"
 import { SortChecked } from "./checklists"
 import { noteExtensions } from "./extensions"
 import { NOTE_FILE } from "./note-src"
 import { ScanSheet } from "./scan-sheet"
+import { SketchSheet } from "./sketch-sheet"
+import { useSketchSheet } from "./sketch-store"
 import { notesSync, useSyncStatus } from "./sync"
 import { type Choice, openWikiLink, pickChoice, useWikiChoices, wikiQueryAt } from "./wiki-links"
 import { WikiSuggest } from "./wiki-suggest"
@@ -172,7 +176,8 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
       <EditorContent editor={editor} className="min-h-0 flex-1 overflow-y-auto [&>div]:min-h-full" />
       {live && <WikiSuggest editor={editor} q={live} choices={choices} active={active} onPick={choose} />}
       <div className="sticky bottom-0 bg-(--note-surface,var(--background)) transition-colors">
-        <FormatBar editor={editor} notes onAddImage={() => picker.current?.click()} onScan={() => setScanning(true)} />
+        <FormatBar editor={editor} notes onAddImage={() => picker.current?.click()} onScan={() => setScanning(true)} onSketch={() => useSketchSheet.getState().show(null, null)} />
+        <SketchSheet onDone={(s, pos) => void saveSketch(editor, note.id, s, pos)} />
         <ScanSheet open={scanning} onOpenChange={setScanning} onScanned={(f) => void addImages(editor, note.id, [f], undefined, "Scanned document")} />
         <input
           ref={picker}
@@ -212,6 +217,27 @@ async function addImages(editor: Editor, noteId: string, files: File[], at?: num
     } catch (e) {
       toast.error(`${f.name || "Image"}: ${e instanceof Error ? e.message : String(e)}`)
     }
+  }
+}
+
+/**
+ * Stores a sketch (ADR-0046) and puts it in the note; an edited one takes
+ * the old one's place. Each save is a new image: images never change once
+ * stored, so other devices and caches never show a stale one.
+ */
+async function saveSketch(editor: Editor, noteId: string, sketch: Sketch, pos: number | null) {
+  try {
+    const svg = toSvg(sketch)
+    const stored = await (await getCoreClient()).addNoteFile(noteId, SVG_MIME, toBase64(new TextEncoder().encode(svg)), sketch.w, sketch.h)
+    const src = `${NOTE_FILE}${stored.id}`
+    const node = pos === null ? null : editor.state.doc.nodeAt(pos)
+    if (pos !== null && node?.type.name === "noteImage") {
+      editor.chain().focus().command(({ tr }) => (tr.setNodeMarkup(pos, undefined, { ...node.attrs, src }), true)).run()
+    } else {
+      editor.chain().focus().insertContent({ type: "noteImage", attrs: { src, alt: "Sketch" } }).run()
+    }
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
   }
 }
 

@@ -210,6 +210,9 @@
   /* Scan: the page outline over a photo (ADR-0045). Must read on any photo, so it's the ring color, not a neutral. */
   --c-scan-edge: var(--ring);
   --c-scan-fill: color-mix(in oklab, var(--ring) 14%, transparent);
+  /* Sketches (ADR-0046) are drawn on paper, light in both themes, so their
+     inks look the same everywhere. Not redefined for dark mode on purpose. */
+  --c-sketch-paper: oklch(0.985 0.004 95);
 
   /* Calendar */
   --c-event-fallback: var(--vertical-calendar);

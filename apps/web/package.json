@@ -36,6 +36,7 @@
     "dompurify": "^3.4.17",
     "material-symbols": "^0.48.0",
     "next-themes": "^0.4.6",
+    "perfect-freehand": "1.2.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sonner": "^2.0.8",

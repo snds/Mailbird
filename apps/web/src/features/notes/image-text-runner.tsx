@@ -4,6 +4,7 @@ import type { CoreClient } from "@/core/client"
 import { queryClient, useCore, useNotesPrefs } from "@/core/queries"
 import { fromBase64 } from "@/lib/base64"
 import { readText } from "@/lib/ocr"
+import { rasterize, SVG_MIME } from "@/lib/sketch"
 
 /** How long to wait after a change before looking, so a burst of saves is one look. */
 const SETTLE = 1500
@@ -58,7 +59,9 @@ async function readPending(core: CoreClient, failed: Set<string>, stopped: () =>
       if (stopped()) return
       try {
         const img = await core.noteFile(f.id)
-        const text = await readText(new Blob([fromBase64(img.dataBase64)], { type: img.mime }))
+        const blob = new Blob([fromBase64(img.dataBase64)], { type: img.mime })
+        // The reader takes pixels: a sketch is drawn onto white first.
+        const text = await readText(img.mime === SVG_MIME ? await rasterize(blob) : blob)
         await core.setNoteFileText(f.id, text)
         // A shown image keeps its query; this one now has text to offer.
         void queryClient.invalidateQueries({ queryKey: ["notes", "file", f.id] })

@@ -4,15 +4,15 @@
 import type { ImportFile, NoteFile, NoteFileData } from "./types"
 
 export const NOTE_FILE = "note-file:"
-const MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"])
+const MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"])
 const MAX = 10 * 1024 * 1024
 const now = () => Math.floor(Date.now() / 1000)
 
-export const mimeExt = (mime: string) => ({ "image/png": "png", "image/webp": "webp", "image/gif": "gif" })[mime] ?? "jpg"
+export const mimeExt = (mime: string) => ({ "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/svg+xml": "svg" })[mime] ?? "jpg"
 
 export function extMime(name: string): string | null {
   const ext = name.split(".").pop()?.toLowerCase() ?? ""
-  return ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext] ?? null
+  return ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", svg: "image/svg+xml" } as Record<string, string>)[ext] ?? null
 }
 
 /** The ids a note's Markdown points at, once each. */
@@ -42,6 +42,8 @@ export function createDemoFiles(isLocked: (noteId: string) => boolean, unlocked:
     add(noteId: string, mime: string, dataBase64: string, width: number | null, height: number | null): NoteFile {
       const m = mime.trim().toLowerCase()
       if (!MIMES.has(m)) throw new Error("notes take JPEG, PNG, WebP, and GIF images")
+      // The core keeps only sketches as the app draws them (ADR-0046); the demo refuses the obvious rest.
+      if (m === "image/svg+xml" && /<script|\son\w+=|href|url\(|<!DOCTYPE|<foreignObject/i.test(atob(dataBase64))) throw new Error("that isn't a sketch Mailbird can keep")
       if (!dataBase64) throw new Error("that image is empty")
       if (sizeOf(dataBase64) > MAX) throw new Error("that image is over 10 MB")
       if (isLocked(noteId) && !unlocked()) throw new Error("Locked notes are locked. Enter your passphrase to add images.")

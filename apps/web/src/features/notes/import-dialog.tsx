@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getCoreClient } from "@/core/client"
 import type { ImportFile, ImportReport } from "@/core/types"
+import { toBase64 } from "@/lib/base64"
 import { prepareImage } from "@/lib/image"
 
 const TEXT = /\.(md|markdown|txt|json|html)$/i
-const IMAGE = /\.(jpe?g|png|webp|gif)$/i
+const IMAGE = /\.(jpe?g|png|webp|gif|svg)$/i
 /** Bigger "notes" are almost certainly not notes; skip reading them. */
 const MAX_BYTES = 2_000_000
 /** What one import call carries, so a big vault goes in several (ADR-0044). */
@@ -46,8 +47,9 @@ async function read(list: FileList): Promise<ImportFile[][]> {
   const prepared = async (f: File) => {
     if (!ready.has(f)) {
       // One that won't open (HEIC, say) is left out; the report counts it.
-      const img = await prepareImage(f).catch(() => null)
-      ready.set(f, img && { path: pathOf(f), contents: "", dataBase64: img.dataBase64 })
+      // Sketches (SVG) go as they are; the core keeps only ones the app drew (ADR-0046).
+      const data = /\.svg$/i.test(f.name) ? toBase64(new Uint8Array(await f.arrayBuffer())) : (await prepareImage(f).catch(() => null))?.dataBase64
+      ready.set(f, data ? { path: pathOf(f), contents: "", dataBase64: data } : null)
     }
     return ready.get(f) ?? null
   }

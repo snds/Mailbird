@@ -30,7 +30,7 @@ export function Mark({ icon, label, shortcut, pressed, onPressedChange }: { icon
 const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"
 
 /** `notes` adds what notes need beyond mail: headings, checklists, and code. */
-export function FormatBar({ editor, notes = false, onAddImage, onScan }: { editor: Editor; notes?: boolean; onAddImage?: () => void; onScan?: () => void }) {
+export function FormatBar({ editor, notes = false, onAddImage, onScan, onSketch }: { editor: Editor; notes?: boolean; onAddImage?: () => void; onScan?: () => void; onSketch?: () => void }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -119,6 +119,7 @@ export function FormatBar({ editor, notes = false, onAddImage, onScan }: { edito
             <Mark icon="add_link" label="Link to a note" pressed={false} onPressedChange={() => chain().insertContent("[[").run()} />
             {onAddImage && <Mark icon="add_photo_alternate" label="Add image" pressed={false} onPressedChange={onAddImage} />}
             {onScan && <Mark icon="document_scanner" label="Scan a document" pressed={false} onPressedChange={onScan} />}
+            {onSketch && <Mark icon="draw" label="Sketch" pressed={false} onPressedChange={onSketch} />}
             <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
           </>
         )}

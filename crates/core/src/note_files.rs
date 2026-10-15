@@ -11,6 +11,7 @@ use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::notes_lock::{NotesKey, open, seal};
+use crate::sketch::{SVG, check_sketch};
 use crate::store::Store;
 use crate::{Error, Result, now};
 
@@ -62,8 +63,9 @@ fn text_aad(id: &str) -> String {
 
 /// How notes link to their images in Markdown.
 pub const NOTE_FILE_SCHEME: &str = "note-file:";
-/// Images the editor can show; anything else is refused at the door.
-const MIMES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/gif"];
+/// Images the editor can show; anything else is refused at the door. A
+/// sketch (SVG) must also pass [`check_sketch`] (ADR-0046).
+const MIMES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/gif", SVG];
 /// The app resizes photos before they get here; this stops anything huge.
 pub const MAX_NOTE_FILE: usize = 10 * 1024 * 1024;
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
@@ -107,6 +109,7 @@ pub fn mime_ext(mime: &str) -> &'static str {
         "image/png" => "png",
         "image/webp" => "webp",
         "image/gif" => "gif",
+        SVG => "svg",
         _ => "jpg",
     }
 }
@@ -119,6 +122,7 @@ pub(crate) fn ext_mime(name: &str) -> Option<&'static str> {
         "png" => "image/png",
         "webp" => "image/webp",
         "gif" => "image/gif",
+        "svg" => SVG,
         _ => return None,
     })
 }
@@ -131,6 +135,7 @@ pub(crate) fn sniff_mime(data: &[u8]) -> Option<&'static str> {
         [0x89, b'P', b'N', b'G', ..] => "image/png",
         [b'G', b'I', b'F', b'8', ..] => "image/gif",
         [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => "image/webp",
+        d if d.trim_ascii_start().starts_with(b"<svg") || d.trim_ascii_start().starts_with(b"<?xml") => SVG,
         _ => return None,
     })
 }
@@ -200,6 +205,9 @@ impl Store {
         if data.len() > MAX_NOTE_FILE {
             return Err(Error::Invalid("that image is over 10 MB".into()));
         }
+        if mime == SVG {
+            check_sketch(&data)?;
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let locked = self.note_locked(note_id)?;
         let (stored, sealed) = match (locked, key) {
@@ -244,6 +252,10 @@ impl Store {
             (true, Some(k)) => (open(k, id, &B64.encode(&data))?, text.map(|t| open_text(k, id, &t)).transpose()?),
             (true, None) => return Err(Error::Invalid("Locked notes are locked. Enter your passphrase to see this image.".into())),
         };
+        // Checked again on the way out: a sealed sketch from another device is first readable here.
+        if mime == SVG {
+            check_sketch(&plain)?;
+        }
         Ok(NoteFileData { id: id.to_string(), mime, data_base64: B64.encode(plain), text })
     }
 
@@ -332,6 +344,9 @@ impl Store {
         let data = B64.decode(raw_base64).map_err(|_| Error::Invalid("that image is damaged".into()))?;
         if data.len() > MAX_NOTE_FILE + 64 {
             return Err(Error::Invalid("that image is over 10 MB".into()));
+        }
+        if f.mime == SVG && !f.sealed {
+            check_sketch(&data)?;
         }
         self.db.execute(
             "INSERT INTO note_files (id, note_id, mime, data, sealed, width, height, created, updated, text) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -477,5 +492,27 @@ mod tests {
         other.set_note_file_text(&g.id, "", None).unwrap();
         assert!(other.note_files_without_text(10).unwrap().is_empty());
         assert_eq!(clip(&"é".repeat(MAX_TEXT + 5)).chars().count(), MAX_TEXT);
+    }
+
+    #[test]
+    fn sketches_are_svg_the_app_drew_and_nothing_else() {
+        let s = Store::open_in_memory().unwrap();
+        let n = note(&s);
+        let good = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700"><metadata id="mailbird-sketch">{"v":1}</metadata><path d="M0 0L10 10Z" fill="#111111"/></svg>"##;
+        let f = s.add_note_file(&n, "image/svg+xml", &B64.encode(good), Some(1000), Some(700), None).unwrap();
+        assert_eq!(mime_ext(&f.mime), "svg");
+        assert_eq!(sniff_mime(format!("  {good}").as_bytes()), Some("image/svg+xml"));
+        let bad = r#"<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>"#;
+        assert!(s.add_note_file(&n, "image/svg+xml", &B64.encode(bad), None, None, None).is_err(), "scripts are refused");
+        // From another device: refused unsealed, and a sealed one is checked once opened.
+        let mut rec = s.note_file_info(&f.id).unwrap();
+        rec.id = "other".into();
+        rec.updated += 1;
+        assert!(s.put_note_file(&rec, &B64.encode(bad)).is_err());
+        rec.sealed = true;
+        let k = s.set_notes_passphrase(None, "correct horse", None).unwrap();
+        let sealed = crate::notes_lock::seal(&k, "other", bad.as_bytes()).unwrap();
+        s.put_note_file(&rec, &sealed).unwrap();
+        assert!(s.note_file("other", Some(&k)).is_err(), "a sealed bad sketch won't open either");
     }
 }
