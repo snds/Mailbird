@@ -5,9 +5,9 @@ import { Icon } from "@/components/icon"
 import { ListRow, SearchField } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useNotes, useNoteTags } from "@/core/queries"
+import { useNoteAction, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
 import { shortTime } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
@@ -32,6 +32,8 @@ export function NotesView() {
   const { data: notes = [], isPending } = useNotes({ search: query || null, tag, archived })
   const { data: tags = [] } = useNoteTags()
   const sync = useSyncStatus()
+  const { data: prefs } = useNotesPrefs()
+  const setPrefs = useNoteAction((c, sortChecked: boolean) => c.setNotesPrefs({ sortChecked }))
 
   const pinned = notes.filter((n) => n.pinned)
   const rest = notes.filter((n) => !n.pinned)
@@ -93,6 +95,10 @@ export function NotesView() {
                   <DropdownMenuItem onClick={() => setRelayOpen(true)}>
                     <Icon name="sync" /> Sync between devices…
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem checked={prefs?.sortChecked ?? true} onCheckedChange={(on) => setPrefs.mutate(on)}>
+                    <Icon name="checklist" /> Move checked items down
+                  </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </PaneHeader>

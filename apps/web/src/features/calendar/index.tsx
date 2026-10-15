@@ -22,6 +22,7 @@ import { parseQuickAdd, quickToInput } from "./quick-add"
 import { BookingLinks } from "./booking-links"
 import { InterestingCalendarsButton } from "./interesting"
 import { SecondZonePicker } from "./second-zone"
+import { TasksPanel } from "./tasks"
 import { occurrenceKey } from "./layout"
 import { TimeGrid } from "./time-grid"
 
@@ -82,7 +83,7 @@ function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) {
   )
 }
 
-function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
+function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection>; onOpen: (eventId: string, start: number) => void }) {
   const { data: accounts = [] } = useAccounts()
   const toggle = usePimAction((c, { id, hidden }: { id: string; hidden: boolean }) => c.setCollectionHidden(id, hidden))
   // Added holidays and moon phases get their own group, after the rest.
@@ -101,6 +102,7 @@ function CalendarList({ calendars }: { calendars: Map<string, Collection> }) {
           </span>
         </p>
       ))}
+      <TasksPanel onOpen={onOpen} />
       {groups.map((g) => (
         <section key={g ?? "local"} aria-label={name(g)}>
           <h3 className="pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{name(g)}</h3>
@@ -205,6 +207,11 @@ export function CalendarView() {
     openEditor({ initial: { start: `${dateInput(at)}T${timeInput(at)}`, end: `${dateInput(end)}T${timeInput(end)}` } })
   }
   const selectedKey = selected ? occurrenceKey(selected) : null
+  const openEvent = (eventId: string, start: number) => {
+    setListOpen(false)
+    setFocus(startOfDay(fromSecs(start)))
+    setSelected({ eventId, start })
+  }
 
   const detail = selected && (
     <EventDetailPane key={selectedKey} eventId={selected.eventId} start={selected.start} calendars={calendars} onDeleted={() => setSelected(null)} />
@@ -218,7 +225,7 @@ export function CalendarView() {
         </header>
         <QuickAdd calendars={calendars} />
         <MiniMonth month={month} onMonth={setMonth} selected={focus} onPick={pick} busy={busy} />
-        <CalendarList calendars={calendars} />
+        <CalendarList calendars={calendars} onOpen={openEvent} />
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col bg-surface-canvas md:bg-background">
@@ -315,7 +322,7 @@ export function CalendarView() {
         <SheetContent side="bottom" className="max-h-[80dvh] pb-[env(safe-area-inset-bottom)]">
           <SheetTitle className="px-4 pt-4">Calendars</SheetTitle>
           <div className="overflow-y-auto pt-2">
-            <CalendarList calendars={calendars} />
+            <CalendarList calendars={calendars} onOpen={openEvent} />
           </div>
         </SheetContent>
       </Sheet>

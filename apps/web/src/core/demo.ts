@@ -382,6 +382,11 @@ export function createDemoClient(): CoreClient {
       if (l.kind === "contact") return noteLinks.contact(l.key)?.id ?? null
       return state.messages.find((m) => m.messageId === l.key || `local:${m.threadId}` === l.key)?.threadId ?? null
     },
+    eventByUid: (uid) => {
+      const id = noteLinks.eventByUid(uid)
+      const e = id ? noteLinks.event(id) : null
+      return e && { id: e.id, title: e.title, start: e.start, end: e.end }
+    },
     byName: (kind, name) => {
       if (kind === "event") {
         const e = noteLinks.eventByTitle(name)

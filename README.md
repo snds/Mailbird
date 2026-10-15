@@ -95,6 +95,7 @@ If a component uses a Lucide icon that isn't mapped yet, the script stops. Add t
 | **15 · One action grammar** ✅ | Configurable swipes (short and long, each way) from one shared action vocabulary, saved in the core so every device agrees; a Shortcuts and gestures list on ?, ⌘K, and Settings ([ADR-0025](docs/decisions/0025-one-action-grammar.md)) |
 | **16 · Scheduling links** ✅ | Booking links whose public page (served by the web gateway) shows only your free times; a booking lands in your calendar and invites the booker from mail-account calendars ([ADR-0026](docs/decisions/0026-scheduling-links.md)) |
 | **17 · Faces and sources** ✅ | Contact photos (resized on the device, synced in the vCard), a source badge on every row, "Also in" links to the same person in other address books, and contact photos as sender faces in mail ([ADR-0027](docs/decisions/0027-faces-and-sources.md)) |
+| **18 · Tasks on the calendar** ✅ | Checklist items from every note listed beside the calendar, planned into free time as linked blocks, checked off from either side; checked items move down their list ([ADR-0028](docs/decisions/0028-tasks-on-the-calendar.md)) |
 
 ## License
 

@@ -353,7 +353,7 @@ pub(crate) fn title_and_snippet(markdown: &str) -> (String, String) {
 }
 
 /// One line of Markdown as plain text.
-fn plain_line(line: &str) -> String {
+pub(crate) fn plain_line(line: &str) -> String {
     let mut l = line.trim();
     if l.starts_with("```") || l.chars().all(|c| matches!(c, '-' | '*' | '_' | '=' | ' ')) {
         return String::new();

@@ -673,6 +673,30 @@ export interface NoteLink {
   target?: string | null
 }
 
+/** How checklists behave in notes (ADR-0028). */
+export interface NotesPrefs {
+  /** Checking an item moves it below the unchecked ones. */
+  sortChecked: boolean
+}
+
+/** A checklist item in a note (ADR-0028). */
+export interface NoteTask {
+  noteId: string
+  noteTitle: string
+  /** Its place among the note's checklist items, from 0, in document order. */
+  index: number
+  text: string
+  done: boolean
+  /** The calendar block it was planned as, if any. */
+  planned: PlannedTask | null
+}
+
+export interface PlannedTask {
+  eventId: string
+  start: number
+  end: number | null
+}
+
 export interface NoteSummary {
   id: string
   /** The first line, without Markdown marks. */

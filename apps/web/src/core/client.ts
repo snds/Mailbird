@@ -55,6 +55,8 @@ import type {
   NoteQuery,
   NoteRecord,
   NoteSummary,
+  NoteTask,
+  NotesPrefs,
   NoteTarget,
   RelayConfig,
   TagCount,
@@ -239,6 +241,10 @@ export interface CoreClient {
   deleteNote(id: string): Promise<void>
   restoreNote(id: string): Promise<void>
   noteTags(): Promise<TagCount[]>
+  /** Checklist items across notes; done ones only with `done`. */
+  noteTasks(done?: boolean): Promise<NoteTask[]>
+  notesPrefs(): Promise<NotesPrefs>
+  setNotesPrefs(prefs: NotesPrefs): Promise<NotesPrefs>
   /** The link to put on a note for something on this device. */
   noteLinkFor(target: NoteTarget): Promise<NoteLink | null>
   importNotes(files: ImportFile[]): Promise<ImportReport>
@@ -373,6 +379,9 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     deleteNote: (id) => call("delete_note", { id }),
     restoreNote: (id) => call("restore_note", { id }),
     noteTags: () => call("note_tags"),
+    noteTasks: (done) => call("note_tasks", { done: done ?? false }),
+    notesPrefs: () => call("notes_prefs"),
+    setNotesPrefs: (prefs) => call("set_notes_prefs", { prefs }),
     noteLinkFor: (target) => call("note_link_for", { target }),
     importNotes: (files) => call("import_notes", { files }),
     noteRecords: () => call("note_records"),
