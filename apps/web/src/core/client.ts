@@ -51,6 +51,7 @@ import type {
   Invite,
   InviteResponse,
   NoteDetail,
+  NoteGraph,
   OAuthClientInfo,
   OAuthIssuer,
   PushSettings,
@@ -261,6 +262,8 @@ export interface CoreClient {
   getNote(id: string): Promise<NoteDetail>
   /** Notes that link here with `[[title]]` (ADR-0034). */
   noteBacklinks(id: string): Promise<NoteSummary[]>
+  /** The notes a list would show, as a map with their links (ADR-0053). */
+  noteGraph(query: NoteQuery): Promise<NoteGraph>
   /** Notes that link to a title, except one: what a rename updates (ADR-0035). */
   notesLinkingTo(title: string, except: string | null): Promise<NoteSummary[]>
   /** The note a `[[title]]` link opens, if any. */
@@ -445,6 +448,7 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     listNotes: (query) => call("list_notes", { query }),
     getNote: (id) => call("get_note", { id }),
     noteBacklinks: (id) => call("note_backlinks", { id }),
+    noteGraph: (query) => call("note_graph", { query }),
     findNote: (title) => call("find_note", { title }),
     notesLinkingTo: (title, except) => call("notes_linking_to", { title, except }),
     // The desktop writes a folder into Downloads.

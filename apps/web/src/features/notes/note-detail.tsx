@@ -2,11 +2,11 @@ import { useQueryClient } from "@tanstack/react-query"
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
-import { useUi, type Jump } from "@/app/ui-store"
-import { Icon, type IconName, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger, IconButton } from "@unicron/ui"
+import { useUi } from "@/app/ui-store"
+import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger, IconButton } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLockedNote, useNote, useNoteAction, useNoteBacklinks, useNotesLock, useNoteTags } from "@/core/queries"
-import type { NoteLink, NoteLinkKind, NoteMeta } from "@/core/types"
+import type { NoteLink, NoteMeta } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { longTime, reminderLabel } from "@/lib/time"
 
@@ -20,9 +20,8 @@ import { NoteColorMenu } from "./note-color-menu"
 import { RemindMenu } from "./remind-menu"
 import { NoteEditor } from "./note-editor"
 import { renameLinks } from "./rename-links"
+import { LINK_ICON, useOpenLink } from "./use-open-link"
 
-const LINK_ICON: Record<NoteLinkKind, IconName> = { event: "event", contact: "person", thread: "mail" }
-const LINK_JUMP: Record<NoteLinkKind, Jump["kind"]> = { event: "event", contact: "contact", thread: "thread" }
 
 export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boolean; onClosed: () => void }) {
   const { data: note, error, isPending } = useNote(id)
@@ -30,7 +29,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   const setMeta = useNoteAction((c, meta: NoteMeta) => c.setNoteMeta(id, meta))
   const remove = useNoteAction<void>((c) => c.deleteNote(id))
   const restore = useNoteAction<void>((c) => c.restoreNote(id))
-  const jumpTo = useUi((s) => s.jumpTo)
+  const open = useOpenLink()
   const [meta, setLocal] = useState<NoteMeta | null>(null)
   const [picking, setPicking] = useState(false)
   const markdownRef = useRef<string | null>(null)
@@ -124,17 +123,6 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
       await remove.mutateAsync()
       onClosed()
       toast("Note deleted", { duration: 6000, action: { label: "Undo", onClick: () => void restore.mutateAsync() } })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
-    }
-  }
-  // Events open on their next occurrence's day; conversations bring their row.
-  const open = async (kind: NoteLinkKind, target: string) => {
-    try {
-      const core = await getCoreClient()
-      if (kind === "event") jumpTo({ kind: "event", id: target, start: (await core.getEvent(target)).start })
-      else if (kind === "thread") jumpTo({ kind: "thread", id: target, row: (await core.getThread(target)).at(-1) })
-      else jumpTo({ kind: LINK_JUMP[kind], id: target })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
     }

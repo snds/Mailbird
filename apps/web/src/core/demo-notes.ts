@@ -8,7 +8,7 @@ import { downloadNotes } from "@/lib/download"
 import type { CoreEvent } from "./client"
 import { createDemoFiles, type Media, mediaOf, mimeExt, NOTE_FILE, noteFileIds, sampleSwatches, takeImages } from "./demo-note-files"
 import { NOTE_COLORS } from "./types"
-import type { ImportFile, ImportReport, NoteDetail, NoteFile, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
+import type { ImportFile, ImportReport, NoteDetail, NoteFile, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteGraph, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
 
 interface DemoNote extends NoteRecord {
   markdown: string
@@ -252,24 +252,58 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
   }
   const bump = (x: DemoNote) => (x.updated = Math.max(now(), x.updated + 1))
 
+  const list = (q: NoteQuery): NoteSummary[] => {
+    let linkKey: NoteLink | null = null
+    if (q.linked) {
+      linkKey = links.linkFor(q.linked)
+      if (!linkKey) return []
+    }
+    const folder = q.folder ? folders.find((f) => f.id === q.folder) : null
+    if (q.folder && !folder) throw new Error("that folder was deleted")
+    const out = notes
+      .filter((x) => !x.deleted && x.archived === !!q.archived)
+      .filter((x) => !folder || inFolder(x, folder))
+      .filter((x) => !q.search?.trim() || matches(x, q.search))
+      .filter((x) => !q.tag || x.tags.some((g) => g.toLowerCase() === q.tag!.toLowerCase()))
+      .filter((x) => !linkKey || x.links.some((l) => l.kind === linkKey.kind && l.key === linkKey.key))
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated - a.updated)
+      .map(summary)
+    return out
+  }
+
   return {
-    listNotes: async (q: NoteQuery) => {
-      let linkKey: NoteLink | null = null
-      if (q.linked) {
-        linkKey = links.linkFor(q.linked)
-        if (!linkKey) return later([])
+    listNotes: async (q: NoteQuery) => later(list(q)),
+    // The map (ADR-0053), as the core builds it: links resolve the way
+    // following them would, and show only when both ends are listed.
+    noteGraph: async (q: NoteQuery) => {
+      const shown = list(q)
+      const ids = new Set(shown.map((n) => n.id))
+      const byTitle = new Map<string, string>()
+      for (const x of notes.filter((x) => !x.deleted).sort((a, b) => b.updated - a.updated)) {
+        const t = titleAndSnippet(x.markdown)[0].trim().toLowerCase()
+        if (!byTitle.has(t)) byTitle.set(t, x.id)
       }
-      const folder = q.folder ? folders.find((f) => f.id === q.folder) : null
-      if (q.folder && !folder) throw new Error("that folder was deleted")
-      const out = notes
-        .filter((x) => !x.deleted && x.archived === !!q.archived)
-        .filter((x) => !folder || inFolder(x, folder))
-        .filter((x) => !q.search?.trim() || matches(x, q.search))
-        .filter((x) => !q.tag || x.tags.some((g) => g.toLowerCase() === q.tag!.toLowerCase()))
-        .filter((x) => !linkKey || x.links.some((l) => l.kind === linkKey.kind && l.key === linkKey.key))
-        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated - a.updated)
-        .map(summary)
-      return later(out)
+      const edges: NoteGraph["links"] = []
+      const seen = new Set<string>()
+      for (const n of shown) {
+        const x = find(n.id)
+        if (x.locked) continue
+        for (const w of wikilinks(x.markdown)) {
+          const to = byTitle.get(w.trim().toLowerCase())
+          if (!to || to === n.id || !ids.has(to) || seen.has(`${n.id} ${to}`)) continue
+          seen.add(`${n.id} ${to}`)
+          edges.push({ from: n.id, to })
+        }
+      }
+      const items: NoteGraph["items"] = []
+      for (const n of shown) {
+        for (const l of n.links) {
+          const i = items.find((i) => i.kind === l.kind && i.key === l.key)
+          if (!i) items.push({ ...l, notes: [n.id] })
+          else if (!i.notes.includes(n.id)) i.notes.push(n.id)
+        }
+      }
+      return later({ notes: shown, links: edges, items })
     },
     getNote: async (id: string) => later(detail(find(id))),
     // Connected notes (ADR-0034), as the core does them.

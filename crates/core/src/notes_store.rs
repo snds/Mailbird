@@ -123,6 +123,36 @@ pub struct ExportedNote {
     pub data_base64: Option<String>,
 }
 
+/// Notes as a map (ADR-0053): every note a list would show, the `[[links]]`
+/// between them, and the events, people, and conversations they link to.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteGraph {
+    pub notes: Vec<NoteSummary>,
+    /// Note → note, by id: `[[Title]]` in `from` opens `to`. One per pair and
+    /// direction; a note's links to itself are left out.
+    pub links: Vec<NoteGraphLink>,
+    /// What the notes link to, once each, however many notes share it.
+    pub items: Vec<NoteGraphItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteGraphLink {
+    pub from: String,
+    pub to: String,
+}
+
+/// An event, contact, or conversation on the map, and the notes that link to it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteGraphItem {
+    #[serde(flatten)]
+    pub link: NoteLink,
+    /// Note ids, in the order of `notes`.
+    pub notes: Vec<String>,
+}
+
 /// A title as a file name: characters no file system allows become spaces.
 fn file_stem(title: &str) -> String {
     let cleaned: String = title.chars().map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '#' | '^' | '[' | ']') || c.is_control() { ' ' } else { c }).collect();
@@ -176,6 +206,44 @@ impl Store {
             return Ok(None);
         }
         Ok(self.db.query_row("SELECT id FROM notes WHERE deleted = 0 AND title = ?1 COLLATE NOCASE ORDER BY updated DESC LIMIT 1", [title], |r| r.get(0)).optional()?)
+    }
+
+    /// The notes `q` lists, as a map (ADR-0053). A `[[link]]` goes where
+    /// following it would ([`Store::find_note`]: the most recently changed
+    /// note with that title), and only shows when both ends are on the map.
+    pub fn note_graph(&self, q: &NoteQuery) -> Result<NoteGraph> {
+        let notes = self.notes(q)?;
+        let shown: std::collections::HashSet<&str> = notes.iter().map(|n| n.id.as_str()).collect();
+        // Titles across every note, so a link resolves the same as when it's followed.
+        let mut by_title: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut st = self.db.prepare("SELECT id, title FROM notes WHERE deleted = 0 ORDER BY updated DESC, rowid DESC")?;
+        for row in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            let (id, title) = row?;
+            by_title.entry(title.trim().to_lowercase()).or_insert(id);
+        }
+        let mut body = self.db.prepare("SELECT body FROM notes WHERE id = ?1 AND instr(body, '[[') > 0")?;
+        let mut links = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for n in &notes {
+            let Some(text) = body.query_row([&n.id], |r| r.get::<_, String>(0)).optional()? else { continue };
+            for (title, _) in wikilinks(&text) {
+                let Some(to) = by_title.get(&title.trim().to_lowercase()) else { continue };
+                if to != &n.id && shown.contains(to.as_str()) && seen.insert((n.id.clone(), to.clone())) {
+                    links.push(NoteGraphLink { from: n.id.clone(), to: to.clone() });
+                }
+            }
+        }
+        let mut items: Vec<NoteGraphItem> = Vec::new();
+        for n in &notes {
+            for l in &n.links {
+                match items.iter_mut().find(|i| i.link.kind == l.kind && i.link.key == l.key) {
+                    Some(i) if !i.notes.contains(&n.id) => i.notes.push(n.id.clone()),
+                    Some(_) => {}
+                    None => items.push(NoteGraphItem { link: l.clone(), notes: vec![n.id.clone()] }),
+                }
+            }
+        }
+        Ok(NoteGraph { notes, links, items })
     }
 
     /// Every note as a Markdown file with front matter, as Obsidian and
@@ -980,6 +1048,50 @@ mod tests {
         assert_eq!(s.find_note("Trip#Day 1").unwrap(), Some(trip));
         assert_eq!(s.find_note("Nowhere").unwrap(), None);
         assert_eq!(s.find_note("  ").unwrap(), None);
+    }
+
+    #[test]
+    fn the_graph_joins_notes_by_their_links() {
+        let s = store();
+        let mk = |md: &str| note(&s, md).summary.id;
+        let trip = mk("# Trip\n\nPlans.");
+        let packing = mk("# Packing\n\nFor the [[trip]], twice: [[Trip|again]]. And [[Packing]] itself, and [[Nowhere]].");
+        let budget = mk("# Budget\n\nSee [[Trip]] and [[Packing]].");
+        let lone = mk("# Lone\n\nNo links.");
+        let old = mk("# Old\n\nSee [[Trip]].");
+        s.set_note_meta(&old, &NoteMeta { archived: Some(true), ..Default::default() }).unwrap();
+
+        let g = s.note_graph(&NoteQuery::default()).unwrap();
+        let ids: Vec<&str> = g.notes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids.len(), 4, "archived notes stay off the main map");
+        assert!(ids.contains(&lone.as_str()), "a note without links is still on the map");
+        let mut pairs: Vec<(&str, &str)> = g.links.iter().map(|l| (l.from.as_str(), l.to.as_str())).collect();
+        pairs.sort();
+        let mut want = vec![(packing.as_str(), trip.as_str()), (budget.as_str(), trip.as_str()), (budget.as_str(), packing.as_str())];
+        want.sort();
+        assert_eq!(pairs, want, "one per pair, not itself, not to missing notes");
+
+        let filtered = s.note_graph(&NoteQuery { search: Some("budget".into()), ..Default::default() }).unwrap();
+        assert_eq!(filtered.notes.len(), 1);
+        assert!(filtered.links.is_empty(), "both ends must be on the map");
+        let archive = s.note_graph(&NoteQuery { archived: true, ..Default::default() }).unwrap();
+        assert_eq!(archive.notes.len(), 1);
+        assert!(archive.links.is_empty());
+    }
+
+    #[test]
+    fn the_graph_shares_linked_items_between_notes() {
+        let s = store();
+        let link = |key: &str, label: &str| NoteLink { kind: NoteLinkKind::Contact, key: key.into(), label: label.into(), target: None };
+        let mk = |md: &str, links: Vec<NoteLink>| s.create_note(&NoteInput { markdown: md.into(), links, ..Default::default() }).unwrap().summary.id;
+        let a = mk("# Call notes", vec![link("ana", "Ana"), link("bo", "Bo")]);
+        let b = mk("# Follow-up", vec![link("ana", "Ana")]);
+        let g = s.note_graph(&NoteQuery::default()).unwrap();
+        assert_eq!(g.items.len(), 2, "one item per target, however many notes share it");
+        let ana = g.items.iter().find(|i| i.link.key == "ana").unwrap();
+        assert_eq!(ana.notes.len(), 2);
+        assert!(ana.notes.contains(&a) && ana.notes.contains(&b));
+        assert_eq!(ana.link.target, None, "not on this device: shown, but nothing to open");
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { type ReactNode, useDeferredValue, useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
+import { Icon, Button, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Toggle, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 import { ListRow, SearchField } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { getCoreClient } from "@/core/client"
@@ -16,6 +16,7 @@ import { ImportDialog } from "./import-dialog"
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
 import { NoteDetailPane } from "./note-detail"
 import { NoteFolderChips } from "./note-folders"
+import { NoteGraphView } from "./note-graph"
 import { NoteCover } from "./note-image"
 import { RelayDialog } from "./relay-dialog"
 import { useSyncStatus } from "./sync"
@@ -37,12 +38,15 @@ export function NotesView() {
   const [importing, setImporting] = useState(false)
   const [relayOpen, setRelayOpen] = useState(false)
   const query = useDeferredValue(search.trim())
-  const { data: notes = [], isPending } = useNotes({ search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) })
+  const noteQuery = { search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
+  const { data: notes = [], isPending } = useNotes(noteQuery)
   const { data: tags = [] } = useNoteTags()
   const sync = useSyncStatus()
   const { data: prefs } = useNotesPrefs()
   const setPrefs = useNoteAction((c, change: Partial<NotesPrefs>) => c.setNotesPrefs({ sortChecked: true, ...prefs, ...change }))
   const grid = prefs?.grid ?? false
+  // The map (ADR-0053): the same notes, laid out by their links.
+  const graph = prefs?.graph ?? false
 
   // Every note as a Markdown file with front matter, as Obsidian reads them (ADR-0034).
   const exportAll = async () => {
@@ -116,7 +120,7 @@ export function NotesView() {
   return (
     <>
       <MasterDetail
-        listFills={grid}
+        listFills={grid || graph}
         detailTint={(() => {
           const c = notes.find((n) => n.id === selected?.id)?.color
           return c ? noteFill(c) : undefined
@@ -127,14 +131,14 @@ export function NotesView() {
         header={
           <>
             <PaneHeader title={archived ? "Archive" : (activeFolder?.name ?? "Notes")}>
-              <Tooltip>
-                <TooltipTrigger
-                  render={<Button variant="ghost" size="icon" aria-label={grid ? "Show as a list" : "Show as cards"} onClick={() => setPrefs.mutate({ grid: !grid })} />}
-                >
+              <IconButton label="Map of notes" render={<Toggle pressed={graph} onPressedChange={(on) => setPrefs.mutate({ graph: on })} />}>
+                <Icon name="hub" className="size-5" />
+              </IconButton>
+              {!graph && (
+                <IconButton label={grid ? "Show as a list" : "Show as cards"} onClick={() => setPrefs.mutate({ grid: !grid })}>
                   <Icon name={grid ? "view_agenda" : "grid_view"} className="size-5" />
-                </TooltipTrigger>
-                <TooltipContent>{grid ? "Show as a list" : "Show as cards"}</TooltipContent>
-              </Tooltip>
+                </IconButton>
+              )}
               <Tooltip>
                 <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={SYNC_LABEL[sync.status]} onClick={() => setRelayOpen(true)} />}>
                   <Icon
@@ -194,23 +198,27 @@ export function NotesView() {
           </>
         }
         list={
-          <div role="list" aria-label="Notes" className={cn(grid && "px-3 pb-4")}>
-            {!isPending && notes.length === 0 && <p className="px-6 py-8 text-center text-sm text-muted-foreground">{empty}</p>}
-            {[
-              { label: "Due", notes: due, heading: true },
-              { label: "Pinned", notes: pinned, heading: true },
-              { label: due.length || pinned.length ? "Others" : "All notes", notes: rest, heading: due.length + pinned.length > 0 },
-            ]
-              .filter((s) => s.notes.length > 0)
-              .map((s, i) => (
-                <section key={s.label} aria-label={s.label}>
-                  {s.heading && <h3 className={cn("pb-1 text-xs font-semibold text-muted-foreground", i > 0 ? "pt-3" : "pt-1", grid ? "px-1" : "px-4")}>{s.label}</h3>}
-                  <Group grid={grid}>
-                    {s.notes.map((n) => (grid ? <NoteCard key={n.id} note={n} due={isDue(n)} selected={n.id === selected?.id} onOpen={() => open(n)} /> : row(n)))}
-                  </Group>
-                </section>
-              ))}
-          </div>
+          graph ? (
+            <NoteGraphView query={noteQuery} selectedId={selected?.id ?? null} onOpenNote={(id) => setSelected({ id, fresh: false })} />
+          ) : (
+            <div role="list" aria-label="Notes" className={cn(grid && "px-3 pb-4")}>
+              {!isPending && notes.length === 0 && <p className="px-6 py-8 text-center text-sm text-muted-foreground">{empty}</p>}
+              {[
+                { label: "Due", notes: due, heading: true },
+                { label: "Pinned", notes: pinned, heading: true },
+                { label: due.length || pinned.length ? "Others" : "All notes", notes: rest, heading: due.length + pinned.length > 0 },
+              ]
+                .filter((s) => s.notes.length > 0)
+                .map((s, i) => (
+                  <section key={s.label} aria-label={s.label}>
+                    {s.heading && <h3 className={cn("pb-1 text-xs font-semibold text-muted-foreground", i > 0 ? "pt-3" : "pt-1", grid ? "px-1" : "px-4")}>{s.label}</h3>}
+                    <Group grid={grid}>
+                      {s.notes.map((n) => (grid ? <NoteCard key={n.id} note={n} due={isDue(n)} selected={n.id === selected?.id} onOpen={() => open(n)} /> : row(n)))}
+                    </Group>
+                  </section>
+                ))}
+            </div>
+          )
         }
         detail={selected && <NoteDetailPane key={selected.id} id={selected.id} fresh={selected.fresh} onClosed={() => setSelected(null)} />}
       />

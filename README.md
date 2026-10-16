@@ -115,6 +115,7 @@ Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratche
 | **38 · Design-system cleanup** ✅ | What the first scan found went upstream as named choices (an icon button that's always labelled, pill chips, quiet ghost buttons, icon tones, a full-screen phone sheet, and dialog actions that become a row of icon buttons on phones); menus are frosted glass everywhere, every filter row shares one chip recipe, and the ratchet is lower ([ADR-0048](docs/decisions/0048-design-system-cleanup.md)) |
 | **39 · The identity holds the notes key** ✅ | Locked notes keep their passphrase, and the key is also kept in the shared identity, so it can open them instead (and its recovery kit can reach them); on desktop, with nothing moved or resealed ([ADR-0051](docs/decisions/0051-identity-holds-the-notes-key.md)) |
 | **40 · The design system as packages** ✅ | unicron now arrives as versioned releases (`@unicron/ui` 0.2.0, `@unicron/tokens` 0.1.0) instead of a submodule: a plain clone builds, and moving to a new release is a version change; nothing on screen changed ([ADR-0052](docs/decisions/0052-unicron-packages.md)) |
+| **41 · Map of notes** ✅ | An optional map of your notes and their `[[links]]`, with the events, people, and conversations they link to, so notes about the same meeting or person meet there; it follows search, tags, and folders, holds still once laid out, and works by keyboard and screen reader ([ADR-0053](docs/decisions/0053-map-of-notes.md)) |
 
 ## License
 
