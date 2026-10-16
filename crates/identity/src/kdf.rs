@@ -38,6 +38,16 @@ impl Argon2Params {
             && self.p_cost >= floor.p_cost
     }
 
+    /// The higher of two parameter sets, taken per parameter. Used so a
+    /// recalibration can only raise what is already there.
+    pub fn max(&self, other: &Argon2Params) -> Argon2Params {
+        Argon2Params {
+            m_cost_kib: self.m_cost_kib.max(other.m_cost_kib),
+            t_cost: self.t_cost.max(other.t_cost),
+            p_cost: self.p_cost.max(other.p_cost),
+        }
+    }
+
     /// Refuses parameters below this build's floor.
     pub fn check_floor(&self) -> Result<()> {
         if self.meets(&floor()) {
@@ -118,7 +128,14 @@ pub fn floor() -> Argon2Params {
 /// pass count stops at ten, so a slow device gets a slow unlock rather than
 /// a weak one.
 pub fn calibrate(target: Duration) -> Result<Argon2Params> {
-    let mut params = floor();
+    calibrate_at_least(&floor(), target)
+}
+
+/// Like [`calibrate`], but never returns anything below `previous` in any
+/// parameter: calibration may only raise what a profile already carries
+/// (04-security §4, D26). Starts from the higher of `previous` and the floor.
+pub fn calibrate_at_least(previous: &Argon2Params, target: Duration) -> Result<Argon2Params> {
+    let mut params = previous.max(&floor());
     loop {
         let started = Instant::now();
         stretch(b"calibration", b"calibration-salt", &params)?;

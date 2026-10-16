@@ -103,7 +103,17 @@
         },
         {
           "const": "hpke-x25519-mlkem768",
-          "description": "Public-key wrap to a peer (hybrid X25519 + ML-KEM-768). Reserved: this\ncrate does not yet write it.",
+          "description": "Public-key wrap to a peer through HPKE (RFC 9180) with hybrid\nX25519 + ML-KEM-768. Reserved: this crate does not yet write it.",
+          "type": "string"
+        },
+        {
+          "const": "x-wing-xchacha20poly1305",
+          "description": "Public-key wrap to a device's receiving key: X-Wing (hybrid\nX25519 + ML-KEM-768) encapsulates a shared secret, HKDF-SHA-512 turns\nit into a key, and that key seals the payload with XChaCha20-Poly1305.\nThe encapsulation is in `enc`. This is what the local handshake\nwrites (spec §6 step 3). It is not RFC 9180 HPKE, so it has its own\nname.",
+          "type": "string"
+        },
+        {
+          "const": "x25519-xchacha20poly1305",
+          "description": "The same construction over plain X25519, for a build without ML-KEM.\nNot post-quantum.",
           "type": "string"
         }
       ]
@@ -127,6 +137,10 @@
       "$ref": "#/$defs/WrapAlg",
       "description": "The cipher."
     },
+    "app": {
+      "description": "The app an `app-data` or `crown-jewel` key belongs to; empty for the\nother purposes (D28). Also sealed into the associated data, so an\nenvelope cannot be re-labelled to another app.",
+      "type": "string"
+    },
     "ciphertext": {
       "description": "The sealed key and its tag.",
       "items": {
@@ -140,6 +154,19 @@
     "created_at": {
       "$ref": "#/$defs/Timestamp",
       "description": "When it was wrapped."
+    },
+    "enc": {
+      "description": "For a public-key wrap: the KEM encapsulation the recipient's\nreceiving key opens to get the sealing key. Absent on symmetric wraps.",
+      "items": {
+        "format": "uint8",
+        "maximum": 255,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
     },
     "key_id": {
       "$ref": "#/$defs/Id",

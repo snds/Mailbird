@@ -4,9 +4,13 @@
 
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 
+use crate::handshake::wire::Message;
 use crate::records::{Aad, Consent, Device, KeyEnvelope, Manifest, Persona, Profile};
+use crate::store::Head;
 
-/// Every schema the crate ships: file stem and schema.
+/// Every schema the crate ships: file stem and schema. The records, the
+/// envelope's associated data, the head a device remembers, and the
+/// handshake's wire messages.
 pub fn schemas() -> Vec<(&'static str, Schema)> {
     fn one<T: JsonSchema>(name: &'static str) -> (&'static str, Schema) {
         (name, SchemaGenerator::default().into_root_schema_for::<T>())
@@ -19,6 +23,8 @@ pub fn schemas() -> Vec<(&'static str, Schema)> {
         one::<Consent>("consent"),
         one::<Manifest>("manifest"),
         one::<Aad>("aad"),
+        one::<Head>("head"),
+        one::<Message>("handshake-message"),
     ]
 }
 

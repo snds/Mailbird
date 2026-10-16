@@ -27,6 +27,10 @@ schemars = { version = "1.2", features = ["derive", "uuid1"] }
 thiserror = "2.0"
 serde_json = "1.0"
 
+[target.'cfg(unix)'.dependencies]
+# Peer credentials on the handshake socket (SO_PEERCRED / getpeereid) and the caller's uid.
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3"
 serde_json = "1.0"
