@@ -84,7 +84,12 @@ pub fn run() {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
             pim_app::secrets::install(Box::new(Keychain));
-            let state = AppState::open(&app.path().app_data_dir()?)?;
+            let data_dir = app.path().app_data_dir()?;
+            let state = AppState::open(&data_dir)?;
+            // The locked-notes key is also kept in the shared identity (ADR-0050).
+            if let Some(config) = pim_app::identity::desktop_config(&data_dir) {
+                state.enable_identity(config);
+            }
             let handle = AppHandle::new(TauriHost(app.handle().clone()));
             app.manage(state.clone());
             app.manage(handle.clone());

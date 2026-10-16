@@ -31,6 +31,20 @@ const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STA
 #[derive(Clone)]
 pub struct NotesKey([u8; 32]);
 
+impl NotesKey {
+    /// The key's bytes, to wrap under the shared identity (ADR-0050). The
+    /// caller must not store them in the clear.
+    pub fn expose_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// A key unwrapped from the identity. Check it with
+    /// [`Store::verify_notes_key`] before trusting it.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        NotesKey(bytes)
+    }
+}
+
 impl std::fmt::Debug for NotesKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("NotesKey(…)")
@@ -46,6 +60,10 @@ pub struct NotesLockInfo {
     /// Filled in by the app: whether the key is in memory right now.
     #[serde(default)]
     pub unlocked: bool,
+    /// Filled in by the app: whether this device can try the shared identity
+    /// instead of the passphrase (ADR-0050).
+    #[serde(default)]
+    pub identity: bool,
 }
 
 /// The passphrase's salt and check value. It syncs with the notes (in the
@@ -125,7 +143,7 @@ impl Store {
 
     pub fn notes_lock(&self) -> Result<NotesLockInfo> {
         let s = self.lock_setting()?;
-        Ok(NotesLockInfo { set: s.is_some(), hint: s.and_then(|s| s.hint), unlocked: false })
+        Ok(NotesLockInfo { set: s.is_some(), hint: s.and_then(|s| s.hint), unlocked: false, identity: false })
     }
 
     /// The key for this passphrase, if it's the right one.
@@ -226,6 +244,12 @@ impl Store {
         Ok(())
     }
 
+    /// Whether `key` opens this device's locked notes: a key unwrapped from
+    /// the identity may be one an older passphrase made (ADR-0050).
+    pub fn verify_notes_key(&self, key: &NotesKey) -> Result<()> {
+        self.unlock_notes_check(key)
+    }
+
     /// A key from another session still opens this device's notes.
     fn unlock_notes_check(&self, key: &NotesKey) -> Result<()> {
         let Some(s) = self.lock_setting()? else { return Err(Error::Invalid("set a passphrase for locked notes first".into())) };
@@ -253,6 +277,26 @@ mod tests {
         assert!(open(&k, "n2", &s).is_err(), "moved to another note, it doesn't open");
         assert!(open(&derive("wrong horse", b"salt-salt-salt-1", 1_000), "n1", &s).is_err());
         assert_ne!(seal(&k, "n1", b"secret").unwrap(), s, "a fresh nonce every time");
+    }
+
+    #[test]
+    fn a_key_from_its_bytes_opens_only_while_its_passphrase_stands() {
+        let s = store();
+        let n = s.create_note(&NoteInput { markdown: "PIN\n\n4321".into(), ..Default::default() }).unwrap().summary.id;
+        let key = s.set_notes_passphrase(None, "lighthouse", None).unwrap();
+        s.lock_note(&n, &key).unwrap();
+
+        // What the identity hands back (ADR-0050) is the same key.
+        let back = NotesKey::from_bytes(*key.expose_bytes());
+        s.verify_notes_key(&back).unwrap();
+        assert!(s.open_locked_note(&n, &back).unwrap().markdown.contains("4321"));
+        assert!(s.verify_notes_key(&NotesKey::from_bytes([7; 32])).is_err(), "any other key is refused");
+
+        // A changed passphrase reseals everything: the old wrapped key opens nothing.
+        let newer = s.set_notes_passphrase(Some(&key), "harbour light", None).unwrap();
+        assert!(s.verify_notes_key(&back).is_err());
+        s.verify_notes_key(&newer).unwrap();
+        assert!(format!("{back:?}") == "NotesKey(…)", "never printed");
     }
 
     #[test]

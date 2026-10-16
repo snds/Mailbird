@@ -171,6 +171,7 @@ pub const COMMANDS: &[&str] = &[
     "notes_lock",
     "set_notes_passphrase",
     "unlock_notes",
+    "unlock_notes_with_identity",
     "lock_notes_now",
     "lock_note",
     "remove_note_lock",
@@ -630,6 +631,7 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             args!(args, passphrase: String);
             Output::json(notes_commands::unlock_notes(state, passphrase)?)
         }
+        "unlock_notes_with_identity" => Output::json(notes_commands::unlock_notes_with_identity(state)?),
         "lock_notes_now" => Output::json(notes_commands::lock_notes_now(app.clone(), state)?),
         "lock_note" => {
             args!(args, id: String);

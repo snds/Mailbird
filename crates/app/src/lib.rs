@@ -12,6 +12,7 @@ pub mod compose_commands;
 pub mod sender_commands;
 pub mod dispatch;
 pub mod host;
+pub mod identity;
 pub mod notes_commands;
 pub mod oauth_commands;
 pub mod pim_commands;
@@ -47,6 +48,8 @@ pub struct AppState {
     /// The key that opens locked notes while they're unlocked, and when it
     /// was last used (ADR-0043). Only ever in memory.
     pub notes_key: Mutex<Option<(pim_core::NotesKey, std::time::Instant)>>,
+    /// The shared identity, when the host turns it on (ADR-0050).
+    pub identity: Mutex<Option<identity::IdentityConfig>>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -67,7 +70,16 @@ impl AppState {
             oauth_cancel: Mutex::new(None),
             missed_reminders: Mutex::new(Vec::new()),
             notes_key: Mutex::new(None),
+            identity: Mutex::new(None),
         }))
+    }
+
+    /// Keeps the locked-notes key in the shared identity too (ADR-0050).
+    /// Hosts on a person's own device call this; a server doesn't.
+    pub fn enable_identity(&self, config: identity::IdentityConfig) {
+        if let Ok(mut slot) = self.identity.lock() {
+            *slot = Some(config);
+        }
     }
 }
 
