@@ -289,7 +289,7 @@ export interface CoreClient {
   notesLock(): Promise<NotesLockInfo>
   setNotesPassphrase(passphrase: string, hint: string | null): Promise<NotesLockInfo>
   unlockNotes(passphrase: string): Promise<NotesLockInfo>
-  /** Opens locked notes with the shared identity instead of the passphrase (ADR-0050). */
+  /** Opens locked notes with the shared identity instead of the passphrase (ADR-0051). */
   unlockNotesWithIdentity(): Promise<NotesLockInfo>
   lockNotesNow(): Promise<void>
   lockNote(id: string): Promise<void>

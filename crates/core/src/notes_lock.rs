@@ -32,7 +32,7 @@ const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STA
 pub struct NotesKey([u8; 32]);
 
 impl NotesKey {
-    /// The key's bytes, to wrap under the shared identity (ADR-0050). The
+    /// The key's bytes, to wrap under the shared identity (ADR-0051). The
     /// caller must not store them in the clear.
     pub fn expose_bytes(&self) -> &[u8; 32] {
         &self.0
@@ -61,7 +61,7 @@ pub struct NotesLockInfo {
     #[serde(default)]
     pub unlocked: bool,
     /// Filled in by the app: whether this device can try the shared identity
-    /// instead of the passphrase (ADR-0050).
+    /// instead of the passphrase (ADR-0051).
     #[serde(default)]
     pub identity: bool,
 }
@@ -245,7 +245,7 @@ impl Store {
     }
 
     /// Whether `key` opens this device's locked notes: a key unwrapped from
-    /// the identity may be one an older passphrase made (ADR-0050).
+    /// the identity may be one an older passphrase made (ADR-0051).
     pub fn verify_notes_key(&self, key: &NotesKey) -> Result<()> {
         self.unlock_notes_check(key)
     }
@@ -286,7 +286,7 @@ mod tests {
         let key = s.set_notes_passphrase(None, "lighthouse", None).unwrap();
         s.lock_note(&n, &key).unwrap();
 
-        // What the identity hands back (ADR-0050) is the same key.
+        // What the identity hands back (ADR-0051) is the same key.
         let back = NotesKey::from_bytes(*key.expose_bytes());
         s.verify_notes_key(&back).unwrap();
         assert!(s.open_locked_note(&n, &back).unwrap().markdown.contains("4321"));

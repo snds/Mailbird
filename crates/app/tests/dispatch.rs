@@ -451,7 +451,7 @@ async fn swipe_action_commands() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// ADR-0050: the locked-notes key is wrapped under the shared identity on
+/// ADR-0051: the locked-notes key is wrapped under the shared identity on
 /// every passphrase unlock or change, and the identity can open the notes
 /// in its place. The passphrase keeps working; the notes never move.
 #[tokio::test]
@@ -469,7 +469,10 @@ async fn the_identity_holds_the_notes_key() {
     let app_keys = || {
         let ks = FileKeystore::open_or_create(&config.keystore).unwrap();
         let Attach::Attached(id) = Identity::attach(&config.root, APP_ID, &ks, None).unwrap() else { panic!("no identity") };
-        id.envelopes().filter(|e| e.purpose == Purpose::AppData).count()
+        let p = id.personas().next().unwrap().persona_id;
+        let n = id.app_keys(p, APP_ID).len();
+        assert_eq!(n, id.envelopes().filter(|e| e.purpose == Purpose::AppData).count(), "every app key is labelled Mailbird's");
+        n
     };
 
     let note = json_of(dispatch(&app, &state, "create_note", json!({ "input": { "markdown": "Safe\ncombination 12-34-56" } })).await.unwrap());
@@ -490,15 +493,16 @@ async fn the_identity_holds_the_notes_key() {
     dispatch(&app, &state, "unlock_notes", json!({ "passphrase": "lighthouse" })).await.unwrap();
     assert_eq!(app_keys(), 1);
 
-    // A new passphrase reseals the notes with a new key: that one is wrapped too.
+    // A new passphrase reseals the notes with a new key: that one is wrapped,
+    // and the old wrap (a key that opens nothing now) is retired.
     dispatch(&app, &state, "set_notes_passphrase", json!({ "passphrase": "harbour light", "hint": null })).await.unwrap();
-    assert_eq!(app_keys(), 2);
+    assert_eq!(app_keys(), 1);
     dispatch(&app, &state, "lock_notes_now", Value::Null).await.unwrap();
     dispatch(&app, &state, "unlock_notes_with_identity", Value::Null).await.unwrap();
     assert!(json_of(dispatch(&app, &state, "open_locked_note", json!({ "id": note["id"] })).await.unwrap())["markdown"].as_str().unwrap().contains("12-34-56"));
 
     // A device restored from the recovery kit remembers no envelope: the
-    // identity is searched, the old key is passed over, the current one opens.
+    // identity's Mailbird keys are searched, and the current one opens.
     state.store.lock().unwrap().set_setting("notes.identity", None).unwrap();
     dispatch(&app, &state, "lock_notes_now", Value::Null).await.unwrap();
     assert_eq!(json_of(dispatch(&app, &state, "notes_lock", Value::Null).await.unwrap())["identity"], true, "an identity is here, so it's offered");

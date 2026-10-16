@@ -86,7 +86,7 @@ pub fn run() {
             pim_app::secrets::install(Box::new(Keychain));
             let data_dir = app.path().app_data_dir()?;
             let state = AppState::open(&data_dir)?;
-            // The locked-notes key is also kept in the shared identity (ADR-0050).
+            // The locked-notes key is also kept in the shared identity (ADR-0051).
             if let Some(config) = pim_app::identity::desktop_config(&data_dir) {
                 state.enable_identity(config);
             }

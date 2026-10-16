@@ -240,7 +240,7 @@ pub fn unlock_notes(state: &Shared, passphrase: String) -> Res<pim_core::NotesLo
     notes_lock(state)
 }
 
-/// Opens locked notes with the shared identity instead of the passphrase (ADR-0050).
+/// Opens locked notes with the shared identity instead of the passphrase (ADR-0051).
 pub fn unlock_notes_with_identity(state: &Shared) -> Res<pim_core::NotesLockInfo> {
     let k = crate::identity::unlock_with_identity(state)?;
     keep(state, k);

@@ -193,7 +193,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
   const AUTO_LOCK = 10 * 60
   let lock: { passphrase: string; hint: string | null; updated: number } | null = null
   let unlockedAt: number | null = null
-  // The passphrase the demo's "identity" was last given (ADR-0050): the real
+  // The passphrase the demo's "identity" was last given (ADR-0051): the real
   // app wraps the key under the shared identity on every passphrase unlock.
   let identityHolds: string | null = null
   const lockInfo = (): NotesLockInfo => ({ set: !!lock, hint: lock?.hint ?? null, unlocked: unlockedAt !== null && now() - unlockedAt < AUTO_LOCK, identity: !!lock && identityHolds !== null })

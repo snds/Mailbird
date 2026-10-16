@@ -963,7 +963,7 @@ export interface NotesLockInfo {
   set: boolean
   hint: string | null
   unlocked: boolean
-  /** This device can open locked notes with the shared identity instead (ADR-0050). */
+  /** This device can open locked notes with the shared identity instead (ADR-0051). */
   identity?: boolean
 }
 

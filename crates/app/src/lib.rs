@@ -48,7 +48,7 @@ pub struct AppState {
     /// The key that opens locked notes while they're unlocked, and when it
     /// was last used (ADR-0043). Only ever in memory.
     pub notes_key: Mutex<Option<(pim_core::NotesKey, std::time::Instant)>>,
-    /// The shared identity, when the host turns it on (ADR-0050).
+    /// The shared identity, when the host turns it on (ADR-0051).
     pub identity: Mutex<Option<identity::IdentityConfig>>,
 }
 
@@ -74,7 +74,7 @@ impl AppState {
         }))
     }
 
-    /// Keeps the locked-notes key in the shared identity too (ADR-0050).
+    /// Keeps the locked-notes key in the shared identity too (ADR-0051).
     /// Hosts on a person's own device call this; a server doesn't.
     pub fn enable_identity(&self, config: identity::IdentityConfig) {
         if let Ok(mut slot) = self.identity.lock() {

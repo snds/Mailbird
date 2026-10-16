@@ -150,7 +150,7 @@ function UnlockFields({ info, onDone, onCancel }: { info: NotesLockInfo; onDone?
       setBusy(false)
     }
   }
-  // The shared identity holds the same key (ADR-0050): a way in without typing.
+  // The shared identity holds the same key (ADR-0051): a way in without typing.
   const withIdentity = async () => {
     setBusy(true)
     try {
