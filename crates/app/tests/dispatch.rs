@@ -115,6 +115,8 @@ async fn every_command_routes_and_works() {
     assert!(dispatch(&app, &state, "unlock_notes", json!({ "passphrase": "nope-nope" })).await.is_err());
     let info = json_of(dispatch(&app, &state, "unlock_notes", json!({ "passphrase": "lighthouse" })).await.unwrap());
     assert_eq!(info["unlocked"], true);
+    assert_eq!(info["identity"], false, "with no identity turned on, the passphrase is the only way in, as before");
+    assert!(dispatch(&app, &state, "unlock_notes_with_identity", Value::Null).await.err().unwrap().contains("doesn't use a shared identity"));
     assert_eq!(json_of(dispatch(&app, &state, "open_locked_note", json!({ "id": secret["id"] })).await.unwrap())["markdown"], "Codes\nalarm 4242");
     assert!(json_of(dispatch(&app, &state, "notes_lock_setting", Value::Null).await.unwrap())["check"].is_string());
     // Images in notes (ADR-0044): a locked note's image is sealed, and opens while unlocked.
@@ -447,4 +449,73 @@ async fn swipe_action_commands() {
     assert_eq!(call("key_bindings", Value::Null).await.unwrap(), swapped);
     assert_eq!(call("set_key_bindings", json!({ "bindings": {} })).await.unwrap(), keys);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// ADR-0051: the locked-notes key is wrapped under the shared identity on
+/// every passphrase unlock or change, and the identity can open the notes
+/// in its place. The passphrase keeps working; the notes never move.
+#[tokio::test]
+async fn the_identity_holds_the_notes_key() {
+    use ecosystem_identity::{Attach, FileKeystore, Identity, Purpose};
+    use pim_app::identity::{APP_ID, IdentityConfig};
+
+    pim_app::secrets::install(Box::new(Memory::default()));
+    let dir = std::env::temp_dir().join(format!("pim-app-identity-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let state = AppState::open(&dir.join("data")).unwrap();
+    let config = IdentityConfig { root: dir.join("identity"), keystore: dir.join("data/identity-device.key"), device_name: "Test laptop".into() };
+    state.enable_identity(config.clone());
+    let app = AppHandle::new(TestHost::default());
+    let app_keys = || {
+        let ks = FileKeystore::open_or_create(&config.keystore).unwrap();
+        let Attach::Attached(id) = Identity::attach(&config.root, APP_ID, &ks, None).unwrap() else { panic!("no identity") };
+        let p = id.personas().next().unwrap().persona_id;
+        let n = id.app_keys(p, APP_ID).len();
+        assert_eq!(n, id.envelopes().filter(|e| e.purpose == Purpose::AppData).count(), "every app key is labelled Mailbird's");
+        n
+    };
+
+    let note = json_of(dispatch(&app, &state, "create_note", json!({ "input": { "markdown": "Safe\ncombination 12-34-56" } })).await.unwrap());
+    assert!(!config.root.exists(), "nothing is created before the notes have a passphrase");
+    dispatch(&app, &state, "set_notes_passphrase", json!({ "passphrase": "lighthouse", "hint": null })).await.unwrap();
+    assert_eq!(app_keys(), 1, "setting the passphrase made the identity and wrapped the key under it");
+    dispatch(&app, &state, "lock_note", json!({ "id": note["id"] })).await.unwrap();
+    dispatch(&app, &state, "lock_notes_now", Value::Null).await.unwrap();
+
+    let info = json_of(dispatch(&app, &state, "notes_lock", Value::Null).await.unwrap());
+    assert_eq!((info["unlocked"].as_bool(), info["identity"].as_bool()), (Some(false), Some(true)));
+    let info = json_of(dispatch(&app, &state, "unlock_notes_with_identity", Value::Null).await.unwrap());
+    assert_eq!(info["unlocked"], true, "the identity opened the notes, no passphrase");
+    assert_eq!(json_of(dispatch(&app, &state, "open_locked_note", json!({ "id": note["id"] })).await.unwrap())["markdown"], "Safe\ncombination 12-34-56");
+
+    // The passphrase still works, and unlocking with it again adds nothing.
+    dispatch(&app, &state, "lock_notes_now", Value::Null).await.unwrap();
+    dispatch(&app, &state, "unlock_notes", json!({ "passphrase": "lighthouse" })).await.unwrap();
+    assert_eq!(app_keys(), 1);
+
+    // A new passphrase reseals the notes with a new key: that one is wrapped,
+    // and the old wrap (a key that opens nothing now) is retired.
+    dispatch(&app, &state, "set_notes_passphrase", json!({ "passphrase": "harbour light", "hint": null })).await.unwrap();
+    assert_eq!(app_keys(), 1);
+    dispatch(&app, &state, "lock_notes_now", Value::Null).await.unwrap();
+    dispatch(&app, &state, "unlock_notes_with_identity", Value::Null).await.unwrap();
+    assert!(json_of(dispatch(&app, &state, "open_locked_note", json!({ "id": note["id"] })).await.unwrap())["markdown"].as_str().unwrap().contains("12-34-56"));
+
+    // A device restored from the recovery kit remembers no envelope: the
+    // identity's Mailbird keys are searched, and the current one opens.
+    state.store.lock().unwrap().set_setting("notes.identity", None).unwrap();
+    dispatch(&app, &state, "lock_notes_now", Value::Null).await.unwrap();
+    assert_eq!(json_of(dispatch(&app, &state, "notes_lock", Value::Null).await.unwrap())["identity"], true, "an identity is here, so it's offered");
+    dispatch(&app, &state, "unlock_notes_with_identity", Value::Null).await.unwrap();
+    assert!(state.store.lock().unwrap().setting("notes.identity").unwrap().is_some(), "and the envelope is remembered again");
+
+    // An identity that can't be reached never stands in the passphrase's way.
+    let broken = AppState::open(&dir.join("broken")).unwrap();
+    std::fs::write(dir.join("not-a-dir"), b"x").unwrap();
+    broken.enable_identity(IdentityConfig { root: dir.join("not-a-dir/identity"), keystore: dir.join("broken/device.key"), device_name: "Broken".into() });
+    dispatch(&app, &broken, "set_notes_passphrase", json!({ "passphrase": "lighthouse", "hint": null })).await.unwrap();
+    dispatch(&app, &broken, "lock_notes_now", Value::Null).await.unwrap();
+    assert_eq!(json_of(dispatch(&app, &broken, "unlock_notes", json!({ "passphrase": "lighthouse" })).await.unwrap())["unlocked"], true);
+    assert!(dispatch(&app, &broken, "unlock_notes_with_identity", Value::Null).await.is_err());
+    let _ = std::fs::remove_dir_all(&dir);
 }

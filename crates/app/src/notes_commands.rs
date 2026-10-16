@@ -219,6 +219,7 @@ fn keep(state: &Shared, key: pim_core::NotesKey) {
 pub fn notes_lock(state: &Shared) -> Res<pim_core::NotesLockInfo> {
     let mut info = with_store(state, |s| s.notes_lock())?;
     info.unlocked = key(state).is_ok();
+    info.identity = info.set && crate::identity::available(state);
     Ok(info)
 }
 
@@ -226,6 +227,7 @@ pub fn notes_lock(state: &Shared) -> Res<pim_core::NotesLockInfo> {
 pub fn set_notes_passphrase(app: AppHandle, state: &Shared, passphrase: String, hint: Option<String>) -> Res<pim_core::NotesLockInfo> {
     let current = key(state).ok();
     let k = with_store(state, |s| s.set_notes_passphrase(current.as_ref(), &passphrase, hint.as_deref()))?;
+    crate::identity::link_quietly(state, &k);
     keep(state, k);
     changed(&app);
     notes_lock(state)
@@ -233,6 +235,14 @@ pub fn set_notes_passphrase(app: AppHandle, state: &Shared, passphrase: String, 
 
 pub fn unlock_notes(state: &Shared, passphrase: String) -> Res<pim_core::NotesLockInfo> {
     let k = with_store(state, |s| s.unlock_notes(&passphrase))?;
+    crate::identity::link_quietly(state, &k);
+    keep(state, k);
+    notes_lock(state)
+}
+
+/// Opens locked notes with the shared identity instead of the passphrase (ADR-0051).
+pub fn unlock_notes_with_identity(state: &Shared) -> Res<pim_core::NotesLockInfo> {
+    let k = crate::identity::unlock_with_identity(state)?;
     keep(state, k);
     notes_lock(state)
 }

@@ -193,7 +193,10 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
   const AUTO_LOCK = 10 * 60
   let lock: { passphrase: string; hint: string | null; updated: number } | null = null
   let unlockedAt: number | null = null
-  const lockInfo = (): NotesLockInfo => ({ set: !!lock, hint: lock?.hint ?? null, unlocked: unlockedAt !== null && now() - unlockedAt < AUTO_LOCK })
+  // The passphrase the demo's "identity" was last given (ADR-0051): the real
+  // app wraps the key under the shared identity on every passphrase unlock.
+  let identityHolds: string | null = null
+  const lockInfo = (): NotesLockInfo => ({ set: !!lock, hint: lock?.hint ?? null, unlocked: unlockedAt !== null && now() - unlockedAt < AUTO_LOCK, identity: !!lock && identityHolds !== null })
   const requireKey = () => {
     if (!lockInfo().unlocked) {
       unlockedAt = null
@@ -390,6 +393,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       if (h?.includes(passphrase)) throw new Error("the hint can't contain the passphrase")
       if (lock && !lockInfo().unlocked) throw new Error("unlock your notes first to change the passphrase")
       lock = { passphrase, hint: h, updated: now() }
+      identityHolds = passphrase
       unlockedAt = now()
       changed()
       return later(lockInfo())
@@ -397,6 +401,14 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     unlockNotes: async (passphrase: string) => {
       if (!lock) throw new Error("set a passphrase for locked notes first")
       if (passphrase !== lock.passphrase) throw new Error("that passphrase isn't right")
+      identityHolds = passphrase
+      unlockedAt = now()
+      return later(lockInfo())
+    },
+    unlockNotesWithIdentity: async () => {
+      if (!lock) throw new Error("set a passphrase for locked notes first")
+      if (identityHolds === null) throw new Error("there's no identity on this device yet: unlock with the passphrase once")
+      if (identityHolds !== lock.passphrase) throw new Error("your identity doesn't hold the key for these notes: unlock with the passphrase once")
       unlockedAt = now()
       return later(lockInfo())
     },

@@ -120,6 +120,7 @@ Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratche
 | **36 · Sketches** ✅ | Draw in a note with a pen (its pressure shapes the line), a finger, or a mouse: pens, see-through markers, an eraser, undo, and more room; sketches save as SVG you can edit again, sit on light paper in both themes, and the core keeps only SVG the app drew ([ADR-0046](docs/decisions/0046-sketches.md)) |
 | **37 · Shared design system** ✅ | Primitives and core tokens come from unicron, the system Mailbird shares with Synapse and Lockdown; nothing on screen changed, and `dsa` now measures how the app uses it ([ADR-0047](docs/decisions/0047-unicron.md)) |
 | **38 · Design-system cleanup** ✅ | What the first scan found went upstream as named choices (an icon button that's always labelled, pill chips, quiet ghost buttons, icon tones, a full-screen phone sheet, and dialog actions that become a row of icon buttons on phones); menus are frosted glass everywhere, every filter row shares one chip recipe, and the ratchet is lower ([ADR-0048](docs/decisions/0048-design-system-cleanup.md)) |
+| **39 · The identity holds the notes key** ✅ | Locked notes keep their passphrase, and the key is also kept in the shared identity, so it can open them instead (and its recovery kit can reach them); on desktop, with nothing moved or resealed ([ADR-0051](docs/decisions/0051-identity-holds-the-notes-key.md)) |
 
 ## License
 

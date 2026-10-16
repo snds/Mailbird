@@ -150,6 +150,19 @@ function UnlockFields({ info, onDone, onCancel }: { info: NotesLockInfo; onDone?
       setBusy(false)
     }
   }
+  // The shared identity holds the same key (ADR-0051): a way in without typing.
+  const withIdentity = async () => {
+    setBusy(true)
+    try {
+      await (await getCoreClient()).unlockNotesWithIdentity()
+      refresh()
+      onDone?.()
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <form className="flex w-full flex-col gap-3" onSubmit={(e) => (e.preventDefault(), void submit())}>
       <label className="flex flex-col gap-1 text-sm">
@@ -188,6 +201,11 @@ function UnlockFields({ info, onDone, onCancel }: { info: NotesLockInfo; onDone?
           <Icon name="lock_open" data-icon="inline-start" /> Unlock
         </Button>
       </div>
+      {info.identity && (
+        <Button type="button" variant="ghost-muted" disabled={busy} onClick={() => void withIdentity()}>
+          <Icon name="verified_user" data-icon="inline-start" /> Unlock with your identity
+        </Button>
+      )}
     </form>
   )
 }

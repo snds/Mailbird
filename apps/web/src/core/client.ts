@@ -289,6 +289,8 @@ export interface CoreClient {
   notesLock(): Promise<NotesLockInfo>
   setNotesPassphrase(passphrase: string, hint: string | null): Promise<NotesLockInfo>
   unlockNotes(passphrase: string): Promise<NotesLockInfo>
+  /** Opens locked notes with the shared identity instead of the passphrase (ADR-0051). */
+  unlockNotesWithIdentity(): Promise<NotesLockInfo>
   lockNotesNow(): Promise<void>
   lockNote(id: string): Promise<void>
   removeNoteLock(id: string): Promise<NoteDetail>
@@ -464,6 +466,7 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     notesLock: () => call("notes_lock"),
     setNotesPassphrase: (passphrase, hint) => call("set_notes_passphrase", { passphrase, hint }),
     unlockNotes: (passphrase) => call("unlock_notes", { passphrase }),
+    unlockNotesWithIdentity: () => call("unlock_notes_with_identity"),
     lockNotesNow: () => call("lock_notes_now"),
     lockNote: (id) => call("lock_note", { id }),
     removeNoteLock: (id) => call("remove_note_lock", { id }),
