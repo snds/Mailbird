@@ -35,9 +35,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p pim-core
-      # Identity crate (ADR-0049): records, envelopes, create/attach, and its conformance suite.
-      - run: cargo test -p ecosystem-identity
-      - run: cargo clippy -p ecosystem-identity --all-targets -- -D warnings
       # Push relay: API, JMAP watching, Outlook webhook, signed APNs/FCM pushes.
       - run: cargo test -p mailbird-push-relay
       - run: cargo clippy -p mailbird-push-relay --all-targets -- -D warnings

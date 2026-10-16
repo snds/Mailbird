@@ -1,8 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/identity", "crates/app", "apps/web/src-tauri", "apps/gateway", "tools/push-relay"]
+members = ["crates/core", "crates/app", "apps/web/src-tauri", "apps/gateway", "tools/push-relay"]
 # The shell needs platform WebView libraries; build the core alone with `cargo test -p pim-core`.
-default-members = ["crates/core", "crates/identity"]
+default-members = ["crates/core"]
 
 [workspace.package]
 edition = "2024"

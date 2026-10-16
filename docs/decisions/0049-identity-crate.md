@@ -1,6 +1,6 @@
 # ADR-0049 · The shared identity crate (`ecosystem-identity`)
 
-- **Status:** Proposed
+- **Status:** Accepted; the crate moved out on 2026-10-16 to [`snds/ecosystem-identity`](https://github.com/snds/ecosystem-identity) (Lockdown D34) and `crates/app` consumes it by pinned commit
 - **Date:** 2026-10-16
 - **Builds on:** [ADR-0043](0043-locked-notes.md) (locked notes, Phase 33: the key this crate will take over)
 - **Decided elsewhere:** Lockdown decisions D10–D16 (`snds/lockdown` `docs/plan/decisions.md`) and the identity format spec (`docs/plan/01-identity.md`, v1.2). D10: any app can create the identity, and the first installed owns it until Lockdown adopts it. D11: the recovery kit belongs to the identity, not the app. D12: **Mailbird is the test-bed**: the crate is built in this repository first, then extracted. D13: personas are records, never flags. D15: the neutral identifier (`group.design.snds.identity`, `snds/identity`). D16: one Android signing key.
