@@ -17,7 +17,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | vite | Build | 8.3 | MIT | ✅ | v8 runs on Rolldown. |
 | typescript | Language | 6.0 (7.0 available) | Apache-2.0 | ✅ | TS 7 is the Go-native compiler. Upgrade once the tooling catches up. |
 | tailwindcss | Styling | 4.3 | MIT | ✅ | CSS-first config. All tokens live in `src/styles/tokens.css`. |
-| shadcn (CLI) | Component source | 4.21 | MIT | ✅ | Base UI base + Nova style. Icons swapped to Material Symbols by `tools/shadcn-material` (see [ADR-0003](decisions/0003-material-symbols.md)). |
+| shadcn (CLI) | Component source | 4.21 | MIT | ✅ | Base UI base + Nova style. Icons swapped to Material Symbols by unicron's `tools/shadcn-material` (see [ADR-0003](decisions/0003-material-symbols.md)). |
 | @base-ui/react | Headless primitives | 1.9 | MIT | ✅ | Replaces the deprecated `@base-ui-components/react`. |
 | material-symbols | Icon font | 0.48 | Apache-2.0 | ✅ | Variable font with FILL, wght, GRAD, and opsz axes. |
 | class-variance-authority, clsx, tailwind-merge | Variant plumbing | latest | MIT / Apache-2.0 | ✅ | Standard shadcn utilities. |
