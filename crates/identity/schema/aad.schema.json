@@ -39,6 +39,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What an envelope's associated data says: where the envelope belongs.\nCanonical CBOR of this is the AEAD's associated data (§4).",
   "properties": {
+    "app": {
+      "description": "The app an `app-data` or `crown-jewel` key belongs to (D28). Empty\nfor the other purposes, and then left out of the encoding, so\nenvelopes written before this field opens unchanged.",
+      "type": "string"
+    },
     "key_id": {
       "$ref": "#/$defs/Id",
       "description": "The key being wrapped."

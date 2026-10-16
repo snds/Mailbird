@@ -62,6 +62,11 @@ impl KemSecretKey {
     pub fn alg(&self) -> KemAlg {
         self.alg
     }
+
+    /// The seed, for re-deriving the public half. Use it at once.
+    pub(crate) fn seed(&self) -> &[u8; 32] {
+        self.seed.expose_secret()
+    }
 }
 
 impl fmt::Debug for KemSecretKey {

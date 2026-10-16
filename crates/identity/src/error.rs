@@ -67,6 +67,36 @@ pub enum Error {
     /// Password-stretching parameters below the signed floor were refused.
     #[error("the password-stretching settings ({0}) are weaker than the floor and were refused")]
     KdfBelowFloor(String),
+    /// Password-stretching parameters lower than the ones this device last
+    /// accepted were refused. They only ever rise (04-security §4, D26).
+    #[error(
+        "the password-stretching settings ({found}) are weaker than the ones this device last accepted ({remembered}); they only ever rise, so the store was refused"
+    )]
+    KdfLowered {
+        /// What the profile says now.
+        found: crate::kdf::Argon2Params,
+        /// What this device accepted last.
+        remembered: crate::kdf::Argon2Params,
+    },
+    /// The app on the other end of a local channel could not be shown to be
+    /// an ecosystem app. Nothing was shared with it.
+    #[error(
+        "the app on the other end of the local channel couldn't be verified as an ecosystem app ({0}); nothing was shared"
+    )]
+    PeerUntrusted(String),
+    /// The person was shown the new device and said no. Nothing was written.
+    #[error("the person declined to enrol the new device; nothing was written")]
+    Declined,
+    /// An enrolment request was seen before. It was refused.
+    #[error("this enrolment request was already used; it was refused")]
+    Replayed,
+    /// The local handshake did not finish: the other app sent something
+    /// unexpected, refused, or the channel closed.
+    #[error("the local handshake didn't finish: {0}")]
+    Handshake(String),
+    /// The other side of a local channel did not answer in time.
+    #[error("the other app didn't answer in time")]
+    Timeout,
     /// No identity exists at the root that was probed.
     #[error("no identity exists at {0}")]
     NoIdentity(String),
