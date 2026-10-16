@@ -30,11 +30,11 @@ const countryName = (code: string) => {
  * no feed to fetch (ADR-0024). The country your device's language suggests
  * comes first.
  */
-export function InterestingCalendarsButton() {
+export function InterestingCalendarsPicker() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button variant="ghost" size="sm" className="justify-start px-1 text-muted-foreground" onClick={() => setOpen(true)}>
+      <Button variant="ghost-muted" size="sm" className="justify-start px-1" onClick={() => setOpen(true)}>
         <Icon name="add" data-icon="inline-start" /> Add holidays and more
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>

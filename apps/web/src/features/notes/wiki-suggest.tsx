@@ -29,7 +29,7 @@ export function WikiSuggest({ editor, q, choices, active, onPick }: { editor: Ed
           className={cn("flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5", i === active && "bg-accent text-accent-foreground")}
           onClick={() => onPick(choice)}
         >
-          <Icon name={choice.isNew ? "note_add" : "description"} className="size-4 shrink-0 text-muted-foreground" />
+          <Icon name={choice.isNew ? "note_add" : "description"} tone="muted" className="size-4" />
           <span className="truncate">{choice.isNew ? `New note “${choice.title}”` : choice.title}</span>
         </div>
       ))}

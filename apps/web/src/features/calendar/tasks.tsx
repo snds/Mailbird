@@ -3,7 +3,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Icon, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useCollections, useNoteTasks, useNotesPrefs } from "@/core/queries"
 import type { NoteTask, TimeSlot } from "@/core/types"
@@ -66,7 +66,7 @@ export function TasksPanel({ onOpen }: { onOpen: (eventId: string, start: number
         </div>
       ))}
       {tasks.length > SHOWN && (
-        <Button variant="ghost" size="sm" className="justify-start px-1 text-muted-foreground" onClick={() => setAll(!all)}>
+        <Button variant="ghost-muted" size="sm" className="justify-start px-1" onClick={() => setAll(!all)}>
           {all ? "Show fewer" : `Show all ${tasks.length}`}
         </Button>
       )}
@@ -203,14 +203,14 @@ function PlanForm({ task, onDone, onOpen }: { task: NoteTask; onDone: () => void
           </NativeSelect>
         </label>
       </div>
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onDone}>
+      <DialogActions>
+        <DialogAction kind="cancel" type="button" onClick={onDone}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={busy || !writable.length}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={busy || !writable.length}>
           Plan it
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

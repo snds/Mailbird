@@ -54,7 +54,7 @@ function SenderRow({ sender: s, onForget }: { sender: Sender; onForget: (what: "
   const category = (c: Category) => CATEGORIES.find((x) => x.id === c)!.label
   return (
     <li className="flex items-center gap-3 px-3 py-2.5">
-      <Icon name={s.decision === "blocked" ? "block" : s.decision === "screened_out" ? "person_off" : "label"} className="size-5 text-muted-foreground" />
+      <Icon name={s.decision === "blocked" ? "block" : s.decision === "screened_out" ? "person_off" : "label"} tone="muted" className="size-5" />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium">{s.name || s.email}</span>
         <span className="truncate text-xs text-muted-foreground">

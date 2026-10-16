@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions } from "@unicron/ui"
 import { useMailAction } from "@/core/queries"
 import type { MessageDetail, Unsubscribe, UnsubscribeMethod } from "@/core/types"
 
@@ -21,7 +21,7 @@ const DONE: Record<UnsubscribeMethod, string> = {
 }
 
 /** Shown on mail from a list that says how to leave it (List-Unsubscribe). */
-export function UnsubscribeButton({ message, onArchive }: { message: MessageDetail; onArchive: () => void }) {
+export function UnsubscribeAction({ message, onArchive }: { message: MessageDetail; onArchive: () => void }) {
   const [open, setOpen] = useState(false)
   const unsubscribe = useMailAction<string>((c, id) => c.unsubscribe(id))
   const u = message.unsubscribe
@@ -43,11 +43,11 @@ export function UnsubscribeButton({ message, onArchive }: { message: MessageDeta
               {unsubscribe.error.message}
             </p>
           )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>
+          <DialogActions>
+            <DialogAction kind="cancel" onClick={() => setOpen(false)}>
               Cancel
-            </Button>
-            <Button
+            </DialogAction>
+            <DialogAction
               disabled={unsubscribe.isPending}
               onClick={() =>
                 unsubscribe.mutate(message.id, {
@@ -62,8 +62,8 @@ export function UnsubscribeButton({ message, onArchive }: { message: MessageDeta
               }
             >
               {unsubscribe.isPending ? "Unsubscribing…" : "Unsubscribe"}
-            </Button>
-          </DialogFooter>
+            </DialogAction>
+          </DialogActions>
         </DialogContent>
       </Dialog>
     </>

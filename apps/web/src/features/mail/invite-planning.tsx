@@ -26,7 +26,7 @@ export function Conflicts({ invite }: { invite: Invite }) {
   const [first, ...rest] = list
   return (
     <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400" role="note" data-slot="conflicts">
-      <Icon name="warning" className="mt-px size-3.5 shrink-0" />
+      <Icon name="warning" className="mt-px size-3.5" />
       <span>
         Clashes with <span className="font-medium">{first!.title || "(no title)"}</span> ({fmt.time(first!.start)}–{fmt.time(first!.end)})
         {rest.length > 0 && ` and ${rest.length} more`}

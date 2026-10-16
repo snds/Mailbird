@@ -76,8 +76,8 @@ export function NotesView() {
         onSelect={() => open(n)}
         title={
           <span className="flex items-center gap-1.5">
-            {n.pinned && <Icon name="keep" fill className="size-4 shrink-0 text-vertical-notes" label="Pinned" />}
-            {n.locked && <Icon name="lock" className="size-4 shrink-0 text-muted-foreground" />}
+            {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes" label="Pinned" />}
+            {n.locked && <Icon name="lock" tone="muted" className="size-4" />}
             {n.color && (
               <span
                 aria-hidden
@@ -179,10 +179,10 @@ export function NotesView() {
                   {tags.map((t) => (
                     <Button
                       key={t.tag}
-                      size="sm"
-                      variant={tag === t.tag ? "default" : "secondary"}
+                      size="xs"
+                      variant={tag === t.tag ? "secondary" : "ghost"}
                       aria-pressed={tag === t.tag}
-                      className="shrink-0 rounded-full"
+                      shape="pill"
                       onClick={() => setTag(tag === t.tag ? null : t.tag)}
                     >
                       #{t.tag}
@@ -249,8 +249,8 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
         {n.cover && !n.locked && <NoteCover id={n.cover} className="-mx-3 -mt-3 mb-1 w-[calc(100%+1.5rem)] max-w-none rounded-t-[calc(var(--c-note-card-radius)-1px)]" />}
         <span className="flex items-start gap-1.5">
           <span className={cn("min-w-0 flex-1 font-semibold break-words", !n.title && "text-muted-foreground")}>{n.title || "New note"}</span>
-          {n.locked && <Icon name="lock" className="size-4 shrink-0 text-foreground/60" label="Locked" />}
-          {n.pinned && <Icon name="keep" fill className="size-4 shrink-0 text-vertical-notes" label="Pinned" />}
+          {n.locked && <Icon name="lock" className="size-4 text-foreground/60" label="Locked" />}
+          {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes" label="Pinned" />}
         </span>
         {n.locked ? (
           <span className="text-sm text-foreground/60 italic">Locked</span>

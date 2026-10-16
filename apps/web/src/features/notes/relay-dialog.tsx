@@ -55,7 +55,7 @@ function RelayForm({ onDone }: { onDone: () => void }) {
 
       {relay && (
         <p className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm" role="status">
-          <Icon name={status.status === "error" ? "sync_problem" : "cloud_done"} className="size-4 shrink-0" />
+          <Icon name={status.status === "error" ? "sync_problem" : "cloud_done"} className="size-4" />
           {status.status === "synced" ? "Connected and up to date" : status.status === "error" ? status.error : "Connecting…"}
         </p>
       )}
@@ -71,7 +71,7 @@ function RelayForm({ onDone }: { onDone: () => void }) {
         <FieldDescription>Kept in your system keychain. Use the same token on each device.</FieldDescription>
       </Field>
       <p className="flex gap-2 text-xs text-muted-foreground">
-        <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+        <Icon name="info" className="mt-0.5 size-4" />
         The relay can read your notes: they're encrypted on the way, not end to end.
       </p>
 

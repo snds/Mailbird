@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useNotesLock } from "@/core/queries"
 import type { NotesLockInfo } from "@/core/types"
@@ -59,7 +59,7 @@ function SetForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => voi
         <DialogDescription>One passphrase opens every locked note, on all your devices.</DialogDescription>
       </DialogHeader>
       <p className="flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-        <Icon name="warning" className="mt-0.5 size-4 shrink-0 text-destructive" />
+        <Icon name="warning" tone="destructive" className="mt-0.5 size-4" />
         <span>If you forget it, your locked notes can't be opened. Nobody can reset it, Mailbird included.</span>
       </p>
       {/* Labels stay short; help and errors are descriptions, so a field's name is just its name. */}
@@ -106,14 +106,14 @@ function SetForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => voi
           {error}
         </p>
       )}
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
+      <DialogActions>
+        <DialogAction kind="cancel" type="button" onClick={onCancel}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={busy || !pass || !again}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={busy || !pass || !again}>
           Set passphrase
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }
@@ -175,7 +175,7 @@ function UnlockFields({ info, onDone, onCancel }: { info: NotesLockInfo; onDone?
       {hint && info.hint && <p className="text-sm text-muted-foreground">Hint: {info.hint}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {info.hint && !hint && (
-          <Button type="button" variant="ghost" size="sm" className="mr-auto text-muted-foreground" onClick={() => setHint(true)}>
+          <Button type="button" variant="ghost-muted" size="sm" className="mr-auto" onClick={() => setHint(true)}>
             Show hint
           </Button>
         )}
@@ -198,7 +198,7 @@ export function LockedPanel({ title }: { title: string }) {
   return (
     <section aria-label="Locked note" className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center gap-4 px-6 py-12 text-center">
       <span className="grid size-14 place-items-center rounded-full bg-muted">
-        <Icon name="lock" className="size-7 text-muted-foreground" />
+        <Icon name="lock" tone="muted" className="size-7" />
       </span>
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-semibold text-balance">{title || "Locked note"}</h2>

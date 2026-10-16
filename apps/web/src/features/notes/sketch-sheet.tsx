@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import { Icon, Button, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
+import { Icon, Button, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem, IconButton } from "@unicron/ui"
 import { hits, MARKER_COLORS, MAX_H, PEN_COLORS, SIZES, type Sketch, SKETCH_H, SKETCH_W, type Stroke, strokePath, strokeStyle } from "@/lib/sketch"
 import { cn } from "@/lib/utils"
 
@@ -175,9 +175,9 @@ function Drawing({ start, editing, onCancel, onDone }: { start: Sketch; editing:
           </>
         )}
         <span className="ml-auto flex items-center gap-0.5">
-          <ToolButton icon="undo" label="Undo" disabled={!past.length} onClick={undo} />
-          <ToolButton icon="redo" label="Redo" disabled={!future.length} onClick={redo} />
-          <ToolButton icon="delete_sweep" label="Clear" disabled={empty} onClick={() => commit({ ...sketch, strokes: [] })} />
+          <IconButton icon="undo" label="Undo" size="icon-sm" disabled={!past.length} onClick={undo} />
+          <IconButton icon="redo" label="Redo" size="icon-sm" disabled={!future.length} onClick={redo} />
+          <IconButton icon="delete_sweep" label="Clear" size="icon-sm" disabled={empty} onClick={() => commit({ ...sketch, strokes: [] })} />
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border bg-(--c-sketch-paper)">
@@ -212,13 +212,3 @@ function Drawing({ start, editing, onCancel, onDone }: { start: Sketch; editing:
   )
 }
 
-function ToolButton({ icon, label, disabled, onClick }: { icon: "undo" | "redo" | "delete_sweep"; label: string; disabled: boolean; onClick: () => void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label={label} disabled={disabled} onClick={onClick} />}>
-        <Icon name={icon} />
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
-}

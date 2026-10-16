@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions } from "@unicron/ui"
 import { useBookingLinks, useCollections, useCore, usePimAction } from "@/core/queries"
 import type { BookingLink, BookingLinkInput } from "@/core/types"
 
@@ -61,7 +61,7 @@ export function BookingLinks() {
               )}
             </div>
           ))}
-          <Button variant="ghost" size="sm" className="justify-start px-1 text-muted-foreground" onClick={() => setEditing({})}>
+          <Button variant="ghost-muted" size="sm" className="justify-start px-1" onClick={() => setEditing({})}>
             <Icon name="add" data-icon="inline-start" /> New booking link
           </Button>
           {core?.kind === "demo" && links.length > 0 && <p className="px-1 text-xs text-muted-foreground">In the demo, Preview shows the page. On a gateway you'd share the link.</p>}
@@ -177,19 +177,19 @@ function LinkForm({ link, onDone }: { link?: BookingLink; onDone: () => void }) 
         Note on the page
         <textarea className="min-h-16 w-full rounded-lg border bg-transparent px-2.5 py-2 text-sm dark:bg-input/30" value={note} onChange={(e) => setNote(e.target.value)} placeholder="On video; I'll send the link." />
       </label>
-      <DialogFooter className="flex-row items-center">
+      <DialogActions>
         {link && (
-          <Button type="button" variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={() => void del()}>
+          <DialogAction kind="destructive" type="button" onClick={() => void del()}>
             Delete link
-          </Button>
+          </DialogAction>
         )}
-        <Button type="button" variant="outline" onClick={onDone}>
+        <DialogAction kind="cancel" type="button" onClick={onDone}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={save.isPending}>
+        </DialogAction>
+        <DialogAction type="submit" disabled={save.isPending}>
           {link ? "Save" : "Add link"}
-        </Button>
-      </DialogFooter>
+        </DialogAction>
+      </DialogActions>
     </form>
   )
 }

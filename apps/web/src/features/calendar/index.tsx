@@ -17,7 +17,7 @@ import { MiniMonth } from "./mini-month"
 import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
 import { BookingLinks } from "./booking-links"
-import { InterestingCalendarsButton } from "./interesting"
+import { InterestingCalendarsPicker } from "./interesting"
 import { SecondZonePicker } from "./second-zone"
 import { TasksPanel } from "./tasks"
 import { occurrenceKey } from "./layout"
@@ -54,7 +54,7 @@ function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) {
   return (
     <form className="flex flex-col gap-1 px-4 pb-3" onSubmit={(e) => (e.preventDefault(), void submit())} data-slot="quick-add">
       <div className="flex h-10 items-center gap-2 rounded-xl bg-muted/70 px-3 focus-within:ring-3 focus-within:ring-ring/50">
-        <Icon name="add" className="size-5 text-muted-foreground" />
+        <Icon name="add" tone="muted" className="size-5" />
         <input
           aria-label="Quick add event"
           placeholder="Lunch with Ana tomorrow 1pm"
@@ -93,7 +93,7 @@ function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection
     <div className="flex flex-col gap-3 px-4 pb-4" data-slot="calendar-list">
       {failing.map((a) => (
         <p key={a.id} role="status" className="flex gap-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
-          <Icon name="sync_problem" className="size-4 shrink-0" />
+          <Icon name="sync_problem" className="size-4" />
           <span>
             {a.displayName}: calendars didn't sync. {a.davError}
           </span>
@@ -114,12 +114,12 @@ function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection
                   aria-label={`Show ${c.name}`}
                 />
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                {!c.writable && <Icon name="lock" className="size-3.5 text-muted-foreground" label="Read-only" />}
+                {!c.writable && <Icon name="lock" tone="muted" className="size-3.5" label="Read-only" />}
               </label>
             ))}
         </section>
       ))}
-      <InterestingCalendarsButton />
+      <InterestingCalendarsPicker />
       <CalendarSets calendars={calendars} />
       <BookingLinks />
       <SecondZonePicker />
@@ -309,7 +309,7 @@ export function CalendarView() {
         )
       ) : (
         <Sheet open={selected !== null} onOpenChange={(o) => !o && setSelected(null)}>
-          <SheetContent side="bottom" className="gap-0 rounded-none border-0 pt-[env(safe-area-inset-top)] data-[side=bottom]:h-dvh" showCloseButton={false}>
+          <SheetContent side="bottom" fullscreen showCloseButton={false}>
             <SheetTitle className="sr-only">Event</SheetTitle>
             <div className="flex h-14 shrink-0 items-center px-2">
               <Button variant="ghost" size="icon" onClick={() => setSelected(null)} aria-label="Back">

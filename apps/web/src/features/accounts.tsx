@@ -127,7 +127,7 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
 
       {core?.kind === "demo" && (
         <p className="flex gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-          <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+          <Icon name="info" className="mt-0.5 size-4" />
           You're using the web preview with sample mail. Connecting real accounts needs the desktop app for now.
         </p>
       )}
@@ -136,7 +136,7 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         <ul className="flex flex-col divide-y rounded-xl border">
           {accounts.map((a) => (
             <li key={a.id} className="flex items-center gap-3 px-3 py-2.5">
-              <Icon name="alternate_email" className="size-5 text-muted-foreground" />
+              <Icon name="alternate_email" tone="muted" className="size-5" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium">{a.displayName}</span>
                 <span className="truncate text-xs text-muted-foreground">{a.address}</span>
@@ -189,7 +189,7 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
                 onClick={() => onAdd(p)}
                 className="flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
               >
-                <Icon name={p.icon} className="mt-0.5 size-5 text-muted-foreground" />
+                <Icon name={p.icon} tone="muted" className="mt-0.5 size-5" />
                 <span className="flex flex-col gap-0.5">
                   <span className="font-medium">{p.label}</span>
                   {p.unavailable && <span className="text-xs text-muted-foreground">{p.unavailable}</span>}
@@ -206,12 +206,12 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
           onClick={() => (useUi.getState().setAccountsOpen(false), useUi.getState().setWritingOpen(true))}
           className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
         >
-          <Icon name="edit_note" className="size-5 text-muted-foreground" />
+          <Icon name="edit_note" tone="muted" className="size-5" />
           <span className="flex flex-1 flex-col gap-0.5">
             <span className="font-medium">Signatures and templates</span>
             <span className="text-xs text-muted-foreground">What goes at the end of your messages, and text you reuse.</span>
           </span>
-          <Icon name="chevron_right" className="size-5 text-muted-foreground" />
+          <Icon name="chevron_right" tone="muted" className="size-5" />
         </button>
       )}
 
@@ -220,12 +220,12 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         onClick={() => (useUi.getState().setAccountsOpen(false), useUi.getState().setGrammarOpen(true))}
         className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
       >
-        <Icon name="swipe" className="size-5 text-muted-foreground" />
+        <Icon name="swipe" tone="muted" className="size-5" />
         <span className="flex flex-1 flex-col gap-0.5">
           <span className="font-medium">Shortcuts and gestures</span>
           <span className="text-xs text-muted-foreground">What your swipes do, and the keys for everything.</span>
         </span>
-        <Icon name="chevron_right" className="size-5 text-muted-foreground" />
+        <Icon name="chevron_right" tone="muted" className="size-5" />
       </button>
 
       <MeetingSettingsSection />
@@ -315,7 +315,7 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
   return (
     <form onSubmit={(e) => (e.preventDefault(), add.mutate())} className="flex flex-col gap-4">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">
+        <DialogTitle>
           <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back">
             <Icon name="arrow_back" />
           </Button>
@@ -379,14 +379,14 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
         {preset.dav === "ask" && <DavUrlFields calendarUrl={calendarUrl} setCalendarUrl={setCalendarUrl} contactsUrl={contactsUrl} setContactsUrl={setContactsUrl} />}
         {typeof preset.dav === "object" && !preset.dav.separateSecret && (
           <p className="flex gap-2 text-xs text-muted-foreground">
-            <Icon name="calendar_month" className="size-4 shrink-0" /> Calendars and contacts connect with the same password.
+            <Icon name="calendar_month" className="size-4" /> Calendars and contacts connect with the same password.
           </p>
         )}
       </FieldGroup>
 
       {add.error && (
         <p role="alert" className="flex gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <Icon name="error" className="mt-0.5 size-4 shrink-0" /> {add.error.message}
+          <Icon name="error" className="mt-0.5 size-4" /> {add.error.message}
         </p>
       )}
       <DialogFooter>
@@ -454,7 +454,7 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
   return (
     <form onSubmit={(e) => (e.preventDefault(), connect.mutate())} className="flex flex-col gap-4">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">
+        <DialogTitle>
           <Button type="button" variant="ghost" size="icon-sm" onClick={onDone} aria-label="Back">
             <Icon name="arrow_back" />
           </Button>
@@ -474,7 +474,7 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
       </FieldGroup>
       {connect.error && (
         <p role="alert" className="flex gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <Icon name="error" className="mt-0.5 size-4 shrink-0" /> {connect.error.message}
+          <Icon name="error" className="mt-0.5 size-4" /> {connect.error.message}
         </p>
       )}
       <DialogFooter>

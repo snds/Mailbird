@@ -133,7 +133,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <ul className="flex flex-col gap-3">
             {SOURCES.map((s) => (
               <li key={s.name} className="flex gap-3 text-sm">
-                <Icon name={s.icon} className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+                <Icon name={s.icon} tone="muted" className="mt-0.5 size-5" />
                 <span>
                   <span className="font-medium">{s.name}</span>
                   <span className="block text-muted-foreground">{s.how}</span>

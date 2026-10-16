@@ -41,7 +41,7 @@ export function FindATime({ date, minutes, onPick }: { date: string; minutes: nu
       {slots && slots.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pb-1" role="group" aria-label="Free times">
           {slots.map((s) => (
-            <Button key={s.start} type="button" size="xs" variant="outline" className="rounded-full" onClick={() => onPick(fromSecs(s.start), fromSecs(s.end))}>
+            <Button key={s.start} type="button" size="xs" variant="outline" shape="pill" onClick={() => onPick(fromSecs(s.start), fromSecs(s.end))}>
               {dayLabel(fromSecs(s.start))} · {fmt.time(s.start)}
             </Button>
           ))}
