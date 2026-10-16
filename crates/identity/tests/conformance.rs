@@ -10,7 +10,7 @@ use ecosystem_identity::kdf::{Argon2Params, FLOOR_DESKTOP, FLOOR_TEST, stretch};
 use ecosystem_identity::kem::{DEFAULT_KEM, KemAlg, kem};
 use ecosystem_identity::keys::{self, DeviceUnlockKey, SymmetricKey};
 use ecosystem_identity::keystore::DeviceKeystore;
-use ecosystem_identity::records::{Aad, EnrolledBy, ManifestEntry, RECORD_V, WrapAlg};
+use ecosystem_identity::records::{Aad, EnrolledBy, ManifestEntry, RECORD_V, Tombstone, WrapAlg};
 use ecosystem_identity::store::{Contents, Probe};
 use ecosystem_identity::{
     AccountCredentials, AppDataKey, Attach, Consent, CrownJewelKey, Device, Error, FileKeystore,
@@ -216,6 +216,7 @@ fn every_record_round_trips_and_verifies() {
         persona_id: Some(persona.persona_id),
         key_id: Id::new(),
         purpose: Purpose::AppData,
+        app: APP.into(),
         v: RECORD_V,
     };
     let mut envelope = KeyEnvelope {
@@ -226,7 +227,9 @@ fn every_record_round_trips_and_verifies() {
         aad: aad.to_bytes().unwrap(),
         nonce: vec![9; 24],
         ciphertext: vec![8; 48],
+        enc: None,
         purpose: Purpose::AppData,
+        app: APP.into(),
         created_at: Timestamp(3),
         extra: Default::default(),
         sig: Vec::new(),
@@ -265,6 +268,12 @@ fn every_record_round_trips_and_verifies() {
             hash: vec![6; 32],
             version: 1,
         }],
+        tombstones: vec![Tombstone {
+            path: "envelopes/old.cbor".into(),
+            hash: vec![7; 32],
+            seq: 2,
+            retired_at: Timestamp(4),
+        }],
         written_at: Timestamp(5),
         written_by: device.device_id,
         extra: Default::default(),
@@ -302,19 +311,22 @@ fn a_moved_envelope_does_not_open() {
         .unwrap()
         .persona_id;
     let adk = AppDataKey::generate().unwrap();
-    let key_id = id.wrap_app_key(personal, &adk).unwrap();
+    let key_id = id.wrap_app_key(personal, APP, &adk).unwrap();
     assert_eq!(
-        id.unwrap_app_key(personal, key_id).unwrap().expose(),
+        id.unwrap_app_key(personal, APP, key_id).unwrap().expose(),
         adk.expose()
     );
 
     // Same key id, asked for under another persona or purpose: refused, by name.
     assert!(
-        matches!(id.unwrap_app_key(work, key_id), Err(Error::NotFound(_))),
+        matches!(
+            id.unwrap_app_key(work, APP, key_id),
+            Err(Error::NotFound(_))
+        ),
         "the wall: work has no such envelope"
     );
     assert!(matches!(
-        id.unwrap_crown_jewel_key(personal, key_id),
+        id.unwrap_crown_jewel_key(personal, APP, key_id),
         Err(Error::EnvelopeMoved(_))
     ));
 
@@ -324,7 +336,7 @@ fn a_moved_envelope_does_not_open() {
     let pk_personal = id.persona_key(personal).unwrap();
     let pk_work = id.persona_key(work).unwrap();
     let profile_id = id.profile().profile_id;
-    let moved = keys::aad(profile_id, Some(work), key_id, Purpose::AppData);
+    let moved = keys::app_aad(profile_id, work, key_id, Purpose::AppData, APP);
     let err = keys::unwrap(&envelope, &pk_work, &moved).unwrap_err();
     assert!(matches!(err, Error::EnvelopeMoved(_)), "{err}");
     assert!(
@@ -353,7 +365,7 @@ fn a_moved_envelope_does_not_open() {
         keys::unwrap(
             &envelope,
             &pk_personal,
-            &keys::aad(profile_id, Some(personal), key_id, Purpose::AppData)
+            &keys::app_aad(profile_id, personal, key_id, Purpose::AppData, APP)
         )
         .is_ok()
     );
@@ -361,7 +373,7 @@ fn a_moved_envelope_does_not_open() {
         keys::unwrap(
             &envelope,
             &pk_work,
-            &keys::aad(profile_id, Some(personal), key_id, Purpose::AppData)
+            &keys::app_aad(profile_id, personal, key_id, Purpose::AppData, APP)
         ),
         Err(Error::WrongKey)
     ));
@@ -546,9 +558,9 @@ fn create_then_attach_on_the_same_root_needs_no_kit() {
         EnrolledBy::Creator
     );
     let adk = AppDataKey::generate().unwrap();
-    let key_id = id.wrap_app_key(personal, &adk).unwrap();
+    let key_id = id.wrap_app_key(personal, APP, &adk).unwrap();
     let cjk = CrownJewelKey::generate().unwrap();
-    let cj_id = id.wrap_crown_jewel_key(personal, &cjk).unwrap();
+    let cj_id = id.wrap_crown_jewel_key(personal, APP, &cjk).unwrap();
     let head = id.head();
     drop(id);
 
@@ -559,11 +571,13 @@ fn create_then_attach_on_the_same_root_needs_no_kit() {
         panic!("expected to attach")
     };
     assert_eq!(
-        id.unwrap_app_key(personal, key_id).unwrap().expose(),
+        id.unwrap_app_key(personal, APP, key_id).unwrap().expose(),
         adk.expose()
     );
     assert_eq!(
-        id.unwrap_crown_jewel_key(personal, cj_id).unwrap().expose(),
+        id.unwrap_crown_jewel_key(personal, APP, cj_id)
+            .unwrap()
+            .expose(),
         cjk.expose()
     );
     assert_eq!(id.head(), head);
@@ -620,7 +634,7 @@ fn recover_with_the_kit_on_an_empty_root() {
     let mut id = Identity::create(&a.root, APP, "Laptop", &a.keystore).unwrap();
     let personal = id.personas().next().unwrap().persona_id;
     let adk = AppDataKey::generate().unwrap();
-    let key_id = id.wrap_app_key(personal, &adk).unwrap();
+    let key_id = id.wrap_app_key(personal, APP, &adk).unwrap();
     let kit = id.create_recovery_kit().unwrap();
     assert_eq!(id.profile().recovery, RecoveryState::Created);
     let mut auth = LocalStubAuth::generate().unwrap();
@@ -665,7 +679,10 @@ fn recover_with_the_kit_on_an_empty_root() {
             .unwrap();
     assert_eq!(recovered.profile(), id.profile());
     assert_eq!(
-        recovered.unwrap_app_key(personal, key_id).unwrap().expose(),
+        recovered
+            .unwrap_app_key(personal, APP, key_id)
+            .unwrap()
+            .expose(),
         adk.expose()
     );
     assert_eq!(recovered.devices().count(), 2);
@@ -710,7 +727,7 @@ fn recover_with_the_kit_on_an_empty_root() {
         Identity::recover_with_account(&d.root, APP, "Desk", &d.keystore, creds, &backup).unwrap();
     assert_eq!(
         via_account
-            .unwrap_app_key(personal, key_id)
+            .unwrap_app_key(personal, APP, key_id)
             .unwrap()
             .expose(),
         adk.expose()
@@ -745,7 +762,7 @@ fn adopt_sets_manager_and_nothing_else() {
     let mut id = Identity::create(&b.root, APP, "Laptop", &b.keystore).unwrap();
     let personal = id.personas().next().unwrap().persona_id;
     let adk = AppDataKey::generate().unwrap();
-    let key_id = id.wrap_app_key(personal, &adk).unwrap();
+    let key_id = id.wrap_app_key(personal, APP, &adk).unwrap();
     id.create_recovery_kit().unwrap();
     let before = files(&b.root);
     let profile_before = id.profile().clone();
@@ -782,7 +799,10 @@ fn adopt_sets_manager_and_nothing_else() {
         "only manager (and so the signature) changed"
     );
     assert_eq!(
-        lockdown.unwrap_app_key(personal, key_id).unwrap().expose(),
+        lockdown
+            .unwrap_app_key(personal, APP, key_id)
+            .unwrap()
+            .expose(),
         adk.expose(),
         "nothing was re-encrypted"
     );
@@ -795,9 +815,9 @@ fn adopt_sets_manager_and_nothing_else() {
     };
     assert_eq!(mail.profile().manager.as_deref(), Some("lockdown"));
     let adk2 = AppDataKey::generate().unwrap();
-    let key2 = mail.wrap_app_key(personal, &adk2).unwrap();
+    let key2 = mail.wrap_app_key(personal, APP, &adk2).unwrap();
     assert_eq!(
-        mail.unwrap_app_key(personal, key2).unwrap().expose(),
+        mail.unwrap_app_key(personal, APP, key2).unwrap().expose(),
         adk2.expose()
     );
     let err = mail.adopt(APP).unwrap_err();
@@ -960,14 +980,9 @@ fn the_persona_key_is_the_wall() {
         .unwrap()
         .persona_id;
     let adk = AppDataKey::generate().unwrap();
-    let key_id = id.wrap_app_key(work, &adk).unwrap();
+    let key_id = id.wrap_app_key(work, APP, &adk).unwrap();
     let envelope = id.envelopes().find(|e| e.key_id == key_id).unwrap().clone();
-    let aad = keys::aad(
-        id.profile().profile_id,
-        Some(work),
-        key_id,
-        Purpose::AppData,
-    );
+    let aad = keys::app_aad(id.profile().profile_id, work, key_id, Purpose::AppData, APP);
     let pk_work = id.persona_key(work).unwrap();
     let pk_personal = id.persona_key(personal).unwrap();
     assert!(keys::unwrap(&envelope, &pk_work, &aad).is_ok());
@@ -986,5 +1001,151 @@ fn the_persona_key_is_the_wall() {
     assert!(matches!(
         keys::unwrap(&envelope, &pk, &aad),
         Err(Error::WrongKey)
+    ));
+}
+
+#[test]
+fn an_envelope_relabelled_to_another_app_does_not_open() {
+    let b = device("a");
+    let mut id = Identity::create(&b.root, APP, "Laptop", &b.keystore).unwrap();
+    let personal = id.personas().next().unwrap().persona_id;
+    let adk = AppDataKey::generate().unwrap();
+    let key_id = id.wrap_app_key(personal, APP, &adk).unwrap();
+    let other = AppDataKey::generate().unwrap();
+    let other_id = id.wrap_app_key(personal, "other-app", &other).unwrap();
+    assert_eq!(id.app_keys(personal, APP), vec![key_id]);
+    assert_eq!(id.app_keys(personal, "other-app"), vec![other_id]);
+    assert!(id.app_keys(personal, "nobody").is_empty());
+    assert!(matches!(
+        id.wrap_app_key(personal, "", &adk),
+        Err(Error::Invalid(_))
+    ));
+
+    // Asked for as another app: refused by name, before decryption.
+    let err = id
+        .unwrap_app_key(personal, "other-app", key_id)
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::EnvelopeMoved(place) if place.contains(&format!("for app {APP}"))),
+        "{err}"
+    );
+    let envelope = id.envelopes().find(|e| e.key_id == key_id).unwrap().clone();
+    assert_eq!(envelope.app, APP);
+    let stored: Aad = ecosystem_identity::cbor::from_slice(&envelope.aad).unwrap();
+    assert_eq!(stored.app, APP, "the label is inside the associated data");
+
+    // Re-labelled on disk by someone holding the signing key: the aad is
+    // rewritten to match and the record re-signed, and it still fails,
+    // because the label was sealed into the tag.
+    let pk = id.persona_key(personal).unwrap();
+    let theirs = keys::app_aad(
+        id.profile().profile_id,
+        personal,
+        key_id,
+        Purpose::AppData,
+        "other-app",
+    );
+    let mut relabelled = envelope.clone();
+    relabelled.app = "other-app".into();
+    relabelled.aad = theirs.to_bytes().unwrap();
+    assert!(matches!(
+        keys::unwrap(&relabelled, &pk, &theirs),
+        Err(Error::WrongKey)
+    ));
+    assert_eq!(
+        keys::unwrap_key::<AppDataKey, _>(
+            &envelope,
+            &pk,
+            &keys::app_aad(
+                id.profile().profile_id,
+                personal,
+                key_id,
+                Purpose::AppData,
+                APP
+            )
+        )
+        .unwrap()
+        .expose(),
+        adk.expose()
+    );
+}
+
+#[test]
+fn a_retired_envelope_leaves_a_tombstone_and_cannot_come_back() {
+    let b = device("a");
+    let mut id = Identity::create(&b.root, APP, "Laptop", &b.keystore).unwrap();
+    let personal = id.personas().next().unwrap().persona_id;
+    let adk = AppDataKey::generate().unwrap();
+    let key_id = id.wrap_app_key(personal, APP, &adk).unwrap();
+    let keep = AppDataKey::generate().unwrap();
+    let keep_id = id.wrap_app_key(personal, APP, &keep).unwrap();
+    let wrapped_by = KeyRef::new(KeyRefKind::Persona, personal);
+    let file = format!("envelopes/{key_id}.{wrapped_by}.cbor");
+    let backup_copy = std::fs::read(b.root.join(&file)).unwrap();
+    let head_before = id.head();
+
+    id.retire_envelope(key_id, wrapped_by).unwrap();
+    assert!(!b.root.join(&file).exists(), "the file is gone");
+    assert_eq!(id.head().seq, head_before.seq + 1, "the head advanced");
+    assert!(matches!(
+        id.unwrap_app_key(personal, APP, key_id),
+        Err(Error::NotFound(_))
+    ));
+    assert_eq!(id.app_keys(personal, APP), vec![keep_id]);
+    assert!(matches!(
+        id.retire_envelope(key_id, wrapped_by),
+        Err(Error::NotFound(_))
+    ));
+    let head = id.head();
+    drop(id);
+
+    // The manifest explains the removal.
+    let loaded = Store::at(&b.root).load().unwrap();
+    assert_eq!(loaded.manifest.tombstones.len(), 1);
+    let tomb = &loaded.manifest.tombstones[0];
+    assert_eq!(tomb.path, file);
+    assert_eq!(tomb.seq, head.seq);
+    assert_eq!(
+        tomb.hash,
+        ecosystem_identity::store::sha256(&backup_copy).to_vec()
+    );
+    assert!(!loaded.manifest.entries.iter().any(|e| e.path == file));
+
+    // Attach still works; the kept key still opens.
+    let Attach::Attached(id) = Identity::attach(&b.root, APP, &b.keystore, Some(head)).unwrap()
+    else {
+        panic!("attach after retire")
+    };
+    assert_eq!(
+        id.unwrap_app_key(personal, APP, keep_id).unwrap().expose(),
+        keep.expose()
+    );
+    drop(id);
+
+    // A backup copy of the retired file put back is an unlisted file.
+    std::fs::write(b.root.join(&file), &backup_copy).unwrap();
+    let err = Identity::attach(&b.root, APP, &b.keystore, Some(head)).unwrap_err();
+    assert!(
+        matches!(&err, Error::Tampered(what) if what.contains("isn't in the manifest")),
+        "{err}"
+    );
+    std::fs::remove_file(b.root.join(&file)).unwrap();
+
+    // Rolling the whole store back to before the retirement is caught too.
+    let Attach::Attached(_) = Identity::attach(&b.root, APP, &b.keystore, Some(head)).unwrap()
+    else {
+        panic!()
+    };
+    assert!(matches!(
+        Identity::attach(
+            &b.root,
+            APP,
+            &b.keystore,
+            Some(ecosystem_identity::Head {
+                seq: head.seq + 1,
+                ..head
+            })
+        ),
+        Err(Error::RolledBack { .. })
     ));
 }

@@ -161,10 +161,7 @@ impl Identity {
         let mut identity = Identity {
             store,
             contents: Contents::default(),
-            head: Head {
-                seq: 0,
-                hash: [0; 32],
-            },
+            head: Head::new(0, [0; 32]),
             irk,
             isk,
             device_id: keystore.device_id(),
@@ -183,7 +180,9 @@ impl Identity {
     /// Probes `root` and, if an identity is there and this device is enrolled,
     /// opens it with the device unlock and no kit (§6 steps 2 and 4).
     /// `remembered` is the head this device last accepted; a store behind it
-    /// is refused as a rollback.
+    /// is refused as a rollback, and a profile whose password-stretching
+    /// parameters are below the ones that head remembers is refused too
+    /// (they only ever rise; D26).
     pub fn attach(
         root: &Path,
         app: &str,
@@ -195,14 +194,8 @@ impl Identity {
             return Ok(Attach::Nothing);
         }
         let loaded = store.load()?;
-        if let Some(seen) = remembered
-            && (loaded.head.seq < seen.seq
-                || (loaded.head.seq == seen.seq && loaded.head.hash != seen.hash))
-        {
-            return Err(Error::RolledBack {
-                found: loaded.head.seq,
-                remembered: seen.seq,
-            });
+        if let Some(seen) = remembered {
+            check_against_remembered(&seen, &loaded)?;
         }
         let profile = loaded.contents.profile()?.clone();
         let device_ref = KeyRef::new(KeyRefKind::Device, keystore.device_id());
@@ -401,10 +394,7 @@ impl Identity {
         let mut identity = Identity {
             store,
             contents,
-            head: Head {
-                seq: 0,
-                hash: [0; 32],
-            },
+            head: Head::new(0, [0; 32]),
             irk,
             isk,
             device_id: keystore.device_id(),
@@ -590,27 +580,72 @@ impl Identity {
         Ok(kem::kem(alg).keypair(persona_kem_seed(&pk, persona_id)?)?.0)
     }
 
-    /// Wraps an app's data key under a persona and returns its key id.
-    /// Every app-level key must be wrapped this way from the start, or the
-    /// kit cannot reach that app's data (D11).
-    pub fn wrap_app_key(&mut self, persona_id: Id, key: &AppDataKey) -> Result<Id> {
-        self.wrap_under_persona(persona_id, key.expose(), Purpose::AppData)
+    /// Wraps `app`'s data key under a persona and returns its key id. The
+    /// app label is sealed into the envelope, so it opens only when asked
+    /// for as that app (D28). Every app-level key must be wrapped this way
+    /// from the start, or the kit cannot reach that app's data (D11).
+    pub fn wrap_app_key(&mut self, persona_id: Id, app: &str, key: &AppDataKey) -> Result<Id> {
+        check_app_label(app)?;
+        self.wrap_under_persona(persona_id, app, key.expose(), Purpose::AppData)
     }
 
-    /// Opens an app's data key by its key id.
-    pub fn unwrap_app_key(&self, persona_id: Id, key_id: Id) -> Result<AppDataKey> {
-        self.unwrap_under_persona(persona_id, key_id, Purpose::AppData)
+    /// Opens `app`'s data key by its key id. An envelope that carries
+    /// another app's label is refused by name, before any decryption.
+    pub fn unwrap_app_key(&self, persona_id: Id, app: &str, key_id: Id) -> Result<AppDataKey> {
+        self.unwrap_under_persona(persona_id, app, key_id, Purpose::AppData)
     }
 
-    /// Wraps a persona's Crown-Jewel Key. The fresh-biometric and
+    /// The key ids of every data key `app` has wrapped under a persona,
+    /// oldest first.
+    pub fn app_keys(&self, persona_id: Id, app: &str) -> Vec<Id> {
+        let persona_ref = KeyRef::new(KeyRefKind::Persona, persona_id);
+        let mut found: Vec<&KeyEnvelope> = self
+            .contents
+            .envelopes
+            .values()
+            .filter(|e| {
+                e.purpose == Purpose::AppData && e.wrapped_by == persona_ref && e.app == app
+            })
+            .collect();
+        found.sort_by_key(|e| (e.created_at, e.key_id));
+        found.into_iter().map(|e| e.key_id).collect()
+    }
+
+    /// Wraps a persona's Crown-Jewel Key for `app`. The fresh-biometric and
     /// deliberate-tap rules around using it belong to the app (§3).
-    pub fn wrap_crown_jewel_key(&mut self, persona_id: Id, key: &CrownJewelKey) -> Result<Id> {
-        self.wrap_under_persona(persona_id, key.expose(), Purpose::CrownJewel)
+    pub fn wrap_crown_jewel_key(
+        &mut self,
+        persona_id: Id,
+        app: &str,
+        key: &CrownJewelKey,
+    ) -> Result<Id> {
+        check_app_label(app)?;
+        self.wrap_under_persona(persona_id, app, key.expose(), Purpose::CrownJewel)
     }
 
-    /// Opens a persona's Crown-Jewel Key.
-    pub fn unwrap_crown_jewel_key(&self, persona_id: Id, key_id: Id) -> Result<CrownJewelKey> {
-        self.unwrap_under_persona(persona_id, key_id, Purpose::CrownJewel)
+    /// Opens a persona's Crown-Jewel Key that `app` wrapped.
+    pub fn unwrap_crown_jewel_key(
+        &self,
+        persona_id: Id,
+        app: &str,
+        key_id: Id,
+    ) -> Result<CrownJewelKey> {
+        self.unwrap_under_persona(persona_id, app, key_id, Purpose::CrownJewel)
+    }
+
+    /// Removes an envelope from the store (D29). The file goes; the
+    /// manifest records a tombstone for it, so the chain still explains the
+    /// removal and a copy of the file put back is refused as unlisted; the
+    /// head advances. The key inside is gone for good unless another wrap
+    /// of it exists.
+    pub fn retire_envelope(&mut self, key_id: Id, wrapped_by: KeyRef) -> Result<()> {
+        let name = format!("{key_id}.{wrapped_by}.cbor");
+        if self.contents.envelopes.remove(&name).is_none() {
+            return Err(Error::NotFound(format!(
+                "an envelope for key {key_id} opened by {wrapped_by}"
+            )));
+        }
+        self.commit()
     }
 
     /// Hands management to `manager` (§7). Sets `Profile.manager`, signs the
@@ -662,20 +697,91 @@ impl Identity {
     }
 
     /// Re-reads and re-verifies the store, so changes another app wrote on
-    /// this device show up. Refuses a rollback behind the head seen last.
+    /// this device show up. Refuses a rollback behind the head seen last,
+    /// and a lowering of the password-stretching parameters (D26).
     pub fn refresh(&mut self) -> Result<()> {
         let loaded = self.store.load()?;
-        if loaded.head.seq < self.head.seq
-            || (loaded.head.seq == self.head.seq && loaded.head.hash != self.head.hash)
-        {
-            return Err(Error::RolledBack {
-                found: loaded.head.seq,
-                remembered: self.head.seq,
-            });
-        }
+        check_against_remembered(&self.head, &loaded)?;
         self.contents = loaded.contents;
         self.head = loaded.head;
         Ok(())
+    }
+
+    /// The last step of a local handshake on the new device (spec §6 step
+    /// 3): this device holds the IRK it was handed, and the running app has
+    /// already written this device's record. Writes this device's own wrap
+    /// of the IRK under its keystore key, then attaches the ordinary way.
+    /// `granted` is the head the running app reported; a store behind it is
+    /// refused.
+    pub(crate) fn finish_enrolment(
+        root: &Path,
+        app: &str,
+        keystore: &dyn DeviceKeystore,
+        irk: Irk,
+        irk_id: Id,
+        granted: Head,
+    ) -> Result<Identity> {
+        let store = Store::at(root);
+        let loaded = store.load()?;
+        check_against_remembered(&granted, &loaded)?;
+        let profile = loaded.contents.profile()?.clone();
+        let isk = signing_key(&irk)?;
+        if isk.verifying_key().to_bytes() != profile.isk_pub {
+            return Err(Error::BadSignature(
+                "profile (the root key handed over doesn't derive its signing key)".into(),
+            ));
+        }
+        match loaded.contents.devices.get(&keystore.device_id()) {
+            None => {
+                return Err(Error::Handshake(
+                    "the running app didn't record this device".into(),
+                ));
+            }
+            Some(d) if d.revoked_at.is_some() => {
+                return Err(Error::Invalid(
+                    "this device was revoked from the identity".into(),
+                ));
+            }
+            Some(_) => {}
+        }
+        let mut identity = Identity {
+            store,
+            contents: loaded.contents,
+            head: loaded.head,
+            irk,
+            isk,
+            device_id: keystore.device_id(),
+            app: app.to_string(),
+        };
+        let wrap = identity.device_wrap(profile.profile_id, irk_id, keystore)?;
+        identity.contents.put_envelope(wrap);
+        identity.commit()?;
+        let head = identity.head;
+        drop(identity);
+        match Self::attach(root, app, keystore, Some(head))? {
+            Attach::Attached(identity) => Ok(*identity),
+            Attach::Nothing => Err(Error::NoIdentity(root.display().to_string())),
+            Attach::NotEnrolled { .. } => Err(Error::DeviceNotEnrolled),
+        }
+    }
+
+    /// The root key. For the handshake's wrap to a new device; never
+    /// leaves the crate.
+    pub(crate) fn irk(&self) -> &Irk {
+        &self.irk
+    }
+
+    /// The signing key. For the handshake, which signs the new device's
+    /// record and the envelope it hands over.
+    pub(crate) fn isk(&self) -> &SigningKey {
+        &self.isk
+    }
+
+    /// Adds a device record another device asked to enrol and commits.
+    /// The record must already be signed.
+    pub(crate) fn add_device(&mut self, device: Device) -> Result<()> {
+        self.contents.devices.insert(device.device_id, device);
+        self.commit()
     }
 
     fn persona(&self, persona_id: Id) -> Result<&Persona> {
@@ -699,6 +805,7 @@ impl Identity {
     fn wrap_under_persona(
         &mut self,
         persona_id: Id,
+        app: &str,
         secret: &[u8],
         purpose: Purpose,
     ) -> Result<Id> {
@@ -708,7 +815,7 @@ impl Identity {
             secret,
             &pk,
             KeyRef::new(KeyRefKind::Persona, persona_id),
-            &keys::aad(self.profile().profile_id, Some(persona_id), key_id, purpose),
+            &keys::app_aad(self.profile().profile_id, persona_id, key_id, purpose, app),
         )?;
         envelope.sign(&self.isk)?;
         self.contents.put_envelope(envelope);
@@ -719,6 +826,7 @@ impl Identity {
     fn unwrap_under_persona<K: SymmetricKey>(
         &self,
         persona_id: Id,
+        app: &str,
         key_id: Id,
         purpose: Purpose,
     ) -> Result<K> {
@@ -727,7 +835,7 @@ impl Identity {
         keys::unwrap_key(
             envelope,
             &pk,
-            &keys::aad(self.profile().profile_id, Some(persona_id), key_id, purpose),
+            &keys::app_aad(self.profile().profile_id, persona_id, key_id, purpose, app),
         )
     }
 
@@ -821,4 +929,26 @@ impl Identity {
         self.head = head;
         Ok(())
     }
+}
+
+/// An app label is a plain id: not empty, no whitespace.
+fn check_app_label(app: &str) -> Result<()> {
+    if app.is_empty() || app.chars().any(char::is_whitespace) {
+        return Err(Error::Invalid(
+            "an app label is a plain id without spaces".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// The two checks a remembered head enables: no rollback of the manifest,
+/// and no lowering of the password-stretching parameters (D26).
+fn check_against_remembered(remembered: &Head, loaded: &crate::store::Loaded) -> Result<()> {
+    if remembered.is_behind(&loaded.head) {
+        return Err(Error::RolledBack {
+            found: loaded.head.seq,
+            remembered: remembered.seq,
+        });
+    }
+    remembered.check_kdf_not_lowered(&loaded.contents.profile()?.kdf)
 }

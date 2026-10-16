@@ -363,10 +363,42 @@ pub enum WrapAlg {
     /// Symmetric wrap with a 192-bit random nonce.
     #[serde(rename = "xchacha20poly1305")]
     XChaCha20Poly1305,
-    /// Public-key wrap to a peer (hybrid X25519 + ML-KEM-768). Reserved: this
-    /// crate does not yet write it.
+    /// Public-key wrap to a peer through HPKE (RFC 9180) with hybrid
+    /// X25519 + ML-KEM-768. Reserved: this crate does not yet write it.
     #[serde(rename = "hpke-x25519-mlkem768")]
     HpkeX25519MlKem768,
+    /// Public-key wrap to a device's receiving key: X-Wing (hybrid
+    /// X25519 + ML-KEM-768) encapsulates a shared secret, HKDF-SHA-512 turns
+    /// it into a key, and that key seals the payload with XChaCha20-Poly1305.
+    /// The encapsulation is in `enc`. This is what the local handshake
+    /// writes (spec §6 step 3). It is not RFC 9180 HPKE, so it has its own
+    /// name.
+    #[serde(rename = "x-wing-xchacha20poly1305")]
+    XWingXChaCha20Poly1305,
+    /// The same construction over plain X25519, for a build without ML-KEM.
+    /// Not post-quantum.
+    #[serde(rename = "x25519-xchacha20poly1305")]
+    X25519XChaCha20Poly1305,
+}
+
+impl WrapAlg {
+    /// The peer-wrap cipher that goes with a receiving key's scheme.
+    pub fn for_kem(alg: crate::kem::KemAlg) -> Self {
+        match alg {
+            crate::kem::KemAlg::X25519 => Self::X25519XChaCha20Poly1305,
+            crate::kem::KemAlg::X25519MlKem768 => Self::XWingXChaCha20Poly1305,
+        }
+    }
+
+    /// The receiving-key scheme a peer-wrap cipher uses, or none for a
+    /// symmetric or reserved cipher.
+    pub fn kem(self) -> Option<crate::kem::KemAlg> {
+        match self {
+            Self::X25519XChaCha20Poly1305 => Some(crate::kem::KemAlg::X25519),
+            Self::XWingXChaCha20Poly1305 => Some(crate::kem::KemAlg::X25519MlKem768),
+            Self::XChaCha20Poly1305 | Self::HpkeX25519MlKem768 => None,
+        }
+    }
 }
 
 /// What the wrapped key is for. Part of the associated data, so an envelope
@@ -400,6 +432,11 @@ pub struct Aad {
     pub key_id: Id,
     /// What the key is for.
     pub purpose: Purpose,
+    /// The app an `app-data` or `crown-jewel` key belongs to (D28). Empty
+    /// for the other purposes, and then left out of the encoding, so
+    /// envelopes written before this field opens unchanged.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub app: String,
     /// The envelope format version.
     pub v: u16,
 }
@@ -418,13 +455,17 @@ impl fmt::Display for Aad {
                 f,
                 "{:?} key {} of persona {} in profile {}",
                 self.purpose, self.key_id, p, self.profile_id
-            ),
+            )?,
             None => write!(
                 f,
                 "{:?} key {} of profile {}",
                 self.purpose, self.key_id, self.profile_id
-            ),
+            )?,
         }
+        if !self.app.is_empty() {
+            write!(f, " for app {}", self.app)?;
+        }
+        Ok(())
     }
 }
 
@@ -452,8 +493,18 @@ pub struct KeyEnvelope {
     #[serde(with = "serde_bytes")]
     #[schemars(with = "Vec<u8>")]
     pub ciphertext: Vec<u8>,
+    /// For a public-key wrap: the KEM encapsulation the recipient's
+    /// receiving key opens to get the sealing key. Absent on symmetric wraps.
+    #[serde(default, with = "serde_bytes", skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<Vec<u8>>")]
+    pub enc: Option<Vec<u8>>,
     /// What the key is for.
     pub purpose: Purpose,
+    /// The app an `app-data` or `crown-jewel` key belongs to; empty for the
+    /// other purposes (D28). Also sealed into the associated data, so an
+    /// envelope cannot be re-labelled to another app.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub app: String,
     /// When it was wrapped.
     pub created_at: Timestamp,
     /// Fields this crate does not know. Kept as read.
@@ -516,6 +567,23 @@ pub struct ManifestEntry {
     pub version: u16,
 }
 
+/// A file the store once held and has since removed (D29). The chain keeps
+/// saying what was there, so a removal is a recorded step, not a gap, and
+/// a copy of the file put back is an unlisted file and refused.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct Tombstone {
+    /// The path the file had, relative to the identity root.
+    pub path: String,
+    /// SHA-256 of the file's last bytes.
+    #[serde(with = "serde_bytes")]
+    #[schemars(with = "Vec<u8>")]
+    pub hash: Vec<u8>,
+    /// The manifest `seq` that removed it.
+    pub seq: u64,
+    /// When it was removed.
+    pub retired_at: Timestamp,
+}
+
 /// The signed, hash-chained list of every file in the store (§5). A reader
 /// that remembers the newest manifest it accepted can tell a rollback.
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema)]
@@ -530,6 +598,10 @@ pub struct Manifest {
     pub prev: Vec<u8>,
     /// Every file, sorted by path.
     pub entries: Vec<ManifestEntry>,
+    /// Every file that was removed, oldest first (D29). Empty until the
+    /// first removal, and then left out of the encoding.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tombstones: Vec<Tombstone>,
     /// When it was written.
     pub written_at: Timestamp,
     /// The device that wrote it.

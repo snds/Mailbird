@@ -21,11 +21,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use ed25519_dalek::{SigningKey, VerifyingKey};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::kdf::Argon2Params;
 use crate::records::{
     Consent, Device, KeyEnvelope, Manifest, ManifestEntry, Persona, Profile, RECORD_V, Record,
-    Timestamp,
+    Timestamp, Tombstone,
 };
 use crate::{Error, Id, Result};
 
@@ -86,14 +89,54 @@ pub enum Probe {
     Present,
 }
 
-/// The newest manifest a device accepted: its sequence and hash. Keep it;
-/// hand it back on the next attach to catch a rollback.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// The newest manifest a device accepted: its sequence and hash, and the
+/// password-stretching parameters that were in force then. Keep it; hand it
+/// back on the next attach to catch a rollback of the store or a lowering
+/// of the parameters (04-security §4: they only ever rise; D26).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Head {
     /// The manifest's `seq`.
     pub seq: u64,
     /// SHA-256 of the manifest file.
+    #[serde(with = "serde_bytes")]
+    #[schemars(with = "Vec<u8>")]
     pub hash: [u8; 32],
+    /// The Argon2id parameters the profile carried when this head was
+    /// accepted. `None` for a head remembered by an older build, which
+    /// then only checks the floor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kdf: Option<Argon2Params>,
+}
+
+impl Head {
+    /// A head with no parameters remembered. For a caller that kept only
+    /// the sequence and hash.
+    pub fn new(seq: u64, hash: [u8; 32]) -> Self {
+        Self {
+            seq,
+            hash,
+            kdf: None,
+        }
+    }
+
+    /// Whether `found` is a step back from this head: an older manifest,
+    /// or the same sequence with other bytes.
+    pub fn is_behind(&self, found: &Head) -> bool {
+        found.seq < self.seq || (found.seq == self.seq && found.hash != self.hash)
+    }
+
+    /// Refuses password-stretching parameters lower than the ones this
+    /// head remembers. Equal or higher passes; a head that remembers none
+    /// passes everything above the floor (which the store checks on load).
+    pub fn check_kdf_not_lowered(&self, found: &Argon2Params) -> Result<()> {
+        match self.kdf {
+            Some(remembered) if !found.meets(&remembered) => Err(Error::KdfLowered {
+                found: *found,
+                remembered,
+            }),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// Every record in a store, decoded and verified.
@@ -300,6 +343,7 @@ impl Store {
         let head = Head {
             seq: manifest.seq,
             hash: sha256(&manifest_bytes),
+            kdf: Some(profile.kdf),
         };
         Ok(Loaded {
             contents,
@@ -336,10 +380,20 @@ impl Store {
             files.insert(format!("{CONSENTS_DIR}/{name}"), c.to_bytes()?);
         }
 
-        let (seq, prev) = match std::fs::read(self.root.join(MANIFEST_FILE)) {
-            Ok(old) => (Manifest::from_bytes(&old)?.seq + 1, sha256(&old).to_vec()),
-            Err(_) => (1, Vec::new()),
-        };
+        let (seq, prev, mut tombstones, previous_entries) =
+            match std::fs::read(self.root.join(MANIFEST_FILE)) {
+                Ok(old) => {
+                    let previous = Manifest::from_bytes(&old)?;
+                    (
+                        previous.seq + 1,
+                        sha256(&old).to_vec(),
+                        previous.tombstones,
+                        previous.entries,
+                    )
+                }
+                Err(_) => (1, Vec::new(), Vec::new(), Vec::new()),
+            };
+        let written_at = Timestamp::now();
 
         for (path, bytes) in &files {
             write_private(&self.root.join(path), bytes)?;
@@ -350,6 +404,19 @@ impl Store {
             .filter(|p| !files.contains_key(p))
         {
             std::fs::remove_file(self.root.join(&stale))?;
+        }
+        // Every file the last manifest listed and this one does not gets a
+        // tombstone (D29): the chain says what was removed and when.
+        for gone in previous_entries
+            .into_iter()
+            .filter(|e| !files.contains_key(&e.path))
+        {
+            tombstones.push(Tombstone {
+                path: gone.path,
+                hash: gone.hash,
+                seq,
+                retired_at: written_at,
+            });
         }
 
         let entries = files
@@ -365,7 +432,8 @@ impl Store {
             seq,
             prev,
             entries,
-            written_at: Timestamp::now(),
+            tombstones,
+            written_at,
             written_by,
             extra: Default::default(),
             sig: Vec::new(),
@@ -378,6 +446,7 @@ impl Store {
             Head {
                 seq,
                 hash: sha256(&bytes),
+                kdf: Some(profile.kdf),
             },
         ))
     }
