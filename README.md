@@ -59,16 +59,9 @@ The desktop shell needs [Tauri's prerequisites](https://v2.tauri.app/start/prere
 
 ### The design system (unicron)
 
-Primitives and core tokens come from [unicron](https://github.com/snds/unicron), a submodule at `vendor/unicron`. Clone with `--recurse-submodules`, or run `git submodule update --init` in an existing checkout. Mailbird's own roles are in `apps/web/src/styles/app-extension.css`. A new or changed primitive goes to unicron first, then a submodule bump here.
+Primitives and core tokens come from [unicron](https://github.com/snds/unicron), as the versioned packages `@unicron/ui` and `@unicron/tokens`, installed from its GitHub release tarballs ([ADR-0052](docs/decisions/0052-unicron-packages.md)). Mailbird's own roles are in `apps/web/src/styles/app-extension.css`. A new or changed primitive goes to unicron first: it ships in a release, and Mailbird moves to it by changing the version in two URLs (`apps/web/package.json`, and the tokens override in `pnpm-workspace.yaml`).
 
-The shadcn CLI can't install Material Symbols, so components come through a local transform. `--alias-mode package` writes the imports unicron's package uses:
-
-```bash
-git clone --depth 1 https://github.com/shadcn-ui/ui /tmp/shadcn
-node tools/shadcn-material/transform.mjs --alias-mode package /tmp/shadcn vendor/unicron/packages/ui/src/components/ui calendar
-```
-
-If a component uses a Lucide icon that isn't mapped yet, the script stops. Add the mapping to `tools/shadcn-material/icon-map.json`.
+Components come from shadcn/ui through unicron's Material Symbols transform (`pnpm regen` in unicron; see its `tools/shadcn-material/README.md`).
 
 Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratchet` (CI fails if misuse of unicron components grows past `.dsa/baseline.json`).
 
@@ -121,6 +114,7 @@ Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratche
 | **37 · Shared design system** ✅ | Primitives and core tokens come from unicron, the system Mailbird shares with Synapse and Lockdown; nothing on screen changed, and `dsa` now measures how the app uses it ([ADR-0047](docs/decisions/0047-unicron.md)) |
 | **38 · Design-system cleanup** ✅ | What the first scan found went upstream as named choices (an icon button that's always labelled, pill chips, quiet ghost buttons, icon tones, a full-screen phone sheet, and dialog actions that become a row of icon buttons on phones); menus are frosted glass everywhere, every filter row shares one chip recipe, and the ratchet is lower ([ADR-0048](docs/decisions/0048-design-system-cleanup.md)) |
 | **39 · The identity holds the notes key** ✅ | Locked notes keep their passphrase, and the key is also kept in the shared identity, so it can open them instead (and its recovery kit can reach them); on desktop, with nothing moved or resealed ([ADR-0051](docs/decisions/0051-identity-holds-the-notes-key.md)) |
+| **40 · The design system as packages** ✅ | unicron now arrives as versioned releases (`@unicron/ui` 0.2.0, `@unicron/tokens` 0.1.0) instead of a submodule: a plain clone builds, and moving to a new release is a version change; nothing on screen changed ([ADR-0052](docs/decisions/0052-unicron-packages.md)) |
 
 ## License
 

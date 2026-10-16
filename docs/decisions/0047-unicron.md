@@ -1,6 +1,6 @@
 # ADR-0047 · Consume the shared design system (unicron)
 
-- **Status:** Accepted
+- **Status:** Accepted; the submodule is superseded by [ADR-0052](0052-unicron-packages.md) (versioned packages)
 - **Date:** 2026-10-15
 - **Builds on:** [ADR-0003](0003-design-system.md) (Mailbird's design system), [ADR-0036](0036-sender-profile.md) (adaptive sheets)
 - **Decided elsewhere:** Lockdown decisions D10–D14 (`snds/lockdown` `docs/plan/decisions.md`): one shared design system, **unicron**, for Mailbird, Synapse, and Lockdown. It was seeded from Mailbird's own tokens and primitives.

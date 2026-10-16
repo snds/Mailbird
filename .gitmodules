@@ -1,3 +1,0 @@
-[submodule "vendor/unicron"]
-	path = vendor/unicron
-	url = https://github.com/snds/unicron

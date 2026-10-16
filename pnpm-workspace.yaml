@@ -2,9 +2,6 @@ packages:
   - "apps/*"
   - "packages/*"
   - "tools/notes-relay"
-  # The shared design system (unicron), as a pinned submodule: its two
-  # packages link into this workspace, so `workspace:*` between them resolves.
-  - "vendor/unicron/packages/*"
 
 # @snds/dsa is a git dependency; its `prepare` script compiles TypeScript on install.
 onlyBuiltDependencies:
@@ -13,5 +10,8 @@ onlyBuiltDependencies:
 # Tiptap packages move in lockstep; keep transitive ones (menus) on the same
 # release as the direct ones, and off releases younger than two weeks.
 overrides:
+  # The shared design system (ADR-0052): @unicron/ui pins its tokens by
+  # version, which isn't on a registry; point it at the same release tarball.
+  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.1.0/unicron-tokens-0.1.0.tgz
   "@tiptap/extension-bubble-menu": 3.31.3
   "@tiptap/extension-floating-menu": 3.31.3

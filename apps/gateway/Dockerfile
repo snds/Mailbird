@@ -9,12 +9,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY tools/notes-relay/package.json ./tools/notes-relay/
-# The shared design system (a submodule; check out with --recurse-submodules).
-COPY vendor/unicron/packages/tokens/package.json ./vendor/unicron/packages/tokens/
-COPY vendor/unicron/packages/ui/package.json ./vendor/unicron/packages/ui/
 RUN pnpm install --frozen-lockfile --filter "web..."
-COPY vendor/unicron/packages ./vendor/unicron/packages
-COPY vendor/unicron/tsconfig.base.json ./vendor/unicron/
 COPY apps/web ./apps/web
 RUN pnpm --filter web build
 

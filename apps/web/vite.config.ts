@@ -43,8 +43,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), ocrFiles()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
-    // @unicron/ui links in from the workspace with its own dev copies of these:
-    // one instance each, or hooks and Base UI's contexts break across the line.
+    // One instance each across the app and @unicron/ui, or hooks and Base UI's
+    // contexts break across the line.
     dedupe: ["react", "react-dom", "@base-ui/react"],
   },
   clearScreen: false,
