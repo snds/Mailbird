@@ -24,6 +24,7 @@ This phase moves Mailbird onto them, and lets dsa do the counting Mailbird's own
 | Chips: a note's links, tags, backlinks, and reminder; the quick note's link; contact labels; event reminders | Hand-built pills, with the shared × from ADR-0057 | `Chip` (`outline`, `secondary`, or `muted`), with `ChipAction` for the main action and `ChipRemove` for the × |
 
 - **Icons follow the system.** In rows, an icon is no longer forced to 20px; it takes the text's size (`1.25em`, about 17px at 14px).
+- **Hints follow the system too.** A row's hint is `ItemDescription`, at 14px instead of Mailbird's 12px, so the settings rows, account choices, and Duplicates row are a few pixels taller. That's the system's density for rows. A denser hint would be an `Item` change, not a Mailbird override.
 - **App hues stay as classes.** A planned task's link keeps the calendar's hue, a note's link icon the notes hue, and a due reminder its notes tint. ADR-0048 settled this: app roles live in the app's classes, because the core can't know them.
 - **Test hooks move to `data-role`.** `data-slot` belongs to the library: `Chip` sets `data-slot="chip"`, which takes precedence. So Mailbird's own hooks are now `data-role="note-link"`, `"note-reminder"`, and `"quick-link"`.
 
@@ -69,8 +70,8 @@ Before, Mailbird's script counted 20. dsa counts 19, because dsa reads the code 
   - `className` overrides went from 235 to 228;
   - raw elements are 19, now tracked in the baseline;
   - the other counts are unchanged.
-- **Screens:** the converted surfaces, before and after, in light and dark: the accounts dialog, the contacts list and detail, a note's chips, the calendar sidebar, the event editor, and the contact editor. Every difference traces to the table above.
-- **Regression:** every browser suite passes (the 12 that touch these surfaces were run first, against a local pack of unicron#9). `tsc -b`, `oxlint`, and `vite build` are clean.
+- **Screens:** the converted surfaces, before (unicron 0.2.0) and after (0.3.0), in light and dark: the accounts dialog, the contacts list and detail, a note's chips, and the calendar sidebar. Every difference traces to the decisions above: row icons at the text's size, hints at 14px, and the system's hover. A note's chips are pixel-identical, and the calendar sidebar's text actions move by a pixel or two.
+- **Regression:** all 43 browser suites pass on the released packages (the 12 that touch these surfaces were run first, against a local pack of unicron#9). `tsc -b`, `oxlint`, and `vite build` are clean.
 
 ## Consequences
 
