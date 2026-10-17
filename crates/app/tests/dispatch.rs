@@ -134,6 +134,18 @@ async fn every_command_routes_and_works() {
     assert_eq!(colored["color"], "teal");
     let cleared = json_of(dispatch(&app, &state, "set_note_meta", json!({ "id": note["id"], "meta": { "color": "" } })).await.unwrap());
     assert_eq!(cleared["color"], Value::Null);
+    // Shared notes (ADR-0056): share, change to view-only, stop; add a guest's.
+    let shared = json_of(dispatch(&app, &state, "share_note", json!({ "id": note["id"], "mode": "edit" })).await.unwrap());
+    assert_eq!((&shared["share"]["role"], &shared["share"]["mode"]), (&json!("owner"), &json!("edit")));
+    let viewed = json_of(dispatch(&app, &state, "share_note", json!({ "id": note["id"], "mode": "view" })).await.unwrap());
+    assert_eq!((&viewed["share"]["id"], &viewed["share"]["mode"]), (&shared["share"]["id"], &json!("view")));
+    let stopped = json_of(dispatch(&app, &state, "unshare_note", json!({ "id": note["id"] })).await.unwrap());
+    assert_eq!(stopped["share"]["revoked"], true);
+    let guest = json!({ "id": "0123456789abcdef0123", "role": "guest", "mode": "edit", "relay": "wss://notes.example.com", "token": "s1.x", "from": "Ada" });
+    let added = json_of(dispatch(&app, &state, "create_note", json!({ "input": { "markdown": "Their plan", "share": guest } })).await.unwrap());
+    assert_eq!(added["share"]["from"], "Ada");
+    assert_eq!(json_of(dispatch(&app, &state, "unshare_note", json!({ "id": added["id"] })).await.unwrap())["share"], Value::Null);
+    dispatch(&app, &state, "delete_note", json!({ "id": added["id"] })).await.unwrap();
     let prefs = json_of(dispatch(&app, &state, "set_notes_prefs", json!({ "prefs": { "sortChecked": true, "grid": true } })).await.unwrap());
     assert_eq!(prefs["grid"], true);
     // Locked notes (ADR-0043): set a passphrase, lock, lock now, unlock, open.

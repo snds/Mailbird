@@ -3,8 +3,10 @@ import * as Y from "yjs"
 import { create } from "zustand"
 
 import type { CoreClient } from "@/core/client"
-import type { NoteFile, NoteRecord, NotesLockSetting, RelayConfig } from "@/core/types"
+import type { NoteFile, NoteRecord, NoteShare, NotesLockSetting, RelayConfig } from "@/core/types"
 
+import { activeOwnerShare } from "./share-link"
+import { SharedDocWatch } from "./shared-docs"
 import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
 
 /**
@@ -28,7 +30,24 @@ import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
  * bytes in a document each (`file/<id>`), written before the record so a
  * device that sees the record finds the bytes. A locked note's images
  * travel sealed.
+ *
+ * Shared notes (ADR-0056) keep their text in `shared/<id>` instead, and stay
+ * connected to it (SharedDocWatch), since the people they're shared with
+ * edit them without touching the index. The index's `shares` map is the
+ * relay's list of which links still work. Notes shared *with* you sync on
+ * the owner's relay (GuestShares), never on yours.
  */
+
+/** A share as the relay reads it from the index (tools/notes-relay). */
+interface ShareEntry {
+  note: string
+  mode: NoteShare["mode"]
+  revoked: boolean
+  updated: number
+}
+
+/** Text that syncs somewhere other than `note/<id>`. */
+const elsewhere = (r: { share?: NoteShare | null }) => activeOwnerShare(r.share) || r.share?.role === "guest"
 
 export type SyncStatus = "off" | "connecting" | "synced" | "error"
 
@@ -61,6 +80,11 @@ export class NotesSync {
   private lockSetting = this.index.getMap<NotesLockSetting>("lock")
   /** Every image's facts; the bytes are in `file/<id>`. Newest `updated` wins. */
   private fileRecords = this.index.getMap<NoteFile>("files")
+  /** Shares by id: which note, editable or not, and whether it was stopped. */
+  private shares = this.index.getMap<ShareEntry>("shares")
+  /** Notes you've shared, each connected to its shared document. */
+  private shared = new Map<string, SharedDocWatch>()
+  private sharedOpen = new Set<string>()
   /** Images moving now, one at a time so a big first sync doesn't flood the relay. */
   private filesBusy = new Set<string>()
   private fileChain: Promise<void> = Promise.resolve()
@@ -130,7 +154,7 @@ export class NotesSync {
     if (this.stopped) return
     await this.push()
     await this.pull()
-    for (const r of await this.core.noteRecords()) if (!r.deleted) this.enqueue(r.id)
+    for (const r of await this.core.noteRecords()) if (!r.deleted && !elsewhere(r)) this.enqueue(r.id)
     set("synced")
   }
 
@@ -145,10 +169,17 @@ export class NotesSync {
       for (const r of local) {
         const remote = this.records.get(r.id)
         if (!remote || remote.updated < r.updated) this.records.set(r.id, { ...r, links: r.links.map(({ target: _t, ...l }) => l) })
+        // The relay's list of shares, before anyone uses the link. A deleted note's link stops working.
+        if (r.share?.role === "owner") {
+          const entry: ShareEntry = { note: r.id, mode: r.share.mode, revoked: !!r.share.revoked || r.deleted, updated: r.updated }
+          const was = this.shares.get(r.share.id)
+          if (!was || (was.updated < entry.updated && (was.mode !== entry.mode || was.revoked !== entry.revoked))) this.shares.set(r.share.id, entry)
+        }
       }
     })
     // A local text edit bumps `updated`; open notes are already live.
-    for (const r of local) if (!r.deleted && !this.open.has(r.id) && this.syncedAt.get(r.id) !== r.updated) this.enqueue(r.id)
+    for (const r of local) if (!r.deleted && !elsewhere(r) && !this.open.has(r.id) && this.syncedAt.get(r.id) !== r.updated) this.enqueue(r.id)
+    this.watchShares(local)
     await this.pushFiles()
   }
 
@@ -222,8 +253,9 @@ export class NotesSync {
     const changed = await this.core.applyNoteRecords([...this.records.values()])
     for (const id of changed) {
       const r = this.records.get(id)
-      if (r && !r.deleted && !this.open.has(id)) this.enqueue(id)
+      if (r && !r.deleted && !elsewhere(r) && !this.open.has(id)) this.enqueue(id)
     }
+    if (changed.length) this.watchShares(await this.core.noteRecords())
     await this.pullFiles()
   }
 
@@ -246,12 +278,38 @@ export class NotesSync {
     }
   }
 
+  /** Keeps each note you share connected to its shared document; lets go of stopped ones. */
+  private watchShares(records: NoteRecord[]) {
+    if (this.stopped) return
+    const live = new Map(records.filter((r) => !r.deleted && activeOwnerShare(r.share)).map((r) => [r.id, r]))
+    for (const [id, w] of this.shared) {
+      if (live.get(id)?.share?.id !== w.o.share.id) {
+        w.stop()
+        this.shared.delete(id)
+      }
+    }
+    for (const [id, r] of live) {
+      const w = this.shared.get(id)
+      if (w) {
+        void w.mergeFromCore(r.updated)
+        if (w.o.share.mode !== r.share!.mode) w.setMode(r.share!.mode)
+      } else this.watchShare(id, r.share!)
+    }
+  }
+
+  private watchShare(id: string, share: NoteShare) {
+    const w = new SharedDocWatch({ core: this.core, socket: this.socket, noteId: id, share, token: this.relay.token, owner: true, isOpen: (n) => this.sharedOpen.has(n), onDenied: () => set("error", "The relay refused the token") })
+    this.shared.set(id, w)
+    return w
+  }
+
   /** Connects one closed note's document long enough to merge it. */
   private async syncText(id: string) {
     if (this.open.has(id)) return
     const note = await this.core.getNote(id).catch(() => null)
     // A locked note's text isn't in its document; its record carries it sealed.
-    if (!note || note.locked) return
+    // A shared one's is in its shared document, which stays connected.
+    if (!note || note.locked || elsewhere(note)) return
     const doc = loadDoc(note.ydoc)
     if (isEmpty(doc)) seed(doc, note.markdown, id)
     const before = stateOf(doc)
@@ -311,9 +369,26 @@ export class NotesSync {
   }
 
   /** Live connection for the open note's editor. */
-  attach(id: string, doc: Y.Doc): () => void {
+  attach(id: string, doc: Y.Doc, share?: NoteShare | null): () => void {
     this.queue.delete(id)
     this.background.get(id)?.()
+    // Just shared, or just stopped: change documents now, not on the next push.
+    let shared = this.shared.get(id)
+    if (shared && share !== undefined && (!activeOwnerShare(share) || shared.o.share.id !== share!.id)) {
+      shared.stop()
+      this.shared.delete(id)
+      shared = undefined
+    }
+    if (!shared && share && activeOwnerShare(share)) shared = this.watchShare(id, share)
+    if (shared) {
+      this.sharedOpen.add(id)
+      const detach = shared.attach(doc)
+      return () => {
+        this.sharedOpen.delete(id)
+        detach()
+        this.schedulePush()
+      }
+    }
     const p = this.provider(`note/${id}`, doc)
     this.open.set(id, p)
     return () => {
@@ -338,6 +413,7 @@ export class NotesSync {
     this.offCore()
     for (const p of [...this.open.values(), ...this.closing.values()]) p.destroy()
     for (const cancel of this.background.values()) cancel()
+    for (const w of this.shared.values()) w.stop()
     this.indexProvider.destroy()
     this.socket.destroy()
     set("off")

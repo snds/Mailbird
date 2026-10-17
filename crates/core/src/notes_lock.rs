@@ -198,6 +198,10 @@ impl Store {
         if n.summary.locked {
             return Ok(());
         }
+        // The people it's shared with couldn't read it (ADR-0056).
+        if self.note_is_shared(id)? {
+            return Err(Error::Invalid("a shared note can't be locked; stop sharing it first".into()));
+        }
         let sealed = seal(key, id, n.markdown.as_bytes())?;
         self.db.execute(
             "UPDATE notes SET locked = 1, sealed = ?2, body = '', snippet = '', ydoc = NULL, image_text = '', updated = MAX(?3, updated + 1) WHERE id = ?1",

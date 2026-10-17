@@ -46,6 +46,7 @@ mod notes_import;
 mod notes_store;
 mod note_folders;
 mod notes_lock;
+mod note_shares;
 mod note_files;
 mod sketch;
 pub use note_files::{MAX_NOTE_FILE, NOTE_FILE_SCHEME, NoteFile, NoteFileData, mime_ext, note_file_ids};

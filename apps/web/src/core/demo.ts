@@ -186,6 +186,12 @@ function seed(): { accounts: Account[]; messages: DemoMessage[]; followUps: Map<
       ...(new URLSearchParams(globalThis.location?.search ?? "").has("screener")
         ? [msg("personal", { name: "Riley Growth", email: "hi@growth.example" }, "Quick question about your studio", "Saw your work online. Do you have 15 minutes this week?\n\nThanks,\nRiley Park\nGrowth lead at Northwind\n+1 555 010 9000", 0.5 * HOUR)]
         : []),
+      // `?shared=<link>`: Sam shares a note with you by link (ADR-0056).
+      ...(new URLSearchParams(globalThis.location?.search ?? "").get("shared")
+        ? [
+            msg("work", { name: "Sam Okafor", email: "sam@studio.example" }, "Design review agenda", `I shared a note with you: “Design review agenda”.\n\nOpen it in Mailbird: ${new URLSearchParams(globalThis.location?.search ?? "").get("shared")}\n`, 0.1 * HOUR),
+          ]
+        : []),
       // Sent with a follow-up reminder that hasn't come due (the Waiting lane).
       msg("personal", me("personal"), "Quote for the kitchen shelves", "Hi Jo, could you send a quote for the oak shelves we talked about?", 22 * HOUR, {
         threadId: "t-quote", seen: true, mailbox: SENT, to: [{ name: "Jo Tanaka", email: "jo@joinery.example" }], messageId: "quote@demo.example",

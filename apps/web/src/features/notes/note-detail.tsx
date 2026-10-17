@@ -17,7 +17,10 @@ import { LockedPanel, PassphraseDialog } from "./lock"
 import { notesSync } from "./sync"
 import { noteFill } from "./note-color"
 import { NoteColorMenu } from "./note-color-menu"
+import { RelayDialog } from "./relay-dialog"
 import { RemindMenu } from "./remind-menu"
+import { ShareDialog } from "./share-dialog"
+import { useLiveShareModes } from "./shared-docs"
 import { NoteEditor } from "./note-editor"
 import { renameLinks } from "./rename-links"
 import { LINK_ICON, useOpenLink } from "./use-open-link"
@@ -38,6 +41,9 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
   const unlocked = !!lockInfo?.unlocked
   const { data: openLocked, error: lockedError } = useLockedNote(id, !!note?.locked && unlocked)
   const [askPassphrase, setAskPassphrase] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const liveModes = useLiveShareModes()
+  const [relayOpen, setRelayOpen] = useState(false)
   const refresh = () => void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" })
 
   // Renames (ADR-0035): the title other notes' links use, and a pending
@@ -154,6 +160,20 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
     await (await getCoreClient()).lockNotesNow()
     void qc.invalidateQueries({ queryKey: ["notes"] })
   }
+  // Shared notes (ADR-0056): yours by link, or someone else's.
+  const guest = note.share?.role === "guest" ? note.share : null
+  const guestMode = (guest && liveModes[id]) ?? guest?.mode
+  const shared = !!note.share && !note.share.revoked
+  const keepCopy = async () => {
+    try {
+      await (await getCoreClient()).unshareNote(id)
+      refresh()
+      void qc.invalidateQueries({ queryKey: ["notes", "note", id] })
+      toast.success("It's your own note now. Their changes no longer come in.", { duration: 3000 })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(markdownRef.current ?? openLocked?.markdown ?? note.markdown)
@@ -174,7 +194,9 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
       <article className="mx-auto flex h-full w-full max-w-3xl flex-col" aria-label="Note">
         <div className="flex shrink-0 items-center gap-1 px-3 pt-2 md:px-6 md:pt-4">
           <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground">
-            {note.locked && <Icon name="lock" className="mr-1 inline size-3.5 align-[-2px]" label="Locked" />}
+            {/* Locked and shared never go together: a shared note can't be locked. */}
+            {(note.locked || shared) && <Icon name={note.locked ? "lock" : "group"} className="mr-1 inline size-3.5 align-[-2px]" label={note.locked ? "Locked" : undefined} />}
+            {guest ? `Shared by ${guest.from ?? "someone"} · ${guestMode === "edit" ? "You can edit" : "You can read"} · ` : shared ? "Shared · " : ""}
             {current.archived ? "Archived · " : ""}Edited {longTime(note.updated)}
           </span>
           {note.locked && unlocked && (
@@ -202,12 +224,22 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
               <DropdownMenuItem onClick={() => void archive()}>
                 <Icon name={current.archived ? "unarchive" : "archive"} /> {current.archived ? "Unarchive" : "Archive"}
               </DropdownMenuItem>
+              {!note.locked && !guest && (
+                <DropdownMenuItem onClick={() => setSharing(true)}>
+                  <Icon name="person_add" /> {shared ? "Sharing…" : "Share…"}
+                </DropdownMenuItem>
+              )}
+              {guest && (
+                <DropdownMenuItem onClick={() => void keepCopy()}>
+                  <Icon name="file_copy" /> Keep as my own note
+                </DropdownMenuItem>
+              )}
               {(!note.locked || unlocked) && (
                 <DropdownMenuItem onClick={() => void copy()}>
                   <Icon name="content_copy" /> Copy as Markdown
                 </DropdownMenuItem>
               )}
-              {!note.locked ? (
+              {shared ? null : !note.locked ? (
                 <DropdownMenuItem onClick={lock}>
                   <Icon name="lock" /> Lock note
                 </DropdownMenuItem>
@@ -254,6 +286,8 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             void lockIt()
           }}
         />
+        <ShareDialog note={note} open={sharing} onOpenChange={setSharing} onSetUpSync={() => setRelayOpen(true)} />
+        <RelayDialog open={relayOpen} onOpenChange={setRelayOpen} />
         <LinkedFrom id={id} />
 
         {note.locked && !unlocked ? (

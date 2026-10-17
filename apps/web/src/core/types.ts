@@ -864,6 +864,22 @@ export interface PlannedTask {
   end: number | null
 }
 
+export type ShareMode = "edit" | "view"
+
+/** A note shared by link (ADR-0056). Its text is `mailbird/shared/<id>` on the owner's relay. */
+export interface NoteShare {
+  id: string
+  /** `owner`: you shared it. `guest`: someone shared it with you. */
+  role: "owner" | "guest"
+  mode: ShareMode
+  /** The owner stopped sharing. */
+  revoked?: boolean
+  /** A guest's: the owner's relay, the link's token, and who shared it. */
+  relay?: string | null
+  token?: string | null
+  from?: string | null
+}
+
 export interface NoteSummary {
   id: string
   /** The first line, without Markdown marks. */
@@ -879,6 +895,8 @@ export interface NoteSummary {
   locked: boolean
   /** The first image the text shows, for a card's thumbnail (ADR-0044). */
   cover?: string | null
+  /** Shared by link, or shared with you (ADR-0056). */
+  share?: NoteShare | null
   tags: string[]
   links: NoteLink[]
   created: number
@@ -906,6 +924,8 @@ export interface NoteInput {
   pinned?: boolean
   tags?: string[]
   links?: NoteLink[]
+  /** A note someone shared with you, added from their link (ADR-0056). */
+  share?: NoteShare | null
 }
 
 /** Omitted fields stay as they are. */
@@ -990,6 +1010,8 @@ export interface NoteRecord {
   locked?: boolean
   sealed?: string | null
   title?: string | null
+  /** Left out by devices from before shared notes (ADR-0056). */
+  share?: NoteShare | null
   tags: string[]
   links: NoteLink[]
   created: number

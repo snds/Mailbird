@@ -15,6 +15,7 @@ import { displayName, formatSize, forwardDraft, initials, replyDraft, replyTarge
 import { HtmlBody } from "./html-body"
 import { LinkedNotes } from "../notes/linked-notes"
 import { InviteCard } from "./invite-card"
+import { SharedNoteCards } from "../notes/shared-note-card"
 import { FollowUpAtMenu } from "./send-later"
 import { useQuickContext } from "../notes/use-quick-context"
 import { SenderProfile } from "./sender-profile"
@@ -141,6 +142,7 @@ function MessageCard({ message, expanded, onToggle, accountAddress }: { message:
       {expanded && (
         <div className="flex flex-col gap-4 px-4 pb-4">
           {message.invite && <InviteCard invite={message.invite} messageId={message.id} accountId={message.accountId} />}
+          <SharedNoteCards text={`${message.bodyText ?? ""}\n${message.bodyHtml ?? ""}`} />
           {message.bodyHtml ? (
             <HtmlBody html={message.bodyHtml} from={message.from.email} />
           ) : (
