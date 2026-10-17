@@ -10,6 +10,8 @@ import { createDemoFiles, type Media, mediaOf, mimeExt, NOTE_FILE, noteFileIds, 
 import { NOTE_COLORS } from "./types"
 import type { ImportFile, ImportReport, NoteDetail, NoteFile, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteGraph, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteShare, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, ShareMode, TagCount } from "./types"
 
+const NATIVE_ONLY = "that's only in the desktop and phone apps"
+
 interface DemoNote extends NoteRecord {
   markdown: string
   ydoc: string | null
@@ -557,6 +559,11 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       if (files.forget(ids)) changed()
       return later(undefined)
     },
+    // The core's clipboard and Downloads are the desktop's and phone's; the page uses the browser's.
+    saveNoteFile: async () => Promise.reject(new Error(NATIVE_ONLY)),
+    copyRelayKey: async () => Promise.reject(new Error(NATIVE_ONLY)),
+    clipboardHolds: async () => Promise.reject(new Error(NATIVE_ONLY)),
+    clearClipboard: async () => Promise.reject(new Error(NATIVE_ONLY)),
     noteFileRaw: async (id: string) => later(files.raw(id)),
     putNoteFile: async (f: NoteFile, raw: string) => {
       const kept = files.apply(f, raw)

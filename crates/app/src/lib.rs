@@ -8,6 +8,7 @@
 //! lock again to write the result.
 
 pub mod ai_commands;
+pub mod clipboard;
 pub mod commands;
 pub mod compose_commands;
 pub mod sender_commands;

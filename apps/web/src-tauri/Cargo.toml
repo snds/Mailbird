@@ -31,3 +31,5 @@ tokio = { version = "1", features = ["sync", "time"] }
 # keyring 4 adds an Android store; move to it with the mobile spike (ADR-0002).
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 tauri-plugin-notification = "=2.4.0"
+# The core copies secrets itself, so they never cross to the webview (ADR-0070). MIT OR Apache-2.0.
+tauri-plugin-clipboard-manager = "2"

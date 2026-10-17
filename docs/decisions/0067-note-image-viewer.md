@@ -14,7 +14,7 @@ A note's images show at the note's width, at most 70% of the screen's height. A 
   - The header carries the image's description as its title, and "2 of 3" when the note has more than one.
   - Each image opens fitted.
 - **Paging through the note's images:** the arrow keys, Previous and Next, or a swipe, in the note's order. It wraps around at the ends.
-- **Save image** downloads it, named after its description. It's on the web only: the desktop and phone apps can't download from the page yet.
+- **Save image** downloads it, named after its description. It's on the web only: the desktop and phone apps can't download from the page yet. [ADR-0070](0070-core-clipboard-and-image-save.md) saves it from the core there.
 - **Escape or Close** leaves.
 
 ## Verification

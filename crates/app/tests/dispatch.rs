@@ -15,6 +15,7 @@ struct TestHost {
     opened: Arc<Mutex<Vec<String>>>,
     menu_bar: Arc<Mutex<Vec<pim_app::menu_bar::MenuBarState>>>,
     shown: Arc<Mutex<Vec<Option<Value>>>>,
+    clipboard: Arc<Mutex<String>>,
 }
 
 impl Host for TestHost {
@@ -40,6 +41,13 @@ impl Host for TestHost {
     fn show_app(&self, jump: Option<Value>) -> Result<(), String> {
         self.shown.lock().unwrap().push(jump);
         Ok(())
+    }
+    fn clipboard_write(&self, text: &str) -> Result<(), String> {
+        *self.clipboard.lock().unwrap() = text.into();
+        Ok(())
+    }
+    fn clipboard_read(&self) -> Result<String, String> {
+        Ok(self.clipboard.lock().unwrap().clone())
     }
 }
 
@@ -82,6 +90,18 @@ async fn every_command_routes_and_works() {
     }
     assert!(dispatch(&app, &state, "drop_tables", Value::Null).await.err().unwrap().starts_with("unknown command"));
     assert!(dispatch(&app, &state, "get_thread", json!({ "thread_id": "x" })).await.err().unwrap().contains("bad arguments"), "arguments go by their camelCase names");
+
+    // Copy by reference (ADR-0070): the key goes on the clipboard from the
+    // core, the UI gets a digest, and the clear takes only the core's copy.
+    assert!(dispatch(&app, &state, "copy_relay_key", Value::Null).await.err().unwrap().contains("no encryption key"));
+    pim_app::secrets::set("notes-relay-key", "k3y-for-the-relay").unwrap();
+    let r = json_of(dispatch(&app, &state, "copy_relay_key", Value::Null).await.unwrap());
+    assert_eq!(*host.clipboard.lock().unwrap(), "k3y-for-the-relay");
+    assert!(!r.to_string().contains("k3y"), "the UI never gets the key back: {r}");
+    assert_eq!(json_of(dispatch(&app, &state, "clipboard_holds", json!({ "hash": r["hash"] })).await.unwrap()), true);
+    assert_eq!(json_of(dispatch(&app, &state, "clear_clipboard", Value::Null).await.unwrap()), true);
+    assert_eq!(*host.clipboard.lock().unwrap(), "");
+    pim_app::secrets::delete("notes-relay-key");
 
     // Real work through the dispatcher.
     assert_eq!(json_of(dispatch(&app, &state, "list_accounts", Value::Null).await.unwrap()), json!([]));
@@ -200,6 +220,13 @@ async fn every_command_routes_and_works() {
     assert_eq!(img["sealed"], true);
     assert_eq!(json_of(dispatch(&app, &state, "note_file", json!({ "id": img["id"] })).await.unwrap())["dataBase64"], "aW1n");
     assert_ne!(json_of(dispatch(&app, &state, "note_file_raw", json!({ "id": img["id"] })).await.unwrap()), "aW1n");
+    // Saved from the core into Downloads (ADR-0070), under a name that can't climb out.
+    let saved = json_of(dispatch(&app, &state, "save_note_file", json!({ "id": img["id"], "name": "../Alarm codes" })).await.unwrap());
+    let saved = PathBuf::from(saved.as_str().unwrap());
+    assert_eq!(saved.parent(), Some(std::env::temp_dir().as_path()));
+    assert!(saved.file_name().unwrap().to_string_lossy().ends_with(".png"), "{saved:?}");
+    assert_eq!(std::fs::read(&saved).unwrap(), b"img");
+    std::fs::remove_file(saved).unwrap();
     assert_eq!(json_of(dispatch(&app, &state, "note_files", json!({ "noteId": secret["id"] })).await.unwrap()).as_array().unwrap().len(), 1);
     let records = json_of(dispatch(&app, &state, "note_file_records", Value::Null).await.unwrap());
     assert_eq!(json_of(dispatch(&app, &state, "put_note_file", json!({ "file": records[0], "rawBase64": "aW1n" })).await.unwrap()), false, "not newer");

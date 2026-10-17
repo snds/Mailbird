@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 
 import { Button, IconButton, Sheet, SheetContent, SheetDescription, SheetTitle, Spinner } from "@unicron/ui"
-import { isTauri } from "@/core/client"
+import { getCoreClient, isTauri } from "@/core/client"
 import { useNoteFile } from "@/core/queries"
 import { SVG_MIME } from "@/lib/sketch"
 import { cn } from "@/lib/utils"
@@ -41,11 +42,22 @@ function Viewer({ images, at }: { images: ViewerImage[]; at: number }) {
   })
   // A swipe across moves to the next or previous image.
   const [touch, setTouch] = useState<number | null>(null)
-  const save = () => {
+  const save = async () => {
     if (!file.data) return
+    const name = (image.alt || "Image").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 60) || "Image"
+    // The desktop and phone apps save from the core, into Downloads (ADR-0070).
+    if (isTauri()) {
+      try {
+        const path = await (await getCoreClient()).saveNoteFile(image.id, name)
+        toast.success("Saved to Downloads", { description: path })
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e))
+      }
+      return
+    }
     const a = document.createElement("a")
     a.href = file.data.url
-    a.download = `${(image.alt || "Image").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 60) || "Image"}.${EXT[file.data.mime] ?? "png"}`
+    a.download = `${name}.${EXT[file.data.mime] ?? "png"}`
     a.click()
   }
   const label = image.alt || "Image"
@@ -60,8 +72,7 @@ function Viewer({ images, at }: { images: ViewerImage[]; at: number }) {
         <Button variant="ghost" size="sm" aria-pressed={actual} onClick={() => setActualFor(actual ? null : image.id)} disabled={!file.data}>
           {actual ? "Fit to screen" : "Actual size"}
         </Button>
-        {/* The desktop and phone apps can't download from the page; the web can. */}
-        {!isTauri() && <IconButton icon="download" label="Save image" variant="ghost" onClick={save} disabled={!file.data} />}
+        <IconButton icon="download" label="Save image" variant="ghost" onClick={() => void save()} disabled={!file.data} />
         <IconButton icon="close" label="Close" variant="ghost" onClick={() => useImageViewer.getState().close()} />
       </div>
       <div

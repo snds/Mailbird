@@ -18,8 +18,9 @@ import {
   Input,
   SecretField,
   type SecretFieldHost,
+  type SecretFieldReferenceHost,
 } from "@unicron/ui"
-import { getCoreClient } from "@/core/client"
+import { getCoreClient, isTauri } from "@/core/client"
 import { useNotesRelay } from "@/core/queries"
 import type { RelayConfig } from "@/core/types"
 
@@ -156,10 +157,22 @@ function RelayForm({ onDone }: { onDone: () => void }) {
  * timer ends. The page can't read the clipboard back without asking, so the
  * clear runs even if something else was copied since; the field says so.
  */
-const clipboardHost: SecretFieldHost = {
+const webClipboard: SecretFieldHost = {
   copy: (bytes) => navigator.clipboard.writeText(new TextDecoder().decode(bytes)),
   clear: () => navigator.clipboard.writeText(""),
 }
+
+/**
+ * On the desktop and phone the core copies the key itself (ADR-0070). It can
+ * read the clipboard back, so the clear leaves anything copied since.
+ */
+const coreClipboard: SecretFieldReferenceHost = {
+  copyRef: async () => (await getCoreClient()).copyRelayKey(),
+  clipboardHolds: async (hash) => (await getCoreClient()).clipboardHolds(hash),
+  clear: async () => void (await getCoreClient()).clearClipboard(),
+}
+
+const clipboardHost = isTauri() ? coreClipboard : webClipboard
 
 /**
  * Turning on end-to-end encryption (ADR-0062): what changes, before it does.

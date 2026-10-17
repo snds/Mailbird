@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use pim_app::{AppHandle, AppState, Host, Output, Shared, secrets::SecretStore};
 use tauri::ipc::{InvokeResponseBody, Response};
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -46,6 +47,16 @@ impl Host for TauriHost {
     fn show_app(&self, jump: Option<serde_json::Value>) -> Result<(), String> {
         let app = self.0.clone();
         self.0.run_on_main_thread(move || menu_bar::show_main(&app, jump)).map_err(|e| e.to_string())
+    }
+
+    // Copy by reference (ADR-0070): secrets go on the clipboard from here, not the webview.
+    fn clipboard_write(&self, text: &str) -> Result<(), String> {
+        self.0.clipboard().write_text(text).map_err(|e| format!("couldn't copy: {e}"))
+    }
+
+    fn clipboard_read(&self) -> Result<String, String> {
+        // Not text (an image, say) reads as empty: it isn't what we copied.
+        Ok(self.0.clipboard().read_text().unwrap_or_default())
     }
 }
 
@@ -94,6 +105,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(move |app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
