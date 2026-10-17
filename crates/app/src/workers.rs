@@ -28,6 +28,8 @@ const REMINDER_TICK: Duration = Duration::from_secs(10);
 const MENU_BAR_TICK: Duration = Duration::from_secs(30);
 /// How often Outlook subscriptions to the push relay are checked (renewed at half-life).
 const RENEW_EVERY: Duration = Duration::from_secs(6 * 3600);
+/// How often images no note uses are checked for (ADR-0066). The first check waits a minute after start.
+const NOTE_FILE_SWEEP: Duration = Duration::from_secs(6 * 3600);
 /// How long a phone's background pass may run (iOS gives about 30 seconds).
 const BACKGROUND_BUDGET: Duration = Duration::from_secs(25);
 /// How long one Gmail or Outlook poll loop runs before the supervisor restarts it.
@@ -126,6 +128,22 @@ pub fn start(app: AppHandle, state: Shared) {
         loop {
             tick.tick().await;
             crate::menu_bar::refresh(&a, &s);
+        }
+    });
+
+    // Notes: images no note points at go after a grace period (ADR-0066).
+    let s = state.clone();
+    let a = app.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        let mut tick = tokio::time::interval(NOTE_FILE_SWEEP);
+        loop {
+            tick.tick().await;
+            let gone = s.store.lock().ok().and_then(|st| st.sweep_note_files(pim_core::now()).ok()).unwrap_or(0);
+            if gone > 0 {
+                log::info!("dropped {gone} unused note images");
+                let _ = a.emit(events::NOTES_CHANGED, ());
+            }
         }
     });
 

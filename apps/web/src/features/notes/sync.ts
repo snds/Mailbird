@@ -93,6 +93,8 @@ export class NotesSync {
   private lockSetting = this.index.getMap<NotesLockSetting>("lock")
   /** Every image's facts; the bytes are in `file/<id>`. Newest `updated` wins. */
   private fileRecords = this.index.getMap<NoteFile>("files")
+  /** Images a device dropped because no note used them (ADR-0066): id → when. Every device drops them too. */
+  private filesGone = this.index.getMap<number>("filesGone")
   /** Your sync is end-to-end encrypted (ADR-0062). */
   private sealed: boolean
   /** Sealed, the relay's list of shares is apart from the index, and readable. */
@@ -148,6 +150,9 @@ export class NotesSync {
       void this.pull()
     })
     this.fileRecords.observe((e) => {
+      if (!e.transaction.local) void this.pullFiles()
+    })
+    this.filesGone.observe((e) => {
       if (!e.transaction.local) void this.pullFiles()
     })
     this.lockSetting.observe((e) => {
@@ -248,7 +253,17 @@ export class NotesSync {
 
   /** Images newer here go up: bytes first, then the record that points at them. */
   private async pushFiles() {
+    // Dropped here: tell the others, and take the record off the relay.
+    const gone = await this.core.noteFilesGone()
+    if (gone.some((g) => !this.filesGone.has(g.id) || this.fileRecords.has(g.id)))
+      this.index.transact(() => {
+        for (const g of gone) {
+          if (!this.filesGone.has(g.id)) this.filesGone.set(g.id, g.at)
+          this.fileRecords.delete(g.id)
+        }
+      })
     for (const f of await this.core.noteFileRecords()) {
+      if (this.filesGone.has(f.id)) continue
       const remote = this.fileRecords.get(f.id)
       if ((remote && remote.updated >= f.updated) || this.filesBusy.has(f.id)) continue
       this.moveFile(f.id, async (bytes) => {
@@ -261,9 +276,13 @@ export class NotesSync {
   /** Images newer on the relay come down. */
   private async pullFiles() {
     if (this.stopped) return
-    const local = new Map((await this.core.noteFileRecords()).map((f) => [f.id, f.updated]))
+    const records = await this.core.noteFileRecords()
+    // Another device dropped these: drop them here too.
+    const dropped = records.filter((f) => this.filesGone.has(f.id)).map((f) => f.id)
+    if (dropped.length) await this.core.forgetNoteFiles(dropped)
+    const local = new Map(records.filter((f) => !this.filesGone.has(f.id)).map((f) => [f.id, f.updated]))
     for (const f of this.fileRecords.values()) {
-      if ((local.get(f.id) ?? -1) >= f.updated || this.filesBusy.has(f.id)) continue
+      if (this.filesGone.has(f.id) || (local.get(f.id) ?? -1) >= f.updated || this.filesBusy.has(f.id)) continue
       this.moveFile(f.id, async (bytes) => {
         const raw = bytes.get("raw")
         const at = bytes.get("updated")
