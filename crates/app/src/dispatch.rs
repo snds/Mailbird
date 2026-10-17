@@ -164,6 +164,12 @@ pub const COMMANDS: &[&str] = &[
     "menu_bar_prefs",
     "mail_prefs",
     "set_mail_prefs",
+    "ai_settings",
+    "set_ai_prefs",
+    "set_ai_key",
+    "ai_models",
+    "summarize_thread",
+    "suggest_replies",
     "set_menu_bar_prefs",
     "menu_bar_state",
     "show_app",
@@ -624,6 +630,28 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "set_mail_prefs" => {
             args!(args, prefs: pim_core::MailPrefs);
             Output::json(crate::commands::with_store(state, |s| s.set_mail_prefs(&prefs))?)
+        }
+        // Opt-in AI (ADR-0059).
+        "ai_settings" => Output::json(crate::ai_commands::ai_settings(state)?),
+        "set_ai_prefs" => {
+            args!(args, prefs: pim_core::AiPrefs);
+            Output::json(crate::ai_commands::set_ai_prefs(state, prefs)?)
+        }
+        "set_ai_key" => {
+            args!(args, provider: pim_core::AiProvider, key: Option<String>);
+            Output::json(crate::ai_commands::set_ai_key(state, provider, key)?)
+        }
+        "ai_models" => {
+            args!(args, provider: pim_core::AiProvider);
+            Output::json(crate::ai_commands::ai_models(state, provider).await?)
+        }
+        "summarize_thread" => {
+            args!(args, thread_id: String);
+            Output::json(crate::ai_commands::summarize_thread(state, thread_id).await?)
+        }
+        "suggest_replies" => {
+            args!(args, thread_id: String);
+            Output::json(crate::ai_commands::suggest_replies(state, thread_id).await?)
         }
         // The menu-bar mini calendar (ADR-0054).
         "menu_bar_prefs" => Output::json(crate::menu_bar::prefs(state)?),

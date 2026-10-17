@@ -45,6 +45,7 @@ pub mod push_relay;
 pub mod unsubscribe;
 pub mod jmap;
 pub mod oauth;
+pub mod ai;
 
 trait Io: AsyncRead + AsyncWrite + Unpin + Send + Debug {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Debug> Io for T {}

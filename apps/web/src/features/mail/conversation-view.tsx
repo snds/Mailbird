@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
@@ -25,7 +25,9 @@ import { UnsubscribeAction } from "./unsubscribe"
 import { CATEGORIES } from "./lanes"
 import { useSenderActions } from "./sender-actions"
 import type { Category } from "@/core/types"
-import { useContactPhotos, useMailAction, useMailPrefs } from "@/core/queries"
+import { useAiReady, useContactPhotos, useMailAction, useMailPrefs } from "@/core/queries"
+import { SuggestedRepliesRow, SummaryCard } from "./ai-assist"
+import { useSuggestedReplies, useThreadSummary } from "./use-ai-assist"
 import { useNowSecs } from "@/hooks/use-now"
 
 function ToolbarButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
@@ -202,6 +204,16 @@ export function ConversationView({
   const cancelFollowUp = useMailAction<string>((c, threadId) => c.cancelFollowUp(threadId))
   // Quick Note links to the conversation that's open (ADR-0037).
   useQuickContext(row ? { kind: "thread", id: row.threadId, label: row.subject || "(no subject)" } : null)
+  // Opt-in AI (ADR-0059): asked for here, per conversation, and forgotten on leaving it.
+  const aiReady = useAiReady()
+  const summary = useThreadSummary(row?.threadId ?? "")
+  const replies = useSuggestedReplies(row?.threadId ?? "")
+  const { reset: resetSummary } = summary
+  const { reset: resetReplies } = replies
+  useEffect(() => {
+    resetSummary()
+    resetReplies()
+  }, [row?.threadId, resetSummary, resetReplies])
   const remind = (threadId: string, at: number, label: string) =>
     setFollowUp.mutate({ threadId, at }, { onSuccess: () => toast.success(`If nobody replies, this comes back ${label}`), onError: (e) => toast.error(e.message) })
 
@@ -252,6 +264,7 @@ export function ConversationView({
           </p>
         </div>
         <div className="-mr-2 flex shrink-0 items-center">
+          {aiReady && <ToolbarButton icon="summarize" label="Summarize" active={!summary.isIdle} onClick={() => (summary.isIdle || summary.isError ? summary.mutate() : summary.reset())} />}
           {other && <AboutSender from={other} threadId={row.threadId} onOpenThread={onOpenThread} />}
           <ToolbarButton icon={row.archived ? "unarchive" : "archive"} label={row.archived ? "Move to Inbox" : "Archive"} shortcut="E" onClick={() => triage.toggleArchive(row)} />
           {snoozed ? (
@@ -355,6 +368,8 @@ export function ConversationView({
         </div>
       )}
 
+      <SummaryCard summary={summary} onClose={summary.reset} />
+
       {thread.map((m) => (
         <MessageCard key={m.id} message={m} expanded={open.has(m.id)} onToggle={() => toggle(m.id)} accountAddress={account?.address} />
       ))}
@@ -366,7 +381,13 @@ export function ConversationView({
         <Button variant="outline" onClick={() => openComposer(forwardDraft(target))}>
           <Icon name="forward" data-icon="inline-start" /> Forward
         </Button>
+        {aiReady && replies.isIdle && (
+          <Button variant="ghost" onClick={() => replies.mutate()}>
+            <Icon name="wand_stars" data-icon="inline-start" /> Suggest replies
+          </Button>
+        )}
       </div>
+      <SuggestedRepliesRow replies={replies} onPick={(opening) => openComposer(replyDraft(target, { quote: mailPrefs?.quote ?? true, replyBelow: mailPrefs?.replyBelow ?? false, opening }))} />
       <div className="pt-4">
         <LinkedNotes target={{ kind: "thread", id: row.threadId }} title={subject} />
       </div>

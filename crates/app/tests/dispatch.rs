@@ -107,6 +107,25 @@ async fn every_command_routes_and_works() {
     let saved = json_of(dispatch(&app, &state, "set_mail_prefs", json!({ "prefs": set })).await.unwrap());
     assert_eq!((saved["checkMinutes"].clone(), saved["images"].clone()), (json!(5), json!("contacts")));
     assert_eq!(json_of(dispatch(&app, &state, "mail_prefs", Value::Null).await.unwrap()), saved);
+    // Opt-in AI (ADR-0059): off by default; keys go to the secret store and
+    // come back only as "saved"; nothing is asked of a model while it's off.
+    let ai = json_of(dispatch(&app, &state, "ai_settings", Value::Null).await.unwrap());
+    assert_eq!((&ai["prefs"]["provider"], &ai["prefs"]["local"]["url"], &ai["keys"]["anthropic"]), (&json!("off"), &json!("http://localhost:11434/v1"), &json!(false)));
+    assert!(dispatch(&app, &state, "summarize_thread", json!({ "threadId": "nope" })).await.err().unwrap().contains("no longer here"));
+    let mut prefs = ai["prefs"].clone();
+    prefs["provider"] = json!("anthropic");
+    dispatch(&app, &state, "set_ai_prefs", json!({ "prefs": prefs })).await.unwrap();
+    assert!(dispatch(&app, &state, "ai_models", json!({ "provider": "anthropic" })).await.err().unwrap().contains("API key"));
+    let keyed = json_of(dispatch(&app, &state, "set_ai_key", json!({ "provider": "anthropic", "key": " sk-ant-xyz " })).await.unwrap());
+    assert_eq!(keyed["keys"]["anthropic"], true);
+    assert!(!keyed.to_string().contains("sk-ant-xyz"), "the key never comes back");
+    assert_eq!(pim_app::secrets::find("ai:anthropic").unwrap().as_deref(), Some("sk-ant-xyz"));
+    assert_eq!(json_of(dispatch(&app, &state, "set_ai_key", json!({ "provider": "anthropic", "key": null })).await.unwrap())["keys"]["anthropic"], false);
+    prefs["provider"] = json!("compatible");
+    prefs["compatible"]["url"] = json!("http://api.example.com/v1");
+    assert!(dispatch(&app, &state, "set_ai_prefs", json!({ "prefs": prefs })).await.err().unwrap().contains("https://"));
+    prefs["provider"] = json!("off");
+    dispatch(&app, &state, "set_ai_prefs", json!({ "prefs": prefs })).await.unwrap();
     // The menu bar (ADR-0054): on by default, it follows its prefs, and the
     // host is told; "Open Mailbird" reaches the host with its jump.
     assert_eq!(json_of(dispatch(&app, &state, "menu_bar_prefs", Value::Null).await.unwrap()), json!({ "enabled": true, "showNext": true }));

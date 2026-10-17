@@ -4,7 +4,7 @@ import { useEffect } from "react"
 import { fromBase64 } from "@/lib/base64"
 
 import { getCoreClient, type CoreClient } from "./client"
-import type { CollectionKind, KeyBindings, MailPrefs, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
+import type { AiPrefs, AiProvider, CollectionKind, KeyBindings, MailPrefs, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -242,6 +242,45 @@ export function useSetMailPrefs() {
     mutationFn: (p: MailPrefs) => call((c) => c.setMailPrefs(p)),
     onSuccess: (p) => qc.setQueryData(["settings", "mail"], p),
   })
+}
+
+/** Opt-in AI's settings (ADR-0059). */
+export function useAiSettings() {
+  return useQuery({ queryKey: ["settings", "ai"], queryFn: () => call((c) => c.aiSettings()), staleTime: Infinity })
+}
+
+/** AI is on and has what it needs to answer (a model, and a key unless it's local). */
+export function useAiReady() {
+  const { data } = useAiSettings()
+  if (!data || data.prefs.provider === "off") return false
+  const p = data.prefs
+  if (p.provider === "local") return !!p.local.model
+  if (p.provider === "anthropic") return data.keys.anthropic && !!p.anthropicModel
+  return data.keys.compatible && !!p.compatible.model
+}
+
+export function useSetAiPrefs() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: AiPrefs) => call((c) => c.setAiPrefs(p)),
+    onSuccess: (s) => qc.setQueryData(["settings", "ai"], s),
+  })
+}
+
+export function useSetAiKey() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ provider, key }: { provider: AiProvider; key: string | null }) => call((c) => c.setAiKey(provider, key)),
+    onSuccess: (s) => {
+      qc.setQueryData(["settings", "ai"], s)
+      void qc.invalidateQueries({ queryKey: ["ai", "models"] })
+    },
+  })
+}
+
+/** Asked only when Settings is open on that provider: it reaches the model server. */
+export function useAiModels(provider: AiProvider, enabled: boolean, url?: string) {
+  return useQuery({ queryKey: ["ai", "models", provider, url], queryFn: () => call((c) => c.aiModels(provider)), enabled: enabled && provider !== "off", retry: false, staleTime: 60_000 })
 }
 
 export function useSwipeActions() {

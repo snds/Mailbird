@@ -74,6 +74,8 @@ interface UiState {
   grammarOpen: boolean
   /** Mail's power settings (ADR-0055). */
   advancedMailOpen: boolean
+  aiSettingsOpen: boolean
+  setAiSettingsOpen: (open: boolean) => void
   setAdvancedMailOpen: (open: boolean) => void
   setGrammarOpen: (open: boolean) => void
   /** The ⌘K command menu. */
@@ -143,6 +145,8 @@ export const useUi = create<UiState>((set, get) => ({
   setWritingOpen: (writingOpen) => set({ writingOpen }),
   grammarOpen: false,
   advancedMailOpen: false,
+  aiSettingsOpen: false,
+  setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
   setAdvancedMailOpen: (advancedMailOpen) => set({ advancedMailOpen }),
   setGrammarOpen: (grammarOpen) => set({ grammarOpen }),
   paletteOpen: false,

@@ -36,6 +36,8 @@ export const formatRecipients = (list: Address[] = []) =>
 export interface ReplyStyle {
   quote: boolean
   replyBelow: boolean
+  /** Words to start the reply with, such as a suggested reply (ADR-0059). */
+  opening?: string
 }
 
 export function replyDraft(m: MessageDetail, style: ReplyStyle = { quote: true, replyBelow: false }): ComposerDraft {
@@ -54,9 +56,11 @@ export function replyDraft(m: MessageDetail, style: ReplyStyle = { quote: true, 
     inReplyTo: m.messageId,
     references: m.references,
   }
-  if (!style.quote) return { ...head, body: "", bodyHtml: "<p></p>" }
-  if (style.replyBelow) return { ...head, body: `${intro}\n${quoted}\n\n`, bodyHtml: `${quoteHtml}<p></p>`, cursorAfterQuote: true }
-  return { ...head, body: `\n\n${intro}\n${quoted}`, bodyHtml: `<p></p>${quoteHtml}` }
+  const said = style.opening?.trim() ?? ""
+  const saidHtml = said ? textToHtml(said) : "<p></p>"
+  if (!style.quote) return { ...head, body: said, bodyHtml: saidHtml }
+  if (style.replyBelow) return { ...head, body: `${intro}\n${quoted}\n\n${said}`, bodyHtml: `${quoteHtml}${saidHtml}`, cursorAfterQuote: true }
+  return { ...head, body: `${said}\n\n${intro}\n${quoted}`, bodyHtml: `${saidHtml}${quoteHtml}` }
 }
 
 /** The message a Reply answers: the newest one you didn't send yourself. */

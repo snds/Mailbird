@@ -22,6 +22,8 @@ pub mod interesting;
 pub mod grammar;
 mod booking_store;
 mod mail_prefs;
+pub mod ai;
+pub use ai::{AiPrefs, AiProvider, Endpoint as AiEndpoint};
 pub use mail_prefs::{CHECK_MINUTES, MailPrefs, MarkRead, RemoteImages};
 mod tasks_store;
 pub use tasks_store::{NoteTask, NotesPrefs, PlannedTask};

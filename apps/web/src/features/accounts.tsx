@@ -209,6 +209,10 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         <SettingsRow icon="tune" title="Advanced mail settings" hint="Remote images, marking read, how replies quote, read receipts, and how often to check." open={() => useUi.getState().setAdvancedMailOpen(true)} />
       )}
 
+      {accounts.length > 0 && (
+        <SettingsRow icon="wand_stars" title="AI summaries and replies" hint="Off unless you turn it on: a model on this computer, or Claude or another service with your own key." open={() => useUi.getState().setAiSettingsOpen(true)} />
+      )}
+
       <MeetingSettingsSection />
 
       {/* The menu bar is the desktop's; the demo stands in for it. */}

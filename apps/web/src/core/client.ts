@@ -21,6 +21,11 @@ import type {
   InterestingCalendar,
   SwipeActions,
   MailPrefs,
+  AiPrefs,
+  AiProvider,
+  AiSettings,
+  SuggestedReplies,
+  ThreadSummary,
   KeyBindings,
   ExportedNote,
   SenderProfile,
@@ -169,6 +174,15 @@ export interface CoreClient {
   /** Mail's power settings (ADR-0055). */
   mailPrefs(): Promise<MailPrefs>
   setMailPrefs(prefs: MailPrefs): Promise<MailPrefs>
+  /** Opt-in AI (ADR-0059). Keys go to the keychain (or the gateway's sealed store) and never come back. */
+  aiSettings(): Promise<AiSettings>
+  setAiPrefs(prefs: AiPrefs): Promise<AiSettings>
+  setAiKey(provider: AiProvider, key: string | null): Promise<AiSettings>
+  /** The models a provider offers, with the saved address and key: also the connection check. */
+  aiModels(provider: AiProvider): Promise<string[]>
+  /** Sends this one conversation's text to the chosen model. */
+  summarizeThread(threadId: string): Promise<ThreadSummary>
+  suggestReplies(threadId: string): Promise<SuggestedReplies>
   swipeActions(): Promise<SwipeActions>
   bookingLinks(): Promise<BookingLink[]>
   saveBookingLink(id: string | null, input: BookingLinkInput): Promise<BookingLink>
@@ -399,6 +413,12 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     interestingCalendars: () => call("interesting_calendars"),
     mailPrefs: () => call("mail_prefs"),
     setMailPrefs: (prefs) => call("set_mail_prefs", { prefs }),
+    aiSettings: () => call("ai_settings"),
+    setAiPrefs: (prefs) => call("set_ai_prefs", { prefs }),
+    setAiKey: (provider, key) => call("set_ai_key", { provider, key }),
+    aiModels: (provider) => call("ai_models", { provider }),
+    summarizeThread: (threadId) => call("summarize_thread", { threadId }),
+    suggestReplies: (threadId) => call("suggest_replies", { threadId }),
     swipeActions: () => call("swipe_actions"),
     bookingLinks: () => call("booking_links"),
     saveBookingLink: (id, input) => call("save_booking_link", { id, input }),
