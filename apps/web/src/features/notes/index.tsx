@@ -82,7 +82,7 @@ export function NotesView() {
         onSelect={() => open(n)}
         title={
           <span className="flex items-center gap-1.5">
-            {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes" label="Pinned" />}
+            {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes-text" label="Pinned" />}
             {(n.locked || isShared(n)) && <Icon name={n.locked ? "lock" : "group"} tone="muted" className="size-4" />}
             {n.color && (
               <span
@@ -107,7 +107,7 @@ export function NotesView() {
                 <Icon
                   name={isDue(n) ? "notifications_active" : "schedule"}
                   fill={isDue(n)}
-                  className={cn("mr-1 inline size-3.5 align-[-2px]", isDue(n) && "text-vertical-notes")}
+                  className={cn("mr-1 inline size-3.5 align-[-2px]", isDue(n) && "text-vertical-notes-text")}
                   label={`${isDue(n) ? "Due" : "Reminder"} ${reminderLabel(n.remindAt)}`}
                 />
               )}
@@ -268,7 +268,7 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
         <span className="flex items-start gap-1.5">
           <span className={cn("min-w-0 flex-1 font-semibold break-words", !n.title && "text-muted-foreground")}>{n.title || "New note"}</span>
           {(n.locked || isShared(n)) && <Icon name={n.locked ? "lock" : "group"} className="size-4 text-foreground/60" label={n.locked ? "Locked" : sharedLabel(n)} />}
-          {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes" label="Pinned" />}
+          {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes-text" label="Pinned" />}
         </span>
         {n.locked ? (
           <span className="text-sm text-foreground/60 italic">Locked</span>

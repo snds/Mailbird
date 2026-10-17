@@ -24,7 +24,7 @@ export function PassphraseDialog({ open, onOpenChange, onDone }: { open: boolean
   const { data: info } = useNotesLock()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent>
         {open && info && (info.set ? <UnlockForm info={info} onDone={onDone} onCancel={() => onOpenChange(false)} /> : <SetForm onDone={onDone} onCancel={() => onOpenChange(false)} />)}
       </DialogContent>
     </Dialog>

@@ -88,7 +88,7 @@ export function AccountsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => (setOpen(o), !o && setPreset(null))}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent size="lg">
         {membersOpen ? (
           <TeamMembersView />
         ) : preset?.oauth ? (

@@ -44,7 +44,7 @@ export function Agenda({
     <div className="pb-24" data-slot="agenda">
       {list.map(({ day, items }) => (
         <section key={day.toISOString()} aria-label={dayLabel(day, now)}>
-          <h3 className={cn("sticky top-0 z-10 bg-surface-chrome/95 px-4 py-2 text-xs font-semibold tracking-wide uppercase backdrop-blur", sameDay(day, now) ? "text-(--c-calendar-today)" : "text-muted-foreground")}>
+          <h3 className={cn("sticky top-0 z-10 bg-surface-chrome/95 px-4 py-2 text-xs font-semibold tracking-wide uppercase backdrop-blur", sameDay(day, now) ? "text-(--c-calendar-today-text)" : "text-muted-foreground")}>
             {dayLabel(day, now)}
             {/* "Today", "Tomorrow" get the date beside them. */}
             {dayLabel(day, now) !== fmt.dayLong(day) && <span className="ml-2 font-normal text-muted-foreground normal-case">{fmt.dayLong(day)}</span>}

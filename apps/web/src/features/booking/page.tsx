@@ -155,7 +155,7 @@ function Confirmed({ booked, token, preview }: { booked: Booked; token: string; 
   return (
     <Frame>
       <div role="status" className="flex flex-col items-start gap-2">
-        <span className="flex size-10 items-center justify-center rounded-full bg-vertical-calendar/15 text-vertical-calendar">
+        <span className="flex size-10 items-center justify-center rounded-full bg-vertical-calendar/15 text-vertical-calendar-text">
           <Icon name="event_available" className="size-6" />
         </span>
         <h1 className="text-xl font-semibold">You're booked</h1>

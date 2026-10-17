@@ -24,7 +24,7 @@ export function AiSettingsDialog() {
   const setOpen = useUi((s) => s.setAiSettingsOpen)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>AI summaries and replies</DialogTitle>
           <DialogDescription>Off unless you turn it on. A conversation goes to the model only when you ask for its summary or replies.</DialogDescription>
@@ -162,7 +162,7 @@ function KeyField({ provider, saved }: { provider: "anthropic" | "compatible"; s
       <Field>
         <FieldLabel>API key</FieldLabel>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm [&_svg]:size-4 [&_svg]:text-vertical-mail">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm [&_svg]:size-4 [&_svg]:text-vertical-mail-text">
             <Icon name="key" /> Saved in {where}
           </span>
           <Button variant="outline" size="sm" onClick={() => setReplacing(true)}>

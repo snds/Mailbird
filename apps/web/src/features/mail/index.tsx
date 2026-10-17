@@ -178,7 +178,7 @@ export function MailView() {
                     <TabsTrigger key={l.id} value={l.id}>
                       {l.label}
                       {l.id === "screener" && !!screener?.waiting && (
-                        <span className="ml-1 rounded-full bg-vertical-mail px-1.5 text-[11px] leading-4 font-semibold text-white" aria-label={`${screener.waiting} waiting`}>
+                        <span className="ml-1 rounded-full bg-vertical-mail-text px-1.5 text-[11px] leading-4 font-semibold text-background" aria-label={`${screener.waiting} waiting`}>
                           {screener.waiting}
                         </span>
                       )}
@@ -326,12 +326,12 @@ function MessageRow({
   const nudged = lane === "inbox" && m.followUpAt != null && m.followUpAt <= now
   const meta =
     lane === "snoozed" && m.snoozedUntil ? (
-      <span className="inline-flex items-center gap-1 text-vertical-notes">
+      <span className="inline-flex items-center gap-1 text-vertical-notes-text">
         <Icon name="snooze" className="size-3.5" />
         {shortTime(m.snoozedUntil)}
       </span>
     ) : lane === "waiting" && m.followUpAt ? (
-      <span className="inline-flex items-center gap-1 text-vertical-mail">
+      <span className="inline-flex items-center gap-1 text-vertical-mail-text">
         <Icon name="notifications" className="size-3.5" />
         {shortTime(m.followUpAt)}
       </span>
@@ -363,7 +363,7 @@ function MessageRow({
         supporting={
           <>
             {nudged && (
-              <span className="mr-1.5 inline-flex items-center gap-1 rounded-md bg-vertical-mail/10 px-1.5 text-xs font-medium text-vertical-mail">
+              <span className="mr-1.5 inline-flex items-center gap-1 rounded-md bg-vertical-mail/10 px-1.5 text-xs font-medium text-vertical-mail-text">
                 <Icon name="notifications_active" className="size-3.5" /> No reply yet
               </span>
             )}
@@ -373,7 +373,7 @@ function MessageRow({
         }
         trailing={
           <span className="mt-0.5 flex shrink-0 flex-col items-end gap-1">
-            {m.flagged && <Icon name="star" fill className="size-4 text-vertical-notes" label="Starred" />}
+            {m.flagged && <Icon name="star" fill className="size-4 text-vertical-notes-text" label="Starred" />}
             {m.hasAttachments && <Icon name="attach_file" tone="muted" className="size-4" label="Has attachments" />}
             {account && <span className="text-[11px] text-muted-foreground">{account}</span>}
           </span>

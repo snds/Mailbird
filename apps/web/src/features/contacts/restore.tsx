@@ -30,7 +30,7 @@ const few = (names: string[]) => {
 export function RestoreContactsDialog({ openedAt, onClose }: { openedAt: number | null; onClose: () => void }) {
   return (
     <Dialog open={openedAt !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">{openedAt !== null && <RestoreForm openedAt={openedAt} onDone={onClose} />}</DialogContent>
+      <DialogContent size="md">{openedAt !== null && <RestoreForm openedAt={openedAt} onDone={onClose} />}</DialogContent>
     </Dialog>
   )
 }

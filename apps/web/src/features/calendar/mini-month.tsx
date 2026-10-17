@@ -46,7 +46,7 @@ export function MiniMonth({ month, onMonth, selected, onPick, busy }: { month: D
                 "relative mx-auto flex size-8 items-center justify-center rounded-full text-xs tabular-nums outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50",
                 outside && "text-muted-foreground/60",
                 sameDay(d, selected) && "bg-accent font-semibold",
-                sameDay(d, now) && "font-semibold text-(--c-calendar-today)",
+                sameDay(d, now) && "font-semibold text-(--c-calendar-today-text)",
               )}
             >
               {d.getDate()}

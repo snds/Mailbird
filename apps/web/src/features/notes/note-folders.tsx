@@ -27,7 +27,7 @@ export function NoteFolderChips({ active, onPick }: { active: string | null; onP
           shape="pill"
           onClick={() => onPick(active === f.id ? null : f.id)}
         >
-          <Icon name="folder_special" data-icon="inline-start" className="text-vertical-notes" />
+          <Icon name="folder_special" data-icon="inline-start" className="text-vertical-notes-text" />
           {f.name}
           <span className="text-muted-foreground tabular-nums">{f.count}</span>
         </Button>
@@ -42,7 +42,7 @@ export function NoteFolderChips({ active, onPick }: { active: string | null; onP
         </Button>
       )}
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           {editing && (
             <NoteFolderForm
               key={editing.folder?.id ?? "new"}

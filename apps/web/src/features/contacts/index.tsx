@@ -108,7 +108,7 @@ export function ContactsView() {
             <div className="px-3 pb-2">
               <Item variant="muted" render={<button type="button" data-selected={selected?.kind === "duplicates"} onClick={() => setSelected({ kind: "duplicates" })} />}>
                 <ItemMedia>
-                  <Icon name="group" className="text-vertical-contacts" />
+                  <Icon name="group" className="text-vertical-contacts-text" />
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle>

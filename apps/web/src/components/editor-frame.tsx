@@ -15,7 +15,7 @@ export function EditorFrame({ open, onClose, title, children }: { open: boolean;
   if (tabletUp) {
     return (
       <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-        <DialogContent className="flex max-h-[min(46rem,calc(100dvh-2rem))] flex-col gap-0 p-0 sm:max-w-lg" showCloseButton={false} initialFocus={firstField}>
+        <DialogContent size="lg" className="flex max-h-[min(46rem,calc(100dvh-2rem))] flex-col gap-0 p-0" showCloseButton={false} initialFocus={firstField}>
           <DialogTitle className="sr-only">{title}</DialogTitle>
           {children}
         </DialogContent>

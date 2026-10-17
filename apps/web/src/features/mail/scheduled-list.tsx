@@ -52,7 +52,7 @@ function ScheduledRow({ item }: { item: OutboxItem }) {
     <li className="flex flex-col gap-2 px-(--c-list-row-padding-x) py-(--c-list-row-padding-y)">
       <div className="flex items-baseline gap-2">
         <span className="truncate text-sm font-medium">To {to}</span>
-        <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-vertical-mail">
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-vertical-mail-text">
           <Icon name="schedule_send" className="size-3.5" />
           {longTime(item.sendAt)}
         </span>

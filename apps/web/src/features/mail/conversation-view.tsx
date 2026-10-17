@@ -265,7 +265,7 @@ export function ConversationView({
             {thread.length > 1 && <span>{thread.length} messages</span>}
             {showAccount && account && <Badge variant="secondary">{account.displayName}</Badge>}
             {reminder !== null && !due && (
-              <span className="inline-flex items-center gap-1 text-vertical-mail">
+              <span className="inline-flex items-center gap-1 text-vertical-mail-text">
                 <Icon name="notifications" className="size-3.5" /> Reminder {longTime(reminder)} if nobody replies
               </span>
             )}
@@ -357,7 +357,7 @@ export function ConversationView({
 
       {due && (
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-vertical-mail/30 bg-vertical-mail/5 px-4 py-3 text-sm">
-          <Icon name="notifications_active" className="size-5 text-vertical-mail" />
+          <Icon name="notifications_active" className="size-5 text-vertical-mail-text" />
           <span className="min-w-0 flex-1">
             <span className="font-medium">No reply yet.</span> You asked to be reminded {longTime(reminder!)}.
           </span>

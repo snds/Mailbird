@@ -165,7 +165,7 @@ export function PickTimeDialog({
   const tooSoon = at !== null && at <= now + 60
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent>
         <form
           className="flex flex-col gap-4"
           // React events cross portals: keep these from reaching a composer form around the menu.

@@ -26,7 +26,7 @@ export function SignatureSuggestion({ messageId }: { messageId: string }) {
   const what = list(s.adds.filter((a) => a !== "contact"))
   return (
     <aside className="flex items-center gap-3 rounded-xl border bg-muted/40 px-3 py-2.5" aria-label="Contact details in the signature">
-      <Icon name={isNew ? "person_add" : "contact_page"} className="size-5 text-vertical-contacts" />
+      <Icon name={isNew ? "person_add" : "contact_page"} className="size-5 text-vertical-contacts-text" />
       <p className="min-w-0 flex-1 text-sm">
         {isNew ? (
           <>

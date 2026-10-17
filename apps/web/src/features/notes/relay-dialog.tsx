@@ -31,7 +31,7 @@ import { relayUrlProblem, useSyncStatus } from "./sync"
 export function RelayDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">{open && <RelayForm onDone={() => onOpenChange(false)} />}</DialogContent>
+      <DialogContent size="md">{open && <RelayForm onDone={() => onOpenChange(false)} />}</DialogContent>
     </Dialog>
   )
 }

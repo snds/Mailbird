@@ -98,12 +98,12 @@ function PickPhoto({ onPick }: { onPick: (f: File | undefined) => void }) {
     <div className="flex gap-3">
       {/* On phones, `capture` opens the back camera; elsewhere it's an ordinary file picker. */}
       <label className={tile}>
-        <Icon name="photo_camera" className="size-7 text-vertical-notes" />
+        <Icon name="photo_camera" className="size-7 text-vertical-notes-text" />
         Take a photo
         <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => onPick(e.target.files?.[0])} />
       </label>
       <label className={tile}>
-        <Icon name="image" className="size-7 text-vertical-notes" />
+        <Icon name="image" className="size-7 text-vertical-notes-text" />
         Choose an image
         <input type="file" accept="image/*" className="sr-only" onChange={(e) => onPick(e.target.files?.[0])} />
       </label>

@@ -2,7 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Item, ItemMain, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useInboxOverview, useMailAction, useSplits } from "@/core/queries"
 import type { Split, SplitInput } from "@/core/types"
@@ -54,7 +54,7 @@ export function SplitEditor() {
   const open = useUi((s) => s.openSplitEditor)
   return (
     <Dialog open={state !== null} onOpenChange={(o) => !o && open(null)}>
-      <DialogContent className="sm:max-w-md">{state && <SplitForm key={state.id ?? "new"} id={state.id} initial={state.initial} onDone={() => open(null)} />}</DialogContent>
+      <DialogContent size="md">{state && <SplitForm key={state.id ?? "new"} id={state.id} initial={state.initial} onDone={() => open(null)} />}</DialogContent>
     </Dialog>
   )
 }
@@ -179,26 +179,29 @@ export function BundleRow({ accountId, onOpen }: { accountId: string | null; onO
     }
   }
   return (
-    <section aria-label="Newsletters bundle" className="mx-3 mb-1 flex items-center gap-3 rounded-xl border bg-muted/40 py-2 pr-2 pl-3" data-slot="bundle">
-      <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onOpen}>
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-background">
-          <Icon name="newspaper" tone="muted" className="size-5" />
-        </span>
-        <span className="flex min-w-0 flex-col">
-          <span className={b.unread ? "text-sm font-semibold" : "text-sm font-medium"}>
+    // The row opens the Newsletters tab; its own buttons clear it (ADR-0022).
+    <Item variant="outline" size="sm" className="mx-3 mb-1 w-auto rounded-xl bg-muted/40" render={<section aria-label="Newsletters bundle" />}>
+      <ItemMain onClick={onOpen}>
+        <ItemMedia variant="icon">
+          <Icon name="newspaper" tone="muted" />
+        </ItemMedia>
+        <ItemContent>
+          <ItemTitle className={b.unread ? "font-semibold" : undefined}>
             Newsletters <span className="font-normal text-muted-foreground tabular-nums">· {b.unread ? `${b.unread} new` : b.threads}</span>
-          </span>
-          <span className="truncate text-xs text-muted-foreground">{b.senders.join(", ")}</span>
-        </span>
-      </button>
-      {b.unread > 0 && (
-        <Button size="icon-sm" variant="ghost" aria-label="Mark all newsletters read" disabled={read.isPending} onClick={() => read.mutate(undefined, { onError: fail })}>
-          <Icon name="done_all" />
+          </ItemTitle>
+          <ItemDescription className="truncate">{b.senders.join(", ")}</ItemDescription>
+        </ItemContent>
+      </ItemMain>
+      <ItemActions>
+        {b.unread > 0 && (
+          <Button size="icon-sm" variant="ghost" aria-label="Mark all newsletters read" disabled={read.isPending} onClick={() => read.mutate(undefined, { onError: fail })}>
+            <Icon name="done_all" />
+          </Button>
+        )}
+        <Button size="icon-sm" variant="ghost" aria-label="Archive all newsletters" disabled={archive.isPending} onClick={() => void clear()}>
+          <Icon name="archive" />
         </Button>
-      )}
-      <Button size="icon-sm" variant="ghost" aria-label="Archive all newsletters" disabled={archive.isPending} onClick={() => void clear()}>
-        <Icon name="archive" />
-      </Button>
-    </section>
+      </ItemActions>
+    </Item>
   )
 }

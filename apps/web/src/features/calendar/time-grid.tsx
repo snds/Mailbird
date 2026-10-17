@@ -101,7 +101,7 @@ export function TimeGrid({
           return (
             <div key={d.toISOString()} className="flex flex-col items-center py-1.5 text-xs" aria-current={today ? "date" : undefined}>
               <span className="text-muted-foreground uppercase">{fmt.weekdayShort(d)}</span>
-              <span className={cn("flex size-7 items-center justify-center rounded-full text-base font-semibold tabular-nums", today && "bg-(--c-calendar-today) text-white")}>{d.getDate()}</span>
+              <span className={cn("flex size-7 items-center justify-center rounded-full text-base font-semibold tabular-nums", today && "bg-(--c-calendar-today-chip) text-(--c-calendar-today-chip-text)")}>{d.getDate()}</span>
             </div>
           )
         })}

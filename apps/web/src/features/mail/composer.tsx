@@ -83,7 +83,7 @@ export function Composer() {
   if (tabletUp) {
     return (
       <Dialog open={open} onOpenChange={(o) => !o && close()}>
-        <DialogContent className="flex max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-0 p-0 sm:max-w-2xl" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
+        <DialogContent size="xl" className="flex max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-0 p-0" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
           <DialogTitle className="sr-only">New message</DialogTitle>
           {body}
         </DialogContent>
@@ -486,7 +486,7 @@ function SaveTemplateDialog({ open, onOpenChange, subject, html }: { open: boole
   const [error, setError] = useState<string | null>(null)
   return (
     <Dialog open={open} onOpenChange={(o) => (onOpenChange(o), setError(null))}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent>
         <form
           className="flex flex-col gap-4"
           // Inside the composer's form (React events cross portals): keep this from sending the message.

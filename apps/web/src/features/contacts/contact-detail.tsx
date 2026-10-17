@@ -1,7 +1,7 @@
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Badge, Button, Item, ItemActions, ItemContent, Skeleton } from "@unicron/ui"
+import { Icon, type IconName, Badge, Button, Item, ItemActions, ItemContent, Skeleton, ItemMain, ItemTitle, ItemDescription } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContact, useContactActivity, useContactCopies, usePimAction } from "@/core/queries"
 import type { ContactActivity, MessageSummary, Occurrence } from "@/core/types"
@@ -205,14 +205,22 @@ export function Activity({ activity: { threads, upcoming, past }, onThread }: { 
   const jumpTo = useUi((s) => s.jumpTo)
   const now = useNowSecs()
   const meeting = (o: Occurrence) => (
-    <li key={`${o.eventId}-${o.start}`} className="flex items-center gap-2 border-b last:border-0">
-      <button type="button" className="flex min-w-0 flex-1 flex-col py-2 text-left text-sm hover:text-primary" onClick={() => jumpTo({ kind: "event", id: o.eventId, start: o.start })}>
-        <span className="truncate">{o.title || "(no title)"}</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {dayLabel(fromSecs(o.start))} · {rangeLabel(o.start, o.end, o.allDay)}
-        </span>
-      </button>
-      {o.meetingUrl && o.end > now && <JoinButton url={o.meetingUrl} appUrl={o.meetingAppUrl} variant="outline" className="shrink-0" />}
+    <li key={`${o.eventId}-${o.start}`}>
+      <Item size="xs">
+        <ItemMain onClick={() => jumpTo({ kind: "event", id: o.eventId, start: o.start })}>
+          <ItemContent>
+            <ItemTitle>{o.title || "(no title)"}</ItemTitle>
+            <ItemDescription>
+              {dayLabel(fromSecs(o.start))} · {rangeLabel(o.start, o.end, o.allDay)}
+            </ItemDescription>
+          </ItemContent>
+        </ItemMain>
+        {o.meetingUrl && o.end > now && (
+          <ItemActions>
+            <JoinButton url={o.meetingUrl} appUrl={o.meetingAppUrl} variant="outline" />
+          </ItemActions>
+        )}
+      </Item>
     </li>
   )
   if (!threads.length && !upcoming.length && !past.length) return null

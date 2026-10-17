@@ -58,7 +58,7 @@ export function MonthGrid({
                 className={cn(
                   "flex size-6 shrink-0 items-center justify-center self-start rounded-full text-xs tabular-nums outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50",
                   outside && "text-muted-foreground",
-                  today && "bg-(--c-calendar-today) font-semibold text-white hover:bg-(--c-calendar-today)",
+                  today && "bg-(--c-calendar-today-chip) font-semibold text-(--c-calendar-today-chip-text) hover:bg-(--c-calendar-today-chip)",
                 )}
               >
                 {d.getDate()}

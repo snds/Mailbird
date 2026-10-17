@@ -208,7 +208,7 @@ function OpenSharedForm({ initial, onDone }: { initial: string; onDone: () => vo
 /** What a link is, before you add it: the note, who shared it, and what you can do. */
 export function SharedPreview({ link }: { link: ShareLink }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3 [&>svg]:mt-0.5 [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-vertical-notes" data-slot="shared-preview">
+    <div className="flex items-start gap-3 rounded-lg border p-3 [&>svg]:mt-0.5 [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-vertical-notes-text" data-slot="shared-preview">
       <Icon name="group" />
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-sm font-medium">{link.title || (link.kind === "thread" ? "A shared conversation" : "A shared note")}</span>

@@ -60,7 +60,7 @@ async function search(q: string): Promise<Record<NoteLinkKind, Found[]>> {
 export function LinkPicker({ open, onOpenChange, linked, onLink }: { open: boolean; onOpenChange: (o: boolean) => void; linked: NoteLink[]; onLink: (link: NoteLink) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">{open && <Picker linked={linked} onLink={onLink} />}</DialogContent>
+      <DialogContent size="md">{open && <Picker linked={linked} onLink={onLink} />}</DialogContent>
     </Dialog>
   )
 }

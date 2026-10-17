@@ -211,7 +211,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             tooltip={current.pinned ? "Unpin" : "Pin to the top"}
             render={<Toggle size="sm" pressed={current.pinned} onPressedChange={(pinned) => void update({ pinned })} />}
           >
-            <Icon name="keep" fill={current.pinned} className={current.pinned ? "text-vertical-notes" : undefined} />
+            <Icon name="keep" fill={current.pinned} className={current.pinned ? "text-vertical-notes-text" : undefined} />
           </IconButton>
           <RemindMenu
           value={remindAt}

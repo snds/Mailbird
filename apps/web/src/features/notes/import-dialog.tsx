@@ -110,7 +110,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={(o) => (onOpenChange(o), !o && setReport(null))}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Import notes</DialogTitle>
           <DialogDescription>Notes are copied in as Markdown, with their images. Nothing changes in the app they came from.</DialogDescription>
@@ -119,7 +119,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         {report ? (
           <div className="flex flex-col gap-2 text-sm" role="status">
             <p className="flex items-center gap-2 font-medium">
-              <Icon name="check_circle" className="size-5 text-vertical-notes" />
+              <Icon name="check_circle" className="size-5 text-vertical-notes-text" />
               {report.imported === 1 ? "Imported 1 note" : `Imported ${report.imported} notes`}
             </p>
             <ul className="flex flex-col gap-1 pl-7 text-muted-foreground">
