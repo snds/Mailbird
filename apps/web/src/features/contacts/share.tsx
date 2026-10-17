@@ -45,7 +45,7 @@ export function ShareContact({ contact, className }: { contact: ContactDetail; c
         </DropdownMenuContent>
       </DropdownMenu>
       <Dialog open={qr !== null} onOpenChange={(o) => !o && setQr(null)}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{contact.fullName}</DialogTitle>
             <DialogDescription>Scan with a phone's camera to add this contact. It carries the name, company, title, phones, and emails.</DialogDescription>

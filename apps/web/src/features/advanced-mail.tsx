@@ -25,7 +25,7 @@ export function AdvancedMailDialog() {
   const setOpen = useUi((s) => s.setAdvancedMailOpen)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Advanced mail settings</DialogTitle>
           <DialogDescription>The defaults keep your reading private. Change them here if you want more control.</DialogDescription>

@@ -19,7 +19,7 @@ export function WritingDialog() {
   const setOpen = useUi((s) => s.setWritingOpen)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Signatures and templates</DialogTitle>
           <DialogDescription>Signatures go on new messages and replies. Templates are text you reuse, inserted from the composer.</DialogDescription>
