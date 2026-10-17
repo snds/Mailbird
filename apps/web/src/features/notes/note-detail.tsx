@@ -12,6 +12,7 @@ import { longTime, reminderLabel } from "@/lib/time"
 
 import { titleAndSnippet } from "@/core/demo-notes"
 
+import { PeopleHere } from "./people-here"
 import { LinkPicker } from "./link-picker"
 import { LockedPanel, PassphraseDialog } from "./lock"
 import { notesSync } from "./sync"
@@ -199,6 +200,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             {guest ? `Shared by ${guest.from ?? "someone"} · ${guestMode === "edit" ? "You can edit" : "You can read"} · ` : shared ? "Shared · " : ""}
             {current.archived ? "Archived · " : ""}Edited {longTime(note.updated)}
           </span>
+          {shared && <PeopleHere shareId={note.share!.id} />}
           {note.locked && unlocked && (
             <IconButton label="Lock now" tooltip="Lock now (locked notes close)" onClick={() => void lockNow()}>
               <Icon name="lock_open" className="size-5" />

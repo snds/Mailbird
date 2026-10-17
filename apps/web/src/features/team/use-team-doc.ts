@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import type * as Y from "yjs"
 
-import { useAccounts } from "@/core/queries"
+import { useMyName } from "@/core/queries"
+
 
 import { type TeamSnapshot, snapshot } from "./team-doc"
 import { teamSync, useTeamVersions } from "./team-sync"
@@ -26,9 +27,13 @@ export function useTeamDoc(id: string | null): { doc: Y.Doc | null; data: TeamSn
   return { doc: current, data }
 }
 
-/** How you appear to teammates: your first account's name. */
-export function useTeamName() {
-  const { data: accounts = [] } = useAccounts()
-  const a = accounts[0]
-  return a ? a.displayName || a.address : "Me"
+
+/** While a shared conversation is on screen, the others see you there (ADR-0061). */
+export function useHereIn(id: string | null, live: boolean) {
+  const me = useMyName()
+  useEffect(() => {
+    if (!id || !live) return
+    teamSync()?.here(id, me)
+    return () => teamSync()?.here(id, null)
+  }, [id, live, me])
 }

@@ -380,7 +380,7 @@ export class NotesSync {
   }
 
   /** Live connection for the open note's editor. */
-  attach(id: string, doc: Y.Doc, share?: NoteShare | null): () => void {
+  attach(id: string, doc: Y.Doc, share?: NoteShare | null, me?: string): () => void {
     this.queue.delete(id)
     this.background.get(id)?.()
     // Just shared, or just stopped: change documents now, not on the next push.
@@ -393,7 +393,7 @@ export class NotesSync {
     if (!shared && share && activeOwnerShare(share)) shared = this.watchShare(id, share)
     if (shared) {
       this.sharedOpen.add(id)
-      const detach = shared.attach(doc)
+      const detach = shared.attach(doc, me)
       return () => {
         this.sharedOpen.delete(id)
         detach()

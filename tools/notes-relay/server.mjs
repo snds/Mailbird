@@ -40,8 +40,9 @@ await mkdir(data, { recursive: true })
 // Only Mailbird's own document names: "mailbird/index", "mailbird/note/<id>",
 // "mailbird/file/<id>" (an image in a note, ADR-0044), and
 // "mailbird/shared/<id>" (a shared note, ADR-0056).
-const NAME = /^mailbird\/(index|(note|file)\/[A-Za-z0-9-]{1,64}|shared\/[A-Za-z0-9_-]{16,64})$/
-const SHARED = /^mailbird\/shared\/([A-Za-z0-9_-]{16,64})$/
+const NAME = /^mailbird\/(index|(note|file)\/[A-Za-z0-9-]{1,64}|shared\/[A-Za-z0-9_-]{16,64}(\/files)?)$/
+// A share's own document, and its files beside it (ADR-0061): one link opens both.
+const SHARED = /^mailbird\/shared\/([A-Za-z0-9_-]{16,64})(?:\/files)?$/
 const INDEX = "mailbird/index"
 const file = (name) => join(data, `${name.replaceAll("/", "__")}.ydoc`)
 
@@ -91,8 +92,10 @@ const server = new Server({
     if (documentName !== INDEX) return
     for (const [id, share] of document.getMap("shares").entries()) {
       if (!share?.revoked && share?.mode === "edit") continue
-      for (const c of instance.documents.get(`mailbird/shared/${id}`)?.getConnections() ?? []) {
-        if (c.context?.share === id && (share?.revoked || !c.readOnly)) c.close()
+      for (const name of [`mailbird/shared/${id}`, `mailbird/shared/${id}/files`]) {
+        for (const c of instance.documents.get(name)?.getConnections() ?? []) {
+          if (c.context?.share === id && (share?.revoked || !c.readOnly)) c.close()
+        }
       }
     }
   },

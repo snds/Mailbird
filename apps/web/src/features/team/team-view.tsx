@@ -12,10 +12,12 @@ import { longTime, shortTime } from "@/lib/time"
 import { initials, replyDraft, replyTarget } from "../mail/format"
 import { parseShareUrl } from "../notes/share-link"
 import { ShareThreadDialog } from "./share-thread-dialog"
+import { OwnerFiles, TeammateFiles } from "./team-files"
 import { TeamPanel } from "./team-panel"
 import { useTeamLive } from "./team-sync"
 import { useOpenTeamLink } from "./use-open-team-link"
-import { useTeamDoc } from "./use-team-doc"
+import { useHereIn, useTeamDoc } from "./use-team-doc"
+import { PeopleHere } from "../notes/people-here"
 
 const who = (t: TeamThread) => (t.role === "owner" ? "You shared" : `From ${t.from ?? "a teammate"}`)
 
@@ -83,6 +85,7 @@ export function TeamThreadView({ id }: { id: string }) {
   const t = list.find((x) => x.id === id)
   const { doc, data } = useTeamDoc(id)
   const live = useTeamLive((s) => !!s[id])
+  useHereIn(id, live && !t?.revoked)
   const { data: mailPrefs } = useMailPrefs()
   const openComposer = useUi((s) => s.openComposer)
   const setOpen = useUi((s) => s.setTeamOpen)
@@ -131,6 +134,7 @@ export function TeamThreadView({ id }: { id: string }) {
           <p className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
             <span>{owner ? "You shared this conversation" : `Shared by ${t.from ?? "a teammate"}`}</span>
             {t.revoked ? <Badge variant="secondary">Stopped</Badge> : live ? <Badge variant="secondary">Live</Badge> : <span>Connecting…</span>}
+            {!t.revoked && <PeopleHere shareId={t.id} />}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -167,7 +171,10 @@ export function TeamThreadView({ id }: { id: string }) {
         ))}
       </ol>
 
-      <TeamPanel doc={doc} comments={data.comments} owner={owner} from={data.from || t.from} readOnly={t.revoked} onUseReply={owner ? (html) => void answerWith(html) : undefined} />
+      <TeamPanel doc={doc} comments={data.comments} owner={owner} from={data.from || t.from} readOnly={t.revoked}
+        onUseReply={owner ? (html) => void answerWith(html) : undefined}
+        files={t.revoked ? null : owner && t.threadId ? <OwnerFiles shareId={t.id} threadId={t.threadId} /> : <TeammateFiles shareId={t.id} />}
+      />
 
       {owner && t.threadId && <ShareThreadDialog threadId={t.threadId} subject={subject} open={sharing} onOpenChange={setSharing} />}
     </article>

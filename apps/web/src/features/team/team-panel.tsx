@@ -1,16 +1,17 @@
 import Collaboration from "@tiptap/extension-collaboration"
 import { Placeholder } from "@tiptap/extensions"
 import { EditorContent, useEditor } from "@tiptap/react"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import type * as Y from "yjs"
 
 import { Avatar, AvatarFallback, Button, Icon, IconButton, Textarea } from "@unicron/ui"
+import { useMyName } from "@/core/queries"
 import { shortTime } from "@/lib/time"
 
 import { MAIL_EXTENSIONS } from "../mail/use-rich-editor"
+import { PeopleHere } from "../notes/people-here"
 import { initials } from "../mail/format"
 import { DRAFT_FIELD, type TeamComment, addComment, removeComment } from "./team-doc"
-import { useTeamName } from "./use-team-doc"
 
 /**
  * The team's side of a shared conversation (ADR-0060): comments that never
@@ -24,7 +25,13 @@ export function TeamPanel({
   from,
   readOnly,
   onUseReply,
+  shareId,
+  files,
 }: {
+  /** The conversation's files section (ADR-0061). */
+  files?: ReactNode
+  /** Shows who else is here in the panel's header (your own conversation's panel). */
+  shareId?: string
   doc: Y.Doc
   comments: TeamComment[]
   owner: boolean
@@ -37,17 +44,21 @@ export function TeamPanel({
 }) {
   return (
     <section aria-label="Team" className="flex flex-col gap-4 rounded-2xl border px-4 py-4" data-role="team-panel">
-      <h3 className="flex items-center gap-1.5 text-sm font-medium [&_svg]:size-4 [&_svg]:text-muted-foreground">
-        <Icon name="group" /> Team
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-medium [&_svg]:size-4 [&_svg]:text-muted-foreground">
+          <Icon name="group" /> Team
+        </h3>
+        {shareId && <PeopleHere shareId={shareId} />}
+      </div>
       <Comments doc={doc} comments={comments} readOnly={readOnly} />
+      {files}
       <SharedDraft doc={doc} owner={owner} from={from} readOnly={readOnly} onUseReply={onUseReply} />
     </section>
   )
 }
 
 function Comments({ doc, comments, readOnly }: { doc: Y.Doc; comments: TeamComment[]; readOnly: boolean }) {
-  const me = useTeamName()
+  const me = useMyName()
   const [text, setText] = useState("")
   const post = () => {
     if (!text.trim()) return

@@ -8,7 +8,7 @@ A small server that lets your devices sync Mailbird notes. It's a plain [Hocuspo
 - **Catching up.** The relay saves each document to a file. A device that was offline catches up when it reconnects.
 - **What syncs here.** Only notes. Mail, calendars, and contacts sync with your accounts.
 - **Shared notes** ([ADR-0056](../../docs/decisions/0056-shared-notes.md)). A note you share by link gets its own document here. The link carries a token for that one note, derived from the relay's token, so the relay stores no extra secrets. Your devices tell the relay which links still work, and whether each can edit; it refuses stopped links, connects view-only links read-only, and drops guests the moment you stop sharing. A link opened in a browser lands on a short page here (`/share`) that explains how to open it in Mailbird.
-- **Shared conversations** ([ADR-0060](../../docs/decisions/0060-team-conversations.md)). A conversation you share with teammates works the same way: its own document here (a copy of the messages, the team's comments, and the reply you write together), a link with a token for it alone, and your devices' list of which links still work.
+- **Shared conversations** ([ADR-0060](../../docs/decisions/0060-team-conversations.md)). A conversation you share with teammates works the same way: its own document here (a copy of the messages, the team's comments, and the reply you write together), a link with a token for it alone, and your devices' list of which links still work. Each share's files (a note's images, a conversation's shared attachments) sit beside it in `shared/<id>/files`, which the same link opens ([ADR-0061](../../docs/decisions/0061-presence-and-shared-files.md)).
 
 ## Run it
 
