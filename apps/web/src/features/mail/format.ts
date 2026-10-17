@@ -2,7 +2,7 @@ import type { ComposerDraft } from "@/app/ui-store"
 import type { Address, Draft, MessageDetail } from "@/core/types"
 import { longTime } from "@/lib/time"
 
-import { escapeHtml, textToHtml } from "./rich-text"
+import { escapeHtml, htmlToText, textToHtml } from "./rich-text"
 
 /** Seconds between pressing Send and the message leaving. */
 export const UNDO_SECONDS = 10
@@ -38,6 +38,8 @@ export interface ReplyStyle {
   replyBelow: boolean
   /** Words to start the reply with, such as a suggested reply (ADR-0059). */
   opening?: string
+  /** The same as rich text: a reply written with teammates (ADR-0060). */
+  openingHtml?: string
 }
 
 export function replyDraft(m: MessageDetail, style: ReplyStyle = { quote: true, replyBelow: false }): ComposerDraft {
@@ -56,8 +58,8 @@ export function replyDraft(m: MessageDetail, style: ReplyStyle = { quote: true, 
     inReplyTo: m.messageId,
     references: m.references,
   }
-  const said = style.opening?.trim() ?? ""
-  const saidHtml = said ? textToHtml(said) : "<p></p>"
+  const said = (style.openingHtml ? htmlToText(style.openingHtml) : style.opening)?.trim() ?? ""
+  const saidHtml = style.openingHtml && said ? style.openingHtml : said ? textToHtml(said) : "<p></p>"
   if (!style.quote) return { ...head, body: said, bodyHtml: saidHtml }
   if (style.replyBelow) return { ...head, body: `${intro}\n${quoted}\n\n${said}`, bodyHtml: `${quoteHtml}${saidHtml}`, cursorAfterQuote: true }
   return { ...head, body: `${said}\n\n${intro}\n${quoted}`, bodyHtml: `${saidHtml}${quoteHtml}` }

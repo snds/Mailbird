@@ -9,6 +9,7 @@ import type { NoteSummary, ShareMode } from "@/core/types"
 
 import { type ShareLink, parseShareUrl, shareToken, shareUrl } from "./share-link"
 import { useAddShared } from "./use-add-shared"
+import { useOpenTeamLink } from "../team/use-open-team-link"
 
 const MODES: { value: ShareMode; label: string; hint: string }[] = [
   { value: "edit", label: "Can edit", hint: "Anyone with the link can change this note. Your edits and theirs merge as you type." },
@@ -176,6 +177,8 @@ function OpenSharedForm({ initial, onDone }: { initial: string; onDone: () => vo
   const [text, setText] = useState(initial)
   const link = parseShareUrl(text)
   const add = useAddShared()
+  // A conversation's link (ADR-0060) pasted here opens in Mail → Team instead.
+  const openTeam = useOpenTeamLink()
   const [busy, setBusy] = useState(false)
   return (
     <form
@@ -184,7 +187,7 @@ function OpenSharedForm({ initial, onDone }: { initial: string; onDone: () => vo
         e.preventDefault()
         if (!link) return
         setBusy(true)
-        void add(link).then((ok) => (ok ? onDone() : setBusy(false)))
+        void (link.kind === "thread" ? openTeam(link) : add(link)).then((ok) => (ok ? onDone() : setBusy(false)))
       }}
     >
       <Field data-invalid={!!text.trim() && !link}>
@@ -195,7 +198,7 @@ function OpenSharedForm({ initial, onDone }: { initial: string; onDone: () => vo
       {link && <SharedPreview link={link} />}
       <DialogFooter>
         <Button type="submit" disabled={!link || busy}>
-          {busy ? "Adding…" : "Add to my notes"}
+          {busy ? "Adding…" : link?.kind === "thread" ? "Open in Team" : "Add to my notes"}
         </Button>
       </DialogFooter>
     </form>
@@ -208,7 +211,7 @@ export function SharedPreview({ link }: { link: ShareLink }) {
     <div className="flex items-start gap-3 rounded-lg border p-3 [&>svg]:mt-0.5 [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-vertical-notes" data-slot="shared-preview">
       <Icon name="group" />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-sm font-medium">{link.title || "A shared note"}</span>
+        <span className="truncate text-sm font-medium">{link.title || (link.kind === "thread" ? "A shared conversation" : "A shared note")}</span>
         <span className="text-xs text-muted-foreground">
           {link.from ? `From ${link.from} · ` : ""}
           {link.mode === "edit" ? "You can edit" : "You can read"}

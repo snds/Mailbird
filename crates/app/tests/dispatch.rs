@@ -107,6 +107,20 @@ async fn every_command_routes_and_works() {
     let saved = json_of(dispatch(&app, &state, "set_mail_prefs", json!({ "prefs": set })).await.unwrap());
     assert_eq!((saved["checkMinutes"].clone(), saved["images"].clone()), (json!(5), json!("contacts")));
     assert_eq!(json_of(dispatch(&app, &state, "mail_prefs", Value::Null).await.unwrap()), saved);
+    // Shared conversations (ADR-0060): a teammate's link joins once, saves
+    // its document, and stays as a copy once stopped.
+    assert_eq!(json_of(dispatch(&app, &state, "team_threads", Value::Null).await.unwrap()), json!([]));
+    let e = dispatch(&app, &state, "share_thread", json!({ "threadId": "nope" })).await.err().unwrap();
+    assert!(e.contains("no longer here"), "{e}");
+    let link = json!({ "id": "0123456789abcdef0123", "relay": "wss://notes.example.com", "token": "s1.x", "title": "Offsite", "from": "Sam" });
+    let joined = json_of(dispatch(&app, &state, "join_team_thread", json!({ "link": link })).await.unwrap());
+    assert_eq!((&joined["role"], &joined["from"], &joined["threadId"]), (&json!("guest"), &json!("Sam"), &Value::Null));
+    dispatch(&app, &state, "save_team_doc", json!({ "id": joined["id"], "ydoc": "AAA=", "title": null })).await.unwrap();
+    assert_eq!(json_of(dispatch(&app, &state, "team_doc", json!({ "id": joined["id"] })).await.unwrap()), "AAA=");
+    assert_eq!(json_of(dispatch(&app, &state, "stop_team_thread", json!({ "id": joined["id"] })).await.unwrap())["revoked"], true);
+    assert!(dispatch(&app, &state, "join_team_thread", json!({ "link": link })).await.is_err());
+    dispatch(&app, &state, "remove_team_thread", json!({ "id": joined["id"] })).await.unwrap();
+    assert!(host.events.lock().unwrap().iter().any(|e| e == "team:changed"));
     // Opt-in AI (ADR-0059): off by default; keys go to the secret store and
     // come back only as "saved"; nothing is asked of a model while it's off.
     let ai = json_of(dispatch(&app, &state, "ai_settings", Value::Null).await.unwrap());

@@ -21,6 +21,8 @@ export interface ShareLink {
   title: string
   /** Who shared it, as their accounts name them. */
   from: string | null
+  /** What it opens: a note (ADR-0056), or a conversation shared with teammates (ADR-0060). */
+  kind: "note" | "thread"
 }
 
 const b64url = (bytes: Uint8Array) => toBase64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
@@ -43,8 +45,10 @@ function pageOf(relay: string): string {
   return u.toString()
 }
 
-export function shareUrl(link: Omit<ShareLink, "v">): string {
-  const body: ShareLink = { v: 1, ...link }
+export function shareUrl(link: Omit<ShareLink, "v" | "kind"> & { kind?: ShareLink["kind"] }): string {
+  // A note's link leaves `kind` out, so links from before conversations read the same.
+  const { kind, ...rest } = link
+  const body = { v: 1 as const, ...rest, ...(kind === "thread" ? { kind } : {}) }
   return `${pageOf(link.relay)}#${b64url(new TextEncoder().encode(JSON.stringify(body)))}`
 }
 
@@ -55,7 +59,7 @@ export function parseShareUrl(text: string): ShareLink | null {
   try {
     const j = JSON.parse(new TextDecoder().decode(unb64url(m[1]))) as Partial<ShareLink>
     if (j.v !== 1 || typeof j.relay !== "string" || !/^wss?:\/\//.test(j.relay) || typeof j.id !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(j.id) || typeof j.token !== "string" || !j.token) return null
-    return { v: 1, relay: j.relay, id: j.id, mode: j.mode === "view" ? "view" : "edit", token: j.token, title: typeof j.title === "string" ? j.title : "", from: typeof j.from === "string" && j.from.trim() ? j.from.trim() : null }
+    return { v: 1, relay: j.relay, id: j.id, mode: j.mode === "view" ? "view" : "edit", token: j.token, title: typeof j.title === "string" ? j.title : "", from: typeof j.from === "string" && j.from.trim() ? j.from.trim() : null, kind: j.kind === "thread" ? "thread" : "note" }
   } catch {
     return null
   }

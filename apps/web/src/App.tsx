@@ -30,6 +30,7 @@ import { Composer, OutboxWatcher } from "@/features/mail/composer"
 import { NotesView } from "@/features/notes"
 import { ImageTextRunner } from "@/features/notes/image-text-runner"
 import { NotesSyncRunner } from "@/features/notes/sync-runner"
+import { TeamSyncRunner } from "@/features/team/team-runner"
 import { useNewNote } from "@/features/notes/use-new-note"
 
 const VIEWS: Record<VerticalId, () => React.JSX.Element> = {
@@ -88,6 +89,7 @@ function Root() {
       <OutboxWatcher />
       <ReminderWatcher />
       <NotesSyncRunner />
+      <TeamSyncRunner />
       <ImageTextRunner />
     </>
   )

@@ -687,6 +687,33 @@ export interface MailPrefs {
   requestReceipts: boolean
 }
 
+/** A conversation shared with teammates by link (ADR-0060). */
+export interface TeamThread {
+  /** The share's id: its document is `mailbird/shared/<id>` on the owner's relay. */
+  id: string
+  role: "owner" | "guest"
+  /** Yours only: the conversation in your mail. */
+  threadId: string | null
+  /** The owner stopped sharing; a teammate keeps a read-only copy. */
+  revoked: boolean
+  relay: string | null
+  token: string | null
+  title: string
+  /** Who shared it. */
+  from: string | null
+  created: number
+  updated: number
+}
+
+/** A teammate's link, as read from it. */
+export interface TeamLink {
+  id: string
+  relay: string
+  token: string
+  title: string
+  from: string | null
+}
+
 /** Where opt-in AI's model runs (ADR-0059). */
 export type AiProvider = "off" | "local" | "anthropic" | "compatible"
 

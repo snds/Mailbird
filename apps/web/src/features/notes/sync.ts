@@ -38,9 +38,10 @@ import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
  * the owner's relay (GuestShares), never on yours.
  */
 
-/** A share as the relay reads it from the index (tools/notes-relay). */
+/** A share as the relay reads it from the index (tools/notes-relay): a note's, or a shared conversation's (ADR-0060). */
 interface ShareEntry {
-  note: string
+  note?: string
+  thread?: string
   mode: NoteShare["mode"]
   revoked: boolean
   updated: number
@@ -123,7 +124,9 @@ export class NotesSync {
       const remote = this.lockSetting.get("setting")
       if (remote) void this.core.applyNotesLockSetting(remote)
     })
-    this.offCore = core.on("notes:changed", () => this.schedulePush())
+    const offNotes = core.on("notes:changed", () => this.schedulePush())
+    const offTeam = core.on("team:changed", () => this.schedulePush())
+    this.offCore = () => (offNotes(), offTeam())
   }
 
   private provider(name: string, document: Y.Doc, onSynced?: () => void) {
@@ -163,7 +166,15 @@ export class NotesSync {
     if (this.stopped || !this.indexProvider.synced) return
     const local = await this.core.noteRecords()
     const lock = await this.core.notesLockSetting()
+    const team = await this.core.teamThreads().catch(() => [])
     this.index.transact(() => {
+      // Shared conversations: teammates edit their comments and reply, so the link allows editing.
+      for (const t of team) {
+        if (t.role !== "owner" || !t.threadId) continue
+        const entry: ShareEntry = { thread: t.threadId, mode: "edit", revoked: t.revoked, updated: t.updated }
+        const was = this.shares.get(t.id)
+        if (!was || (was.updated < entry.updated && was.revoked !== entry.revoked)) this.shares.set(t.id, entry)
+      }
       const remote = this.lockSetting.get("setting")
       if (lock && (!remote || remote.updated < lock.updated)) this.lockSetting.set("setting", lock)
       for (const r of local) {

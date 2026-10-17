@@ -86,6 +86,21 @@ try {
   await assert.rejects(connect("mailbird/shared/an0therShareId_0123456", shareToken(SHARE)), /refused/)
   console.log("ok the link's token opens that note and nothing else")
 
+  // A shared conversation (ADR-0060) is the same kind of share: a teammate comments live, and stopping drops them.
+  const THREAD = "t3amThreadId_0123456789"
+  index.doc.getMap("shares").set(THREAD, { thread: "thread-1", mode: "edit", revoked: false, updated: 1 })
+  await new Promise((r) => setTimeout(r, 200))
+  const owned = await connect(`mailbird/shared/${THREAD}`)
+  const mate = await connect(`mailbird/shared/${THREAD}`, shareToken(THREAD))
+  mate.doc.getArray("comments").push([{ id: "c1", author: "Ana", at: 1, text: "Let's say yes" }])
+  await until(() => owned.doc.getArray("comments").length === 1)
+  const left = Promise.race([closed(mate.provider), new Promise((r) => setTimeout(() => r(false), 3000))])
+  index.doc.getMap("shares").set(THREAD, { thread: "thread-1", mode: "edit", revoked: true, updated: 2 })
+  assert.equal(await left, true, "a teammate is dropped when the conversation stops being shared")
+  await assert.rejects(connect(`mailbird/shared/${THREAD}`, shareToken(THREAD)), /refused/)
+  owned.provider.destroy()
+  console.log("ok a shared conversation works like a shared note: live, then stopped")
+
   // View-only: a guest who could edit is dropped (to reconnect as a reader), and a viewer's edits don't reach anyone.
   const demoted = Promise.race([closed(guest.provider), new Promise((r) => setTimeout(() => r(false), 3000))])
   index.doc.getMap("shares").set(SHARE, { note: "n2", mode: "view", revoked: false, updated: 2 })
@@ -114,6 +129,7 @@ try {
   // A link opened in a browser gets a page that explains it.
   const page = await fetch(`http://127.0.0.1:${PORT}/share#v1.abc`).then((r) => r.text())
   assert.match(page, /Open a shared note/)
+  assert.match(page, /Open a link/)
   console.log("ok a share link in a browser explains itself")
 
   // Let the debounced save run, then restart and read it back.
