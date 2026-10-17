@@ -341,6 +341,7 @@ mod tests {
             attachments: vec![],
             calendar: None,
             follow_up_after: None,
+            request_receipt: false,
         };
         let at = now() + 3600;
         let item = s.queue_send(&d, 10, Some(at)).unwrap();

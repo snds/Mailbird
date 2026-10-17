@@ -20,6 +20,7 @@ import type {
   ContactsRestore,
   InterestingCalendar,
   SwipeActions,
+  MailPrefs,
   KeyBindings,
   ExportedNote,
   SenderProfile,
@@ -164,6 +165,9 @@ export interface CoreClient {
   listCollections(kind: CollectionKind): Promise<Collection[]>
   setCollectionHidden(id: string, hidden: boolean): Promise<void>
   interestingCalendars(): Promise<InterestingCalendar[]>
+  /** Mail's power settings (ADR-0055). */
+  mailPrefs(): Promise<MailPrefs>
+  setMailPrefs(prefs: MailPrefs): Promise<MailPrefs>
   swipeActions(): Promise<SwipeActions>
   bookingLinks(): Promise<BookingLink[]>
   saveBookingLink(id: string | null, input: BookingLinkInput): Promise<BookingLink>
@@ -388,6 +392,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     listCollections: (kind) => call("list_collections", { kind }),
     setCollectionHidden: (id, hidden) => call("set_collection_hidden", { id, hidden }),
     interestingCalendars: () => call("interesting_calendars"),
+    mailPrefs: () => call("mail_prefs"),
+    setMailPrefs: (prefs) => call("set_mail_prefs", { prefs }),
     swipeActions: () => call("swipe_actions"),
     bookingLinks: () => call("booking_links"),
     saveBookingLink: (id, input) => call("save_booking_link", { id, input }),

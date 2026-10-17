@@ -1648,6 +1648,7 @@ mod tests {
             attachments: vec![],
             calendar: None,
             follow_up_after: None,
+            request_receipt: false,
         }
     }
 

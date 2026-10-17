@@ -649,6 +649,7 @@ async fn outlook_mail_end_to_end() {
         attachments: vec![],
         calendar: None,
         follow_up_after: None,
+        request_receipt: false,
     };
     let raw = graph::send(&cfg, &token, &draft).await.unwrap();
     assert_eq!(fake.lock().unwrap().sent.len(), 1);

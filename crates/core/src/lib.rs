@@ -21,6 +21,8 @@ mod people_store;
 pub mod interesting;
 pub mod grammar;
 mod booking_store;
+mod mail_prefs;
+pub use mail_prefs::{CHECK_MINUTES, MailPrefs, MarkRead, RemoteImages};
 mod tasks_store;
 pub use tasks_store::{NoteTask, NotesPrefs, PlannedTask};
 pub use booking_store::{Booked, BookingChange, BookingLink, BookingLinkInput, BookingRequest, ManagedBooking, PublicBooking};

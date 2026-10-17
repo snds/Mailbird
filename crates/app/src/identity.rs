@@ -52,8 +52,20 @@ struct Link {
 /// container path instead, once the device work lands).
 pub fn desktop_config(data_dir: &std::path::Path) -> Option<IdentityConfig> {
     let root = ecosystem_identity::default_root().ok()?;
-    Some(IdentityConfig { root, keystore: data_dir.join("identity-device.key"), device_name: "Mailbird".into() })
+    Some(IdentityConfig { root, keystore: data_dir.join("identity-device.key"), device_name: device_name(hostname::get().ok().and_then(|h| h.into_string().ok())) })
 }
+
+/// "Mailbird on Sean-MBP": each app on a computer is its own device in the
+/// identity, so the name says which app and which computer (agreed with
+/// Lockdown, which names its own "Lockdown on …").
+fn device_name(host: Option<String>) -> String {
+    let host = host.map(|h| h.trim().trim_end_matches(".local").trim_end_matches(".lan").to_string()).filter(|h| !h.is_empty());
+    match host {
+        Some(h) => format!("Mailbird on {h}"),
+        None => "Mailbird".into(),
+    }
+}
+
 
 fn config(state: &Shared) -> Option<IdentityConfig> {
     state.identity.lock().ok().and_then(|c| c.clone())
@@ -154,4 +166,15 @@ pub fn unlock_with_identity(state: &Shared) -> Result<NotesKey, String> {
         }
     }
     Err("your identity doesn't hold the key for these notes: unlock with the passphrase once".into())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_device_is_named_for_the_app_and_the_computer() {
+        assert_eq!(super::device_name(Some("Seans-MacBook-Pro.local".into())), "Mailbird on Seans-MacBook-Pro");
+        assert_eq!(super::device_name(Some("desk".into())), "Mailbird on desk");
+        assert_eq!(super::device_name(Some("  ".into())), "Mailbird");
+        assert_eq!(super::device_name(None), "Mailbird");
+    }
 }

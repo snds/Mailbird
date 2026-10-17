@@ -5,6 +5,7 @@ import type {
   Split,
   SplitInput,
   SwipeActions,
+  MailPrefs,
   KeyBindings,
   LocalTime,
 } from "./types"
@@ -362,6 +363,7 @@ export function createDemoClient(): CoreClient {
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
   let swipes: SwipeActions = { right: "read", rightLong: "none", left: "archive", leftLong: "none" }
+  let mailPrefs: MailPrefs = { images: "ask", markRead: "open", quote: true, replyBelow: false, checkMinutes: 2, requestReceipts: false }
   let keysSaved: KeyBindings = {}
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
   const { noteLinks, suggestFor, setMailSource, ...pimApi } = pim
@@ -620,6 +622,13 @@ export function createDemoClient(): CoreClient {
       splits.splice(Math.min(index, splits.length), 0, s)
       done()
       return later(splits)
+    },
+    // Power settings (ADR-0055), with the core's private defaults and its snapping.
+    mailPrefs: async () => later({ ...mailPrefs }),
+    setMailPrefs: async (p) => {
+      const minutes = [2, 5, 15, 30, 60].reduce((a, b) => (Math.abs(b - p.checkMinutes) < Math.abs(a - p.checkMinutes) ? b : a))
+      mailPrefs = { ...p, checkMinutes: minutes }
+      return later({ ...mailPrefs })
     },
     // Swipes (ADR-0025): Apple Mail's mapping until changed.
     swipeActions: async () => later(swipes),

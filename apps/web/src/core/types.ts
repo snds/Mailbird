@@ -300,6 +300,8 @@ export interface Draft {
   attachments?: OutgoingAttachment[]
   /** Bring the conversation back this many seconds after sending, if nobody replies. */
   followUpAfter?: number | null
+  /** Ask for a read receipt (ADR-0055). The recipient's app decides whether to send one. */
+  requestReceipt?: boolean
 }
 
 export interface OutboxItem {
@@ -669,6 +671,22 @@ export type BookingChange = { action: "reschedule"; start: number } | { action: 
 export type SwipeActionId = "none" | "read" | "archive" | "star" | "snooze-tomorrow" | "snooze-next-week" | "remind" | "newsletters"
 
 /** Your swipes, short and long, each way. A long swipe of "none" does the short one's action. */
+/** Mail's power settings, behind Advanced (ADR-0055). */
+export interface MailPrefs {
+  /** When remote images load: asked each time, for your contacts, or always. */
+  images: "ask" | "contacts" | "always"
+  /** When opening a conversation marks it read: at once, after 3 seconds, or only when you say. */
+  markRead: "open" | "delay" | "manual"
+  /** Replies include the message they answer. */
+  quote: boolean
+  /** Write below the quote instead of above it. */
+  replyBelow: boolean
+  /** How often accounts without push are checked, in minutes. */
+  checkMinutes: number
+  /** Ask for a read receipt on everything you send. */
+  requestReceipts: boolean
+}
+
 export interface SwipeActions {
   right: SwipeActionId
   rightLong: SwipeActionId

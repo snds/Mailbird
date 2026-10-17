@@ -20,5 +20,7 @@ export function withSignature(html: string, block: string): string {
   if (!block || html.includes(block)) return html
   if (!html.trim()) return `<p></p>${block}`
   if (html.startsWith("<p></p>")) return `<p></p>${block}${html.slice("<p></p>".length)}`
+  // A reply written below the quote (ADR-0055): the signature goes under the reply.
+  if (html.endsWith("</blockquote><p></p>")) return `${html}${block}`
   return html
 }

@@ -2,9 +2,9 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode 
 import { toast } from "sonner"
 
 import { useUi, type ComposerDraft } from "@/app/ui-store"
-import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions } from "@unicron/ui"
+import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
-import { useAccounts, useCore, useLocalTimes, useSignatures, useTemplates } from "@/core/queries"
+import { useAccounts, useCore, useLocalTimes, useMailPrefs, useSignatures, useTemplates } from "@/core/queries"
 import type { Draft, LocalTime, OutgoingAttachment, Template } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 import { useNowSecs } from "@/hooks/use-now"
@@ -138,6 +138,10 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
   const [subject, setSubject] = useState(initial.subject ?? "")
   const [sendAt, setSendAt] = useState<number | null>(initial.sendAt ?? null)
   const [followUp, setFollowUp] = useState<number | null>(initial.followUpAfter ?? null)
+  // A read receipt (ADR-0055): Advanced settings' default, until changed here.
+  const { data: mailPrefs } = useMailPrefs()
+  const [receiptChoice, setReceipt] = useState<boolean | null>(initial.requestReceipt ?? null)
+  const receipt = receiptChoice ?? mailPrefs?.requestReceipts ?? false
   // Their clocks (ADR-0041): who in To lives somewhere else, from their own mail.
   const toEmails = useDeferredValue(useMemo(() => parseRecipients(to).map((a) => a.email.toLowerCase()).slice(0, 10), [to]))
   const { data: localTimes = [] } = useLocalTimes(toEmails)
@@ -208,13 +212,29 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
     }
     document.addEventListener("focusin", onFocusIn)
     // The editor mounts its DOM after the dialog opens; check once it has.
-    const frame = requestAnimationFrame(() => missed(document.activeElement) && first()?.focus())
+    // A reply written below the quote starts there (ADR-0055).
+    const afterQuote = () => {
+      if (!initial.cursorAfterQuote) return
+      let pos = -1
+      let seenQuote = false
+      editor.state.doc.forEach((node, offset) => {
+        if (node.type.name === "blockquote") seenQuote = true
+        else if (seenQuote && pos < 0 && node.type.name === "paragraph" && node.content.size === 0) pos = offset + 1
+      })
+      if (pos > 0) editor.commands.setTextSelection(pos)
+    }
+    const frame = requestAnimationFrame(() => {
+      if (missed(document.activeElement)) first()?.focus()
+      afterQuote()
+    })
     const stop = setTimeout(() => document.removeEventListener("focusin", onFocusIn), 1000)
     return () => {
       cancelAnimationFrame(frame)
       clearTimeout(stop)
       document.removeEventListener("focusin", onFocusIn)
     }
+    // Once, when the composer opens: the editor and its first draft are fixed by then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const totalBytes = files.reduce((n, f) => n + bytesOf(f), 0)
 
@@ -243,6 +263,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
       references: initial.references ?? [],
       attachments: files,
       followUpAfter: followUp,
+      requestReceipt: receipt,
     }
     try {
       const client = await getCoreClient()
@@ -422,6 +443,11 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
               <Icon name="edit_note" />
               Signatures and templates…
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem checked={receipt} onCheckedChange={(on) => setReceipt(on)}>
+              <Icon name="mark_email_read" />
+              Ask for a read receipt
+            </DropdownMenuCheckboxItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <FollowUpAfterMenu

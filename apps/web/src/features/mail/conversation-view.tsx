@@ -24,7 +24,7 @@ import { UnsubscribeAction } from "./unsubscribe"
 import { CATEGORIES } from "./lanes"
 import { useSenderActions } from "./sender-actions"
 import type { Category } from "@/core/types"
-import { useContactPhotos, useMailAction } from "@/core/queries"
+import { useContactPhotos, useMailAction, useMailPrefs } from "@/core/queries"
 import { useNowSecs } from "@/hooks/use-now"
 
 function ToolbarButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
@@ -142,7 +142,7 @@ function MessageCard({ message, expanded, onToggle, accountAddress }: { message:
         <div className="flex flex-col gap-4 px-4 pb-4">
           {message.invite && <InviteCard invite={message.invite} messageId={message.id} accountId={message.accountId} />}
           {message.bodyHtml ? (
-            <HtmlBody html={message.bodyHtml} />
+            <HtmlBody html={message.bodyHtml} from={message.from.email} />
           ) : (
             <div className="text-[15px] leading-relaxed break-words whitespace-pre-line">{message.bodyText}</div>
           )}
@@ -184,6 +184,7 @@ export function ConversationView({
   onOpenThread?: (row: MessageSummary) => void
 }) {
   const openComposer = useUi((s) => s.openComposer)
+  const { data: mailPrefs } = useMailPrefs()
   // Gmail/Apple Mail convention: open the newest and anything unread.
   const [expanded, setExpanded] = useState<Set<string> | null>(null)
   const now = useNowSecs()
@@ -357,7 +358,7 @@ export function ConversationView({
       ))}
 
       <div className="flex gap-2 pt-2">
-        <Button variant="outline" onClick={() => openComposer(replyDraft(target))}>
+        <Button variant="outline" onClick={() => openComposer(replyDraft(target, { quote: mailPrefs?.quote ?? true, replyBelow: mailPrefs?.replyBelow ?? false }))}>
           <Icon name="reply" data-icon="inline-start" /> Reply
         </Button>
         <Button variant="outline" onClick={() => openComposer(forwardDraft(target))}>

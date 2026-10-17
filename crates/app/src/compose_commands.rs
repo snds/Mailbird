@@ -51,6 +51,7 @@ pub async fn unsubscribe(app: AppHandle, state: &Shared, id: String) -> Res<Unsu
             attachments: vec![],
             calendar: None,
             follow_up_after: None,
+            request_receipt: false,
         };
         with_store(state, |s| s.queue_send(&draft, 0, None))?;
         let _ = app.emit(events::OUTBOX_CHANGED, ());

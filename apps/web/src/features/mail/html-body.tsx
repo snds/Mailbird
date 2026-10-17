@@ -2,6 +2,7 @@ import DOMPurify from "dompurify"
 import { useMemo, useRef, useState } from "react"
 
 import { Icon, Button } from "@unicron/ui"
+import { useMailPrefs, useSenderProfile } from "@/core/queries"
 
 /**
  * Renders untrusted email HTML.
@@ -9,10 +10,15 @@ import { Icon, Button } from "@unicron/ui"
  * - The iframe sandbox has no `allow-scripts`, so nothing can run even if
  *   something slipped through. `allow-same-origin` only lets us size it.
  * - A CSP blocks remote content by default: tracking pixels never load
- *   until the reader asks for images (Apple Mail / HEY behavior).
+ *   until the reader asks for images (Apple Mail / HEY behavior), unless
+ *   Advanced settings say to load them always, or for contacts (ADR-0055).
  */
-export function HtmlBody({ html }: { html: string }) {
-  const [remote, setRemote] = useState(false)
+export function HtmlBody({ html, from }: { html: string; from?: string }) {
+  const [asked, setRemote] = useState(false)
+  const { data: prefs } = useMailPrefs()
+  const forContacts = prefs?.images === "contacts"
+  const { data: sender } = useSenderProfile(forContacts && from ? from : null)
+  const remote = asked || prefs?.images === "always" || (forContacts && !!sender?.contact)
   const frame = useRef<HTMLIFrameElement>(null)
 
   const { doc, hasRemote } = useMemo(() => {

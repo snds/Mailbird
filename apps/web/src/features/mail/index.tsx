@@ -5,7 +5,7 @@ import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescript
 import { ListRow } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { VirtualList } from "@/components/virtual-list"
-import { useAccounts, useCore, useInboxOverview, useMailAction, useMessagePages, useContactPhotos, useScreener, useSwipeActions, useThread } from "@/core/queries"
+import { useAccounts, useCore, useInboxOverview, useMailAction, useMailPrefs, useMessagePages, useContactPhotos, useScreener, useSwipeActions, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -72,14 +72,22 @@ export function MailView() {
   const row = list.find((m) => m.threadId === selectedId) ?? selected ?? undefined
   const select = (id: string | null) => setSelected(id ? (list.find((m) => m.threadId === id) ?? null) : null)
 
-  // Opening a conversation reads it — once, so "Mark unread" sticks.
+  // Opening a conversation reads it — once, so "Mark unread" sticks. Advanced
+  // settings can wait 3 seconds, so a glance doesn't count, or leave it to you (ADR-0055).
   const markedRef = useRef<string | null>(null)
+  const { data: mailPrefs } = useMailPrefs()
+  const markRead = mailPrefs?.markRead
   useEffect(() => {
-    if (row && thread && thread.some((m) => !m.seen) && markedRef.current !== row.threadId) {
+    if (!markRead || markRead === "manual") return
+    if (!row || !thread || !thread.some((m) => !m.seen) || markedRef.current === row.threadId) return
+    const mark = () => {
       markedRef.current = row.threadId
       markSeen(row, true)
     }
-  }, [row, thread, markSeen])
+    if (markRead === "open") return mark()
+    const t = setTimeout(mark, 3000)
+    return () => clearTimeout(t)
+  }, [row, thread, markSeen, markRead])
 
   const multiAccount = accounts.length > 1
   const laneInfo = LANES.find((l) => l.id === tab)!

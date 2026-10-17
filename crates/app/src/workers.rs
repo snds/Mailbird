@@ -12,8 +12,10 @@ use crate::host::AppHandle;
 use crate::{Shared, events, secrets};
 
 const TICK: Duration = Duration::from_secs(1);
-/// With IDLE push this is only a safety net (and the path for servers without IDLE).
-const SYNC_EVERY: Duration = Duration::from_secs(120);
+/// How often the mail check looks at its interval, which is a setting
+/// (ADR-0055). With IDLE push, checking is only a safety net (and the path
+/// for servers without IDLE).
+const SYNC_LOOK: Duration = Duration::from_secs(30);
 /// How often the supervisor checks that every account has a push connection.
 const IDLE_SUPERVISE_EVERY: Duration = Duration::from_secs(30);
 /// Wait after a failed IDLE connection before trying again.
@@ -48,12 +50,19 @@ pub fn start(app: AppHandle, state: Shared) {
         }
     });
 
+    // Checking mail: on launch, then as often as Settings says (ADR-0055).
+    // It looks at the setting every half minute, so a shorter interval
+    // takes effect without waiting out the old one.
     let (a, s) = (app.clone(), state.clone());
     tokio::spawn(async move {
-        let mut tick = tokio::time::interval(SYNC_EVERY);
+        let mut last: Option<tokio::time::Instant> = None;
         loop {
-            tick.tick().await; // first tick fires immediately: sync on launch
-            sync_all(&a, &s).await;
+            let every = Duration::from_secs(60 * u64::from(s.store.lock().ok().and_then(|st| st.mail_prefs().ok()).map(|p| p.check_minutes).unwrap_or(2)));
+            if last.is_none_or(|t| t.elapsed() >= every) {
+                last = Some(tokio::time::Instant::now());
+                sync_all(&a, &s).await;
+            }
+            tokio::time::sleep(SYNC_LOOK).await;
         }
     });
 
