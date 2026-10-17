@@ -29,6 +29,7 @@ import { MailView } from "@/features/mail"
 import { Composer, OutboxWatcher } from "@/features/mail/composer"
 import { NotesView } from "@/features/notes"
 import { ImageTextRunner } from "@/features/notes/image-text-runner"
+import { ImageViewer } from "@/features/notes/image-viewer"
 import { NotesSyncRunner } from "@/features/notes/sync-runner"
 import { TeamSyncRunner } from "@/features/team/team-runner"
 import { useNewNote } from "@/features/notes/use-new-note"
@@ -74,6 +75,7 @@ function Root() {
       <SplitEditor />
       <GrammarDialog />
       <QuickNote />
+      <ImageViewer />
       <AccountsDialog />
       <WritingDialog />
       <AdvancedMailDialog />
