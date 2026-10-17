@@ -9,7 +9,7 @@ import type * as Y from "yjs"
 
 import { Icon } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
-import { queryClient, useNotesPrefs } from "@/core/queries"
+import { queryClient, useMyName, useNotesPrefs } from "@/core/queries"
 import type { NoteDetail, NotesPrefs } from "@/core/types"
 
 import { toBase64 } from "@/lib/base64"
@@ -148,6 +148,12 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
 
   // Live edits from other devices while this note is open.
   const syncing = useSyncStatus((s) => s.status !== "off")
+  // Who the others see here (ADR-0061), read when the connection opens.
+  const me = useMyName()
+  const meRef = useRef(me)
+  useEffect(() => {
+    meRef.current = me
+  })
   // A note shared with you is live on the owner's relay, yours or not.
   const guestRef = useRef(guest)
   useEffect(() => {
@@ -156,7 +162,7 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
   const guestId = guest && !guest.revoked ? guest.id : null
   useEffect(() => {
     if (!guestId || !guestRef.current) return
-    return guestShares()?.attach(note.id, guestRef.current, doc)
+    return guestShares()?.attach(note.id, guestRef.current, doc, meRef.current)
   }, [guestId, note.id, doc])
   const shareId = note.share?.revoked ? null : (note.share?.id ?? null)
   const shareRef = useRef(note.share)
@@ -167,7 +173,7 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
     // A locked note never joins its shared document.
     if (!syncing || locked || guestId) return
     try {
-      return notesSync()?.attach(note.id, doc, shareRef.current)
+      return notesSync()?.attach(note.id, doc, shareRef.current, meRef.current)
     } catch {
       // Live sync for this note failed to start; it still saves locally and syncs when closed.
       return undefined

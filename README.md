@@ -121,6 +121,7 @@ Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratche
 | **44 · Shared notes** ✅ | Share a note by link: the other person sees it in their Mailbird and you both type at once, or they read along with view-only. It goes through your own notes relay, works for people without one, can be stopped any time (they keep a copy), and a link in mail opens with one click ([ADR-0056](docs/decisions/0056-shared-notes.md)) |
 | **45 · Opt-in AI** ✅ | Summaries and suggested replies, off until you choose where the model runs: a model server on this computer (Ollama, LM Studio), or Claude or another service with your own key, kept in the keychain. A conversation goes only when you ask, as its own words; replies open in the composer for you to edit ([ADR-0059](docs/decisions/0059-opt-in-ai.md)) |
 | **46 · Write replies with your team** ✅ | Share a conversation by link: teammates see it in their own Mailbird (Mail → Team), comment beside it, and write the reply with you live; you send it from your account. It goes through your notes relay, works for people without one, and when you stop, they keep a read-only copy ([ADR-0060](docs/decisions/0060-team-conversations.md)) |
+| **47 · Who's here, and files with shares** ✅ | Shared notes and conversations show who else has them open, live ("Ana is here"); a shared note's images reach the people it's shared with, and a shared conversation's owner chooses which attachments teammates can download, up to 10 MB each ([ADR-0061](docs/decisions/0061-presence-and-shared-files.md)) |
 
 ## License
 

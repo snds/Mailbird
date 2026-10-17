@@ -5,7 +5,9 @@ import { create } from "zustand"
 import type { CoreClient } from "@/core/client"
 import type { RelayConfig, TeamThread } from "@/core/types"
 
+import { setPeople } from "../notes/presence"
 import { rejoining } from "../notes/shared-docs"
+import { SharedFiles } from "../notes/shared-files"
 import { sharedDocName } from "../notes/share-link"
 import { loadDoc, stateOf } from "../notes/ydoc"
 import { snapshot, syncMessages } from "./team-doc"
@@ -35,6 +37,8 @@ export const useTeamLive = create<Record<string, boolean>>(() => ({}))
 class TeamWatch {
   readonly ready: Promise<Ready>
   private p: ReturnType<typeof rejoining> | null = null
+  /** Attachments the owner shares, beside the conversation (ADR-0061). */
+  readonly files: SharedFiles
   private timer: ReturnType<typeof setTimeout> | undefined
   private saved: string | null
   private stopped = false
@@ -62,7 +66,15 @@ class TeamWatch {
         useTeamLive.setState({ [t.id]: false })
         if (!this.stopped) o.onDenied()
       },
+      onPeople: (people) => setPeople(t.id, people),
     })
+    this.files = new SharedFiles(o.socket, t.id, o.token, {})
+    this.files.doc.on("update", () => bump(t.id))
+  }
+
+  /** Open here, or not: the others see who has it open (ADR-0061). */
+  here(name: string | null) {
+    this.p?.here(name)
   }
 
   private onUpdate = (_u: Uint8Array, origin: unknown) => {
@@ -95,6 +107,7 @@ class TeamWatch {
     clearTimeout(this.timer)
     this.doc.off("update", this.onUpdate)
     this.p?.destroy()
+    this.files.stop()
     useTeamLive.setState({ [this.t.id]: false })
     this.settle("timeout")
   }
@@ -156,6 +169,16 @@ export class TeamSync {
       this.loading.set(id, p)
     }
     return p
+  }
+
+  /** A live shared conversation's files, beside it. A stopped one has none. */
+  files(id: string): SharedFiles | null {
+    return this.watches.get(id)?.files ?? null
+  }
+
+  /** Says you have a shared conversation open (or closed it). */
+  here(id: string, name: string | null) {
+    this.watches.get(id)?.here(name)
   }
 
   /** Connect every live shared conversation; let go of the rest. */

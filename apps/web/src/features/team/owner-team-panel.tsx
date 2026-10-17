@@ -1,12 +1,15 @@
 import { Skeleton } from "@unicron/ui"
 import type { TeamThread } from "@/core/types"
 
+import { OwnerFiles } from "./team-files"
 import { TeamPanel } from "./team-panel"
-import { useTeamDoc } from "./use-team-doc"
+import { useTeamLive } from "./team-sync"
+import { useHereIn, useTeamDoc } from "./use-team-doc"
 
 /** The team panel inside your own conversation, while it's shared (ADR-0060). */
 export function OwnerTeamPanel({ share, onUseReply }: { share: TeamThread; onUseReply: (html: string) => void }) {
   const { doc, data } = useTeamDoc(share.id)
+  useHereIn(share.id, useTeamLive((s) => !!s[share.id]))
   // Sized by its wrapper: the library owns Skeleton's look.
   if (!doc || !data)
     return (
@@ -14,5 +17,5 @@ export function OwnerTeamPanel({ share, onUseReply }: { share: TeamThread; onUse
         <Skeleton />
       </div>
     )
-  return <TeamPanel doc={doc} comments={data.comments} owner from={share.from} readOnly={false} onUseReply={onUseReply} />
+  return <TeamPanel doc={doc} comments={data.comments} owner from={share.from} readOnly={false} onUseReply={onUseReply} shareId={share.id} files={share.threadId ? <OwnerFiles shareId={share.id} threadId={share.threadId} /> : null} />
 }

@@ -245,6 +245,13 @@ export function useSetMailPrefs() {
   })
 }
 
+/** How you appear to people you share with (ADR-0060): your first account's name. */
+export function useMyName() {
+  const { data: accounts = [] } = useAccounts()
+  const a = accounts[0]
+  return a ? a.displayName || a.address : "Me"
+}
+
 /** Conversations shared with teammates (ADR-0060). */
 export function useTeamThreads() {
   return useQuery({ queryKey: ["team", "list"], queryFn: () => call((c) => c.teamThreads()) })

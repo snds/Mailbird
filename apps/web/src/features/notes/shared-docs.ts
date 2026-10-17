@@ -6,6 +6,8 @@ import type { CoreClient } from "@/core/client"
 import type { NoteRecord, NoteShare, ShareMode } from "@/core/types"
 import { fromBase64 } from "@/lib/base64"
 
+import { type Person, setPeople } from "./presence"
+import { SharedFiles } from "./shared-files"
 import { type ShareLink, guestShareOf, sharedDocName } from "./share-link"
 import { isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
 
@@ -34,10 +36,30 @@ export const useLiveShareModes = create<Record<string, ShareMode>>(() => ({}))
  * A connection to a shared document that rejoins when the relay closes it
  * (the link turned view-only, or was stopped) while the socket stays up:
  * rejoining is how a guest becomes a reader, or learns the link is gone.
+ *
+ * With `presence`, it also says who has the document open (ADR-0061):
+ * `here(name)` while it's open here, `here(null)` when it closes, and
+ * `onPeople` hears everyone else.
  */
-export function rejoining(socket: HocuspocusProviderWebsocket, name: string, doc: Y.Doc, token: string, on: { synced?: () => void; denied: () => void }) {
+export function rejoining(
+  socket: HocuspocusProviderWebsocket,
+  name: string,
+  doc: Y.Doc,
+  token: string,
+  on: { synced?: () => void; denied: () => void; onPeople?: (people: Person[]) => void },
+) {
   let p: HocuspocusProvider
   let gone = false
+  let me: string | null = null
+  const report = () => {
+    if (!on.onPeople || !p.awareness) return
+    const people: Person[] = []
+    p.awareness.getStates().forEach((state, id) => {
+      const who = (state as { person?: { name?: unknown } }).person
+      if (id !== p.awareness!.clientID && typeof who?.name === "string") people.push({ id, name: who.name })
+    })
+    on.onPeople(people)
+  }
   const join = () => {
     p = new HocuspocusProvider({
       websocketProvider: socket,
@@ -53,6 +75,8 @@ export function rejoining(socket: HocuspocusProviderWebsocket, name: string, doc
         setTimeout(() => !gone && join(), 200)
       },
     })
+    p.awareness?.on("change", report)
+    if (me) p.setAwarenessField("person", { name: me })
     p.attach()
   }
   join()
@@ -60,8 +84,13 @@ export function rejoining(socket: HocuspocusProviderWebsocket, name: string, doc
     get unsynced() {
       return p.hasUnsyncedChanges
     },
+    here(name: string | null) {
+      me = name
+      p.setAwarenessField("person", name ? { name } : null)
+    },
     destroy() {
       gone = true
+      on.onPeople?.([])
       p.destroy()
     },
   }
@@ -86,6 +115,8 @@ export class SharedDocWatch {
   readonly ready: Promise<Ready>
   private doc: Y.Doc | null = null
   private p: ReturnType<typeof rejoining> | null = null
+  /** The note's images, beside its text (ADR-0061). */
+  private files: SharedFiles | null = null
   private timer: ReturnType<typeof setTimeout> | undefined
   private saved: string | null = null
   private stopped = false
@@ -126,6 +157,10 @@ export class SharedDocWatch {
     doc.on("update", (_u: Uint8Array, origin: unknown) => {
       if (origin !== "core" && origin !== "meta") this.scheduleSave()
     })
+    // Images go with the note: the owner puts them up, a guest takes them as their own.
+    const owner = this.o.owner
+    this.files = new SharedFiles(this.o.socket, this.o.share.id, this.o.token, { synced: () => owner && void this.files?.putImages(core, noteId) })
+    if (!owner) this.files.takeImages(core, noteId)
     if (!this.o.owner) {
       const read = () => {
         const m = meta.get("mode")
@@ -163,13 +198,17 @@ export class SharedDocWatch {
   async mergeFromCore(updated: number) {
     if (!this.doc || updated <= this.updated) return
     this.updated = updated
+    if (this.o.owner) void this.files?.putImages(this.o.core, this.o.noteId)
     const note = await this.o.core.getNote(this.o.noteId).catch(() => null)
     if (note?.ydoc && this.doc) Y.applyUpdate(this.doc, fromBase64(note.ydoc), "core")
   }
 
   /** A live connection for the note's editor, on the same socket. */
-  attach(doc: Y.Doc): () => void {
-    const p = rejoining(this.o.socket, sharedDocName(this.o.share.id), doc, this.o.token, { denied: () => this.o.onDenied() })
+  attach(doc: Y.Doc, me?: string): () => void {
+    const id = this.o.share.id
+    const p = rejoining(this.o.socket, sharedDocName(id), doc, this.o.token, { denied: () => this.o.onDenied(), onPeople: (people) => setPeople(id, people) })
+    // Open here: the others see you're here (ADR-0061).
+    if (me) p.here(me)
     return () => {
       setTimeout(() => p.destroy(), p.unsynced ? 500 : 0)
       // What the editor saved is the core's copy now.
@@ -181,6 +220,7 @@ export class SharedDocWatch {
     this.stopped = true
     clearTimeout(this.timer)
     this.p?.destroy()
+    this.files?.stop()
     this.doc?.destroy()
     this.settle("timeout")
   }
@@ -296,11 +336,11 @@ export class GuestShares {
   }
 
   /** Live connection for an open guest note's editor. */
-  attach(noteId: string, share: NoteShare, doc: Y.Doc): (() => void) | undefined {
+  attach(noteId: string, share: NoteShare, doc: Y.Doc, me?: string): (() => void) | undefined {
     if (this.stopped || share.revoked || !share.relay || !share.token) return undefined
     const w = this.watches.get(noteId) ?? this.watch(noteId, share)
     this.open.add(noteId)
-    const detach = w.attach(doc)
+    const detach = w.attach(doc, me)
     return () => {
       this.open.delete(noteId)
       detach()
