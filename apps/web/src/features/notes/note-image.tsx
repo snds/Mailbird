@@ -7,6 +7,7 @@ import { useNoteFile } from "@/core/queries"
 import { fromSvg, SVG_MIME } from "@/lib/sketch"
 import { cn } from "@/lib/utils"
 
+import { useImageViewer } from "./image-viewer-store"
 import { noteFileId } from "./note-src"
 import { useSketchSheet } from "./sketch-store"
 
@@ -58,6 +59,16 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     editor.chain().focus().insertContentAt(after, paragraphs).run()
     setShowText(false)
   }
+  // Full screen (ADR-0067), with the note's other images to page through.
+  const view = () => {
+    if (!id) return
+    const images: { id: string; alt: string }[] = []
+    editor.state.doc.descendants((n) => {
+      const other = n.type.name === node.type.name ? noteFileId(String(n.attrs.src ?? "")) : null
+      if (other && !images.some((i) => i.id === other)) images.push({ id: other, alt: String(n.attrs.alt ?? "") })
+    })
+    useImageViewer.getState().show(images, Math.max(0, images.findIndex((i) => i.id === id)))
+  }
   const commit = () => {
     if (draft !== null && draft.trim() !== alt) updateAttributes({ alt: draft.trim() })
     setDraft(null)
@@ -97,6 +108,7 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
         alt={alt}
         draggable={false}
         onError={() => setBroken(true)}
+        onDoubleClick={id ? view : undefined}
         className={cn(
           "block max-h-[70vh] max-w-full rounded-lg border object-contain",
           sketch && "bg-(--c-sketch-paper)",
@@ -117,14 +129,19 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     <NodeViewWrapper as="span" className="my-1 inline-flex max-w-full flex-col gap-1.5 align-bottom" data-drag-handle>
       {body}
       {/* The description is how the image reads aloud, and what search sees. */}
-      {(selected || draft !== null || showText) && editor.isEditable && (found || sketch) && (
+      {(selected || draft !== null || showText) && (id || ((found || sketch) && editor.isEditable)) && (
         <span className="flex flex-wrap items-center gap-1.5" contentEditable={false}>
-          {sketch && (
+          {id && local && (
+            <Button type="button" size="xs" variant="outline" onClick={view}>
+              <Icon name="fullscreen" data-icon="inline-start" /> View
+            </Button>
+          )}
+          {sketch && editor.isEditable && (
             <Button type="button" size="xs" variant="outline" onClick={() => void editSketch()}>
               <Icon name="draw" data-icon="inline-start" /> Edit sketch
             </Button>
           )}
-          {found && (
+          {found && editor.isEditable && (
             <Button type="button" size="xs" variant="outline" aria-expanded={showText} onClick={() => setShowText((v) => !v)}>
               <Icon name="document_scanner" data-icon="inline-start" /> Text in image
             </Button>

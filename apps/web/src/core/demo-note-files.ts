@@ -28,6 +28,9 @@ interface Stored extends NoteFile {
 /** The demo's image store. `sealed` images keep their bytes behind a flag. */
 export function createDemoFiles(isLocked: (noteId: string) => boolean, unlocked: () => boolean) {
   const files = new Map<string, Stored>()
+  // Dropped images (ADR-0066), so sync never brings one back. The demo forgets
+  // on reload, so it doesn't sweep: another device's drops still reach it.
+  const gone = new Map<string, number>()
   const info = ({ data: _d, ...f }: Stored): NoteFile => ({ ...f })
   const sizeOf = (b64: string) => Math.floor((b64.length * 3) / 4)
 
@@ -63,10 +66,19 @@ export function createDemoFiles(isLocked: (noteId: string) => boolean, unlocked:
       return f.data
     },
     apply(f: NoteFile, raw: string) {
+      if (gone.has(f.id)) return false
       const ours = files.get(f.id)
       if (ours && ours.updated >= f.updated) return false
       files.set(f.id, { ...f, data: raw })
       return true
+    },
+    gone: () => [...gone].map(([id, at]) => ({ id, at })),
+    forget(ids: string[]) {
+      for (const id of ids) {
+        files.delete(id)
+        if (!gone.has(id)) gone.set(id, now())
+      }
+      return ids.length
     },
     /** Text in images (ADR-0045). */
     setText(id: string, text: string): NoteFile {

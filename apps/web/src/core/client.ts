@@ -360,6 +360,10 @@ export interface CoreClient {
   noteFile(id: string): Promise<NoteFileData>
   noteFiles(noteId: string): Promise<NoteFile[]>
   noteFileRecords(): Promise<NoteFile[]>
+  /** Images dropped here because no note used them (ADR-0066), for sync to pass on. */
+  noteFilesGone(): Promise<{ id: string; at: number }[]>
+  /** Another device dropped these images. */
+  forgetNoteFiles(ids: string[]): Promise<void>
   noteFileRaw(id: string): Promise<string>
   putNoteFile(file: NoteFile, rawBase64: string): Promise<boolean>
   /** Text in images (ADR-0045): keep what was read; list the ones not read yet. */
@@ -565,6 +569,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     noteFile: (id) => call("note_file", { id }),
     noteFiles: (noteId) => call("note_files", { noteId }),
     noteFileRecords: () => call("note_file_records"),
+    noteFilesGone: () => call("note_files_gone"),
+    forgetNoteFiles: (ids) => call("forget_note_files", { ids }),
     noteFileRaw: (id) => call("note_file_raw", { id }),
     putNoteFile: (file, rawBase64) => call("put_note_file", { file, rawBase64 }),
     setNoteFileText: (id, text) => call("set_note_file_text", { id, text }),
