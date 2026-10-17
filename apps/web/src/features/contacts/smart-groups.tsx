@@ -23,7 +23,7 @@ export function SmartGroupChips({ active, onPick }: { active: string | null; onP
           shape="pill"
           onClick={() => onPick(active === g.id ? null : g.id)}
         >
-          <Icon name="filter_alt" data-icon="inline-start" className="text-vertical-contacts" />
+          <Icon name="filter_alt" data-icon="inline-start" className="text-vertical-contacts-text" />
           {g.name}
           <span className="text-muted-foreground tabular-nums">{g.count}</span>
         </Button>

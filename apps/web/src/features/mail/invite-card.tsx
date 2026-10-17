@@ -94,7 +94,7 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
         <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-lg bg-background text-center shadow-xs" aria-hidden>
           {invite.start != null && (
             <>
-              <span className="text-[9px] font-semibold text-(--c-calendar-today) uppercase">{fromSecs(invite.start).toLocaleDateString(undefined, { month: "short" })}</span>
+              <span className="text-[9px] font-semibold text-(--c-calendar-today-text) uppercase">{fromSecs(invite.start).toLocaleDateString(undefined, { month: "short" })}</span>
               <span className="text-base leading-none font-semibold tabular-nums">{fromSecs(invite.start).getDate()}</span>
             </>
           )}

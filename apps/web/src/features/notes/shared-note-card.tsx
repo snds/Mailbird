@@ -24,7 +24,7 @@ export function SharedNoteCards({ text }: { text: string }) {
     <div className="flex flex-col gap-2" aria-label="Shared with you">
       {threads.map((l) => (
         <div key={l.id} className="flex flex-wrap items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-start gap-3 rounded-lg border p-3 [&>svg]:mt-0.5 [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-vertical-mail" data-role="shared-thread">
+          <div className="flex min-w-0 flex-1 items-start gap-3 rounded-lg border p-3 [&>svg]:mt-0.5 [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-vertical-mail-text" data-role="shared-thread">
             <Icon name="group" />
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate text-sm font-medium">{l.title || "A shared conversation"}</span>

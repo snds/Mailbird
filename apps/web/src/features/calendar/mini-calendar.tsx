@@ -59,7 +59,7 @@ export function MiniCalendar() {
     <div data-slot="mini-calendar" className="mx-auto flex h-dvh max-w-md flex-col bg-background text-foreground">
       <header className="flex items-start justify-between gap-2 px-4 pt-3">
         <div>
-          <p className="text-xs font-semibold tracking-wide text-(--c-calendar-today) uppercase">{today.toLocaleDateString(undefined, { weekday: "long" })}</p>
+          <p className="text-xs font-semibold tracking-wide text-(--c-calendar-today-text) uppercase">{today.toLocaleDateString(undefined, { weekday: "long" })}</p>
           <h1 className="text-lg font-semibold">{today.toLocaleDateString(undefined, { month: "long", day: "numeric" })}</h1>
         </div>
         <IconButton label="Open Mailbird" icon="open_in_new" onClick={() => void open(null)} />

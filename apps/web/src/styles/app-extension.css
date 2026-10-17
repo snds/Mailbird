@@ -24,6 +24,12 @@
   --vertical-calendar: var(--g-coral-500);
   --vertical-contacts: var(--g-green-500);
   --vertical-notes: var(--g-amber-500);
+  /* The same hues as text (labels, icons, links): a step darker, so they read
+     (APCA Lc 75+). The plain roles stay for fills, dots, and borders. */
+  --vertical-mail-text: var(--g-blue-600);
+  --vertical-calendar-text: var(--g-coral-600);
+  --vertical-contacts-text: var(--g-green-600);
+  --vertical-notes-text: var(--g-amber-600);
   --unread: var(--g-blue-500);
   /* Tinted surfaces (note cards): a light, soft wash behind dark text. */
   --tint-l: 0.95;
@@ -42,7 +48,14 @@
   --vertical-calendar: var(--g-coral-400);
   --vertical-contacts: var(--g-green-400);
   --vertical-notes: var(--g-amber-400);
+  --vertical-mail-text: var(--g-blue-300);
+  --vertical-calendar-text: var(--g-coral-300);
+  --vertical-contacts-text: var(--g-green-300);
+  --vertical-notes-text: var(--g-amber-300);
   --unread: var(--g-blue-400);
+  /* Dark mode's today chip: a light fill with dark text (white on coral reads poorly here). */
+  --c-calendar-today-chip: var(--g-coral-300);
+  --c-calendar-today-chip-text: var(--g-neutral-950);
   /* Deep and quiet, so light text keeps its contrast. */
   --tint-l: 0.3;
   --tint-c: 0.05;
@@ -84,7 +97,7 @@
   --c-note-done-text: var(--muted-foreground);
   --c-note-code-bg: var(--muted);
   /* [[Links]] between notes (ADR-0034): the notes accent, unlike web links. */
-  --c-note-wikilink-text: var(--vertical-notes);
+  --c-note-wikilink-text: var(--vertical-notes-text);
   --c-note-wikilink-bg: color-mix(in oklab, var(--vertical-notes) 12%, transparent);
 
   /* Note cards (ADR-0038): one tint per color, theme-aware through tier 2.
@@ -123,6 +136,10 @@
   --c-calendar-gutter: 3.5rem;
   --c-calendar-now: var(--vertical-calendar);
   --c-calendar-today: var(--vertical-calendar);
+  /* Today's label as text, and its date chip: a filled circle with its number. */
+  --c-calendar-today-text: var(--vertical-calendar-text);
+  --c-calendar-today-chip: var(--g-coral-600);
+  --c-calendar-today-chip-text: var(--g-neutral-0);
 }
 
 /* Mailbird's roles as Tailwind utilities (bg-surface-chrome, text-vertical-mail…). */
@@ -135,4 +152,8 @@
   --color-vertical-calendar: var(--vertical-calendar);
   --color-vertical-contacts: var(--vertical-contacts);
   --color-vertical-notes: var(--vertical-notes);
+  --color-vertical-mail-text: var(--vertical-mail-text);
+  --color-vertical-calendar-text: var(--vertical-calendar-text);
+  --color-vertical-contacts-text: var(--vertical-contacts-text);
+  --color-vertical-notes-text: var(--vertical-notes-text);
 }

@@ -162,7 +162,7 @@ function KeyField({ provider, saved }: { provider: "anthropic" | "compatible"; s
       <Field>
         <FieldLabel>API key</FieldLabel>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm [&_svg]:size-4 [&_svg]:text-vertical-mail">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm [&_svg]:size-4 [&_svg]:text-vertical-mail-text">
             <Icon name="key" /> Saved in {where}
           </span>
           <Button variant="outline" size="sm" onClick={() => setReplacing(true)}>

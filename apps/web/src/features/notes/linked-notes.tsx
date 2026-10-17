@@ -44,7 +44,7 @@ export function LinkedNotes({ target, title }: { target: NoteTarget; title: stri
             <li key={n.id}>
               <Item size="xs" render={<button type="button" onClick={() => jumpTo({ kind: "note", id: n.id })} />}>
                 <ItemMedia>
-                  <Icon name="stylus_note" className="text-vertical-notes" />
+                  <Icon name="stylus_note" className="text-vertical-notes-text" />
                 </ItemMedia>
                 <ItemContent>
                   <span className="truncate">{n.title || "New note"}</span>

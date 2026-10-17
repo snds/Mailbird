@@ -53,7 +53,7 @@ export function TasksPanel({ onOpen }: { onOpen: (eventId: string, start: number
             {t.planned ? (
               <span className="text-xs">
                 {/* In the calendar's hue: it's on the calendar now. */}
-                <Button variant="link" size="inline" className="text-vertical-calendar" onClick={() => onOpen(t.planned!.eventId, t.planned!.start)}>
+                <Button variant="link" size="inline" className="text-vertical-calendar-text" onClick={() => onOpen(t.planned!.eventId, t.planned!.start)}>
                   <Icon name="event_available" /> {when(t.planned.start)}
                 </Button>
               </span>
