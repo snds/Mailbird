@@ -159,6 +159,8 @@ export interface MessageQuery {
   split?: string | null
   /** Inbox only: fold newsletters into the bundle when there are two or more. */
   bundle?: boolean
+  /** Only conversations assigned to this team member (ADR-0063). */
+  assignedTo?: string | null
 }
 
 /** Your own inbox tab: mail matching every field set. */
@@ -1109,4 +1111,40 @@ export interface RelayConfig {
   token: string
   /** End-to-end encryption's key (ADR-0062). Without it, the relay can read what syncs. */
   key?: string | null
+}
+
+// ── A shared inbox on the gateway (ADR-0063) ────────────────────────────────
+
+/** Someone on the gateway: its owner, or a member they added. */
+export interface Teammate {
+  id: string
+  name: string
+}
+
+export interface Assignee extends Teammate {
+  /** Who assigned it. */
+  by: string
+  at: number
+}
+
+/** A note on a conversation, for the team only. */
+export interface ThreadComment {
+  id: string
+  authorId: string
+  author: string
+  text: string
+  at: number
+}
+
+export interface ThreadTeam {
+  assignee: Assignee | null
+  comments: ThreadComment[]
+}
+
+/** Someone on the gateway's team, as the gateway lists them. The owner sees addresses and who hasn't joined yet. */
+export interface GatewayMember extends Teammate {
+  role: "owner" | "member"
+  email?: string
+  pending?: boolean
+  created?: number
 }

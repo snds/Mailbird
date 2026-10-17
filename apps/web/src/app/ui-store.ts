@@ -76,6 +76,9 @@ interface UiState {
   advancedMailOpen: boolean
   aiSettingsOpen: boolean
   setAiSettingsOpen: (open: boolean) => void
+  /** The gateway's team (ADR-0063), for its owner. */
+  membersOpen: boolean
+  setMembersOpen: (open: boolean) => void
   setAdvancedMailOpen: (open: boolean) => void
   setGrammarOpen: (open: boolean) => void
   /** The ⌘K command menu. */
@@ -152,6 +155,8 @@ export const useUi = create<UiState>((set, get) => ({
   advancedMailOpen: false,
   aiSettingsOpen: false,
   setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
+  membersOpen: false,
+  setMembersOpen: (membersOpen) => set({ membersOpen }),
   setAdvancedMailOpen: (advancedMailOpen) => set({ advancedMailOpen }),
   setGrammarOpen: (grammarOpen) => set({ grammarOpen }),
   paletteOpen: false,

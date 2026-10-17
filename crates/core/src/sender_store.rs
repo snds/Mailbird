@@ -235,11 +235,11 @@ mod tests {
     }
 
     fn lane(s: &Store, lane: Lane) -> Vec<String> {
-        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap().into_iter().map(|m| m.subject).collect()
+        s.messages(&MessageQuery { lane, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false, assigned_to: None }).unwrap().into_iter().map(|m| m.subject).collect()
     }
 
     fn of(s: &Store, category: Category) -> Vec<String> {
-        s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: Some(category), split: None, bundle: false })
+        s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: Some(category), split: None, bundle: false, assigned_to: None })
             .unwrap()
             .into_iter()
             .map(|m| m.subject)
@@ -256,7 +256,7 @@ mod tests {
         assert_eq!(of(&s, Category::Newsletters), ["Monthly"]);
         assert_eq!(of(&s, Category::Updates), ["Your statement"]);
         assert_eq!(lane(&s, Lane::Inbox).len(), 3, "the inbox still has everything");
-        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap();
+        let rows = s.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false, assigned_to: None }).unwrap();
         assert_eq!(rows.iter().find(|m| m.subject == "Monthly").unwrap().category, Category::Newsletters);
 
         // Moving a sender wins over the headers, for all their mail.

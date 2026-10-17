@@ -147,6 +147,7 @@ impl Store {
             category: Some(Category::Newsletters),
             split: None,
             bundle: false,
+            assigned_to: None,
         })
     }
 
@@ -163,6 +164,7 @@ impl Store {
                 category: None,
                 split: Some(s.id.clone()),
                 bundle: false,
+                assigned_to: None,
             })?;
             splits.push(SplitCount { id: s.id, threads: rows.len() as u32, unread: rows.iter().filter(|r| !r.seen).count() as u32 });
         }
@@ -269,7 +271,7 @@ mod tests {
     }
 
     fn inbox(s: &Store, split: Option<&str>, bundle: bool) -> Vec<String> {
-        let q = MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: split.map(String::from), bundle };
+        let q = MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: split.map(String::from), bundle, assigned_to: None };
         let mut v: Vec<String> = s.messages(&q).unwrap().into_iter().map(|m| m.subject).collect();
         v.sort();
         v
@@ -308,7 +310,7 @@ mod tests {
     }
 
     fn q_inbox() -> MessageQuery {
-        MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }
+        MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false, assigned_to: None }
     }
 
     #[test]

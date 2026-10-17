@@ -9,8 +9,10 @@
 //!   events do on the desktop.
 //! - Everything else serves the built web app, with a single-page fallback.
 //!
-//! It's for one person and self-hosted: one password, sessions in an
-//! HttpOnly cookie, and secrets sealed in a file with `GATEWAY_KEY`.
+//! It's self-hosted: the owner's password, sessions in an HttpOnly cookie,
+//! and secrets sealed in a file with `GATEWAY_KEY`. The owner can add team
+//! members (ADR-0063), who sign in with their own password and work the
+//! mail with them: a shared inbox. Members reach mail only.
 //! Hosting it for others would make it the kind of server Google's
 //! restricted-scope assessment covers (ADR-0004), so it isn't built for that.
 
@@ -40,6 +42,9 @@ use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
+mod members;
+pub use members::Members;
+
 /// How long a session lasts without use.
 const SESSION_IDLE: Duration = Duration::from_secs(30 * 24 * 3600);
 /// Failed sign-ins allowed per window before the gateway makes you wait.
@@ -51,12 +56,12 @@ const MAX_BOOKINGS: u32 = 30;
 const BOOKING_WINDOW: Duration = Duration::from_secs(10 * 60);
 
 /// Compares secrets without leaking where they differ through timing.
-fn same(a: &str, b: &str) -> bool {
+pub(crate) fn same(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-fn random_token() -> String {
+pub(crate) fn random_token() -> String {
     let mut b = [0u8; 32];
     SystemRandom::new().fill(&mut b).expect("the OS random source works");
     URL_SAFE_NO_PAD.encode(b)
@@ -177,8 +182,10 @@ impl Host for GatewayHost {
 // ── Sessions ────────────────────────────────────────────────────────────────
 
 pub struct Config {
-    /// The one password, 16+ characters.
+    /// The owner's password, 16+ characters.
     pub password: String,
+    /// The team (ADR-0063): `members.json` in the data folder.
+    pub members: Members,
     /// Where the built web app is (`apps/web/dist`).
     pub web_dir: PathBuf,
     /// Mark the cookie `Secure`. Off only for plain http on this machine.
@@ -190,13 +197,86 @@ pub struct Config {
     pub public_url: Option<String>,
 }
 
+/// Who a session is: the owner, or one of their team.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Who {
+    pub id: String,
+    pub name: String,
+    pub owner: bool,
+}
+
+impl Who {
+    fn teammate(&self) -> Value {
+        json!({ "id": self.id, "name": self.name })
+    }
+}
+
+/// The owner's id in assignments and notes.
+const OWNER_ID: &str = "owner";
+
+/// What a team member may do: their mail, and the team's side of it. Not
+/// accounts, settings, notes, calendars, or contacts, which stay the
+/// owner's (ADR-0063).
+const MEMBER_COMMANDS: &[&str] = &[
+    "list_splits",
+    "inbox_overview",
+    "bundle_mark_read",
+    "bundle_archive",
+    "unarchive_bundle",
+    "swipe_actions",
+    "key_bindings",
+    "provider_capabilities",
+    "list_accounts",
+    "sync_now",
+    "list_messages",
+    "get_thread",
+    "set_thread_seen",
+    "set_thread_flagged",
+    "set_thread_archived",
+    "snooze_thread",
+    "unsnooze_thread",
+    "attachment_data",
+    "queue_send",
+    "cancel_send",
+    "list_outbox",
+    "reschedule_send",
+    "set_follow_up",
+    "cancel_follow_up",
+    "unsubscribe",
+    "list_templates",
+    "list_signatures",
+    "screener_status",
+    "list_senders",
+    "suggest_recipients",
+    "sender_profile",
+    "contact_photos",
+    "local_times",
+    "mail_prefs",
+    "ai_settings",
+    "summarize_thread",
+    "suggest_replies",
+    "thread_team",
+    "thread_assignments",
+    "assign_thread",
+    "add_thread_comment",
+    "remove_thread_comment",
+];
+
+/// Events a member's page hears: mail's, not the owner's notes or reminders.
+const MEMBER_EVENTS: &[&str] = &["mail:changed", "outbox:changed", "accounts:changed", "compose:changed", "inbox-team:changed", "inbox:here"];
+
+/// How long "who's here" lasts without the page saying so again.
+const HERE_FOR: Duration = Duration::from_secs(70);
+
 pub struct Gateway {
     app: AppHandle,
     state: Shared,
     events: broadcast::Sender<(String, Value)>,
     config: Config,
-    /// token → last used.
-    sessions: Mutex<HashMap<String, Instant>>,
+    /// token → (last used, who).
+    sessions: Mutex<HashMap<String, (Instant, Who)>>,
+    /// Who has which conversation open: person id → (thread, name, when).
+    here: Mutex<HashMap<String, (String, String, Instant)>>,
     /// (window start, failures in it).
     failures: Mutex<(Instant, u32)>,
     /// (window start, booking attempts in it) from public pages.
@@ -211,20 +291,44 @@ impl Gateway {
         let (events, _) = broadcast::channel(256);
         let app = AppHandle::new(GatewayHost { events: events.clone() });
         pim_app::workers::start(app.clone(), state.clone());
-        Arc::new(Self { app, state, events, config, sessions: Mutex::new(HashMap::new()), failures: Mutex::new((Instant::now(), 0)), bookings: Mutex::new((Instant::now(), 0)) })
+        Arc::new(Self { app, state, events, config, sessions: Mutex::new(HashMap::new()), here: Mutex::new(HashMap::new()), failures: Mutex::new((Instant::now(), 0)), bookings: Mutex::new((Instant::now(), 0)) })
     }
 
-    fn session(&self, headers: &HeaderMap) -> bool {
-        let Some(token) = cookie(headers, COOKIE) else { return false };
+    fn session(&self, headers: &HeaderMap) -> Option<Who> {
+        let token = cookie(headers, COOKIE)?;
         let mut sessions = self.sessions.lock().expect("sessions lock");
-        sessions.retain(|_, used| used.elapsed() < SESSION_IDLE);
-        match sessions.iter_mut().find(|(t, _)| same(t, &token)) {
-            Some((_, used)) => {
-                *used = Instant::now();
-                true
-            }
-            None => false,
+        sessions.retain(|_, (used, _)| used.elapsed() < SESSION_IDLE);
+        let (_, (used, who)) = sessions.iter_mut().find(|(t, _)| same(t, &token))?;
+        *used = Instant::now();
+        let who = who.clone();
+        drop(sessions);
+        // The owner goes by their first account's name, which can change (or arrive) after signing in.
+        Some(if who.owner { self.owner() } else { who })
+    }
+
+    fn start_session(&self, who: Who) -> Response {
+        let token = random_token();
+        self.sessions.lock().expect("sessions lock").insert(token.clone(), (Instant::now(), who));
+        let mut res = StatusCode::NO_CONTENT.into_response();
+        res.headers_mut().insert(header::SET_COOKIE, self.cookie_header(&token, SESSION_IDLE.as_secs()));
+        res
+    }
+
+    /// The owner, named as their first account names them (as their comments are).
+    fn owner(&self) -> Who {
+        let name = self.state.store.lock().ok().and_then(|s| s.accounts().ok()).and_then(|a| a.into_iter().next()).map(|a| if a.config.display_name.trim().is_empty() { a.config.address } else { a.config.display_name });
+        Who { id: OWNER_ID.into(), name: name.unwrap_or_else(|| "Owner".into()), owner: true }
+    }
+
+    /// Who has each conversation open, for every page.
+    fn broadcast_here(&self) {
+        let mut here = self.here.lock().expect("here lock");
+        here.retain(|_, (_, _, at)| at.elapsed() < HERE_FOR);
+        let mut threads: HashMap<String, Vec<Value>> = HashMap::new();
+        for (id, (thread, name, _)) in here.iter() {
+            threads.entry(thread.clone()).or_default().push(json!({ "id": id, "name": name }));
         }
+        let _ = self.events.send(("inbox:here".into(), json!({ "threads": threads })));
     }
 
     fn cookie_header(&self, token: &str, max_age: u64) -> HeaderValue {
@@ -272,6 +376,12 @@ pub fn router(gw: Gw) -> Router {
         // Note images arrive as base64 (up to 10 MB each, ADR-0044); axum's 2 MB default is too small.
         .route("/api/core/{name}", post(core).layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024)))
         .route("/api/events", get(events))
+        // The team (ADR-0063): the owner adds and removes people; an invitation sets a password.
+        .route("/api/members", get(list_members).post(add_member))
+        .route("/api/members/{id}", axum::routing::delete(remove_member))
+        .route("/api/members/{id}/invite", post(reinvite_member))
+        .route("/api/join", post(join))
+        .route("/api/here", post(here))
         .route("/api/attachments/{id}", get(attachment))
         // Public: a scheduling link's page reads its free times and books one (ADR-0026).
         .route("/api/book/{token}", get(booking_page).post(booking))
@@ -302,7 +412,11 @@ pub const GATEWAY_META: &str = r#"<meta name="mailbird-gateway" content="1">"#;
 
 async fn get_session(State(gw): State<Gw>, headers: HeaderMap) -> Response {
     // Tells the web app it's on a gateway, and whether to ask for the password.
-    let mut res = Json(json!({ "gateway": true, "signedIn": gw.session(&headers) })).into_response();
+    let body = match gw.session(&headers) {
+        Some(w) => json!({ "gateway": true, "signedIn": true, "me": { "id": w.id, "name": w.name, "role": if w.owner { "owner" } else { "member" } } }),
+        None => json!({ "gateway": true, "signedIn": false }),
+    };
+    let mut res = Json(body).into_response();
     res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     res
 }
@@ -310,35 +424,55 @@ async fn get_session(State(gw): State<Gw>, headers: HeaderMap) -> Response {
 #[derive(Deserialize)]
 struct SignIn {
     password: String,
+    /// A team member's; the owner leaves it out.
+    #[serde(default)]
+    email: Option<String>,
+}
+
+/// Counts a failed sign-in, and makes the next guess wait.
+async fn failed(gw: &Gateway) {
+    {
+        let mut f = gw.failures.lock().expect("failures lock");
+        if f.0.elapsed() >= FAILURE_WINDOW {
+            *f = (Instant::now(), 0);
+        }
+        f.1 += 1;
+    }
+    tokio::time::sleep(Duration::from_millis(500)).await;
+}
+
+fn locked_out(gw: &Gateway) -> bool {
+    let f = gw.failures.lock().expect("failures lock");
+    f.0.elapsed() < FAILURE_WINDOW && f.1 >= MAX_FAILURES
 }
 
 async fn sign_in(State(gw): State<Gw>, headers: HeaderMap, Json(body): Json<SignIn>) -> Response {
     if !csrf_ok(&headers) {
         return err(StatusCode::FORBIDDEN, "missing the X-Mailbird header");
     }
-    {
-        let f = gw.failures.lock().expect("failures lock");
-        if f.0.elapsed() < FAILURE_WINDOW && f.1 >= MAX_FAILURES {
-            return err(StatusCode::TOO_MANY_REQUESTS, "too many wrong passwords — wait a few minutes");
-        }
+    if locked_out(&gw) {
+        return err(StatusCode::TOO_MANY_REQUESTS, "too many wrong passwords — wait a few minutes");
+    }
+    // A team member (ADR-0063): their email and their own password.
+    if let Some(email) = body.email.as_deref().filter(|e| !e.trim().is_empty()) {
+        let (email, password) = (email.to_owned(), body.password.clone());
+        let g = gw.clone();
+        // PBKDF2 takes a moment: off the async threads.
+        let found = tokio::task::spawn_blocking(move || g.config.members.check(&email, &password)).await.ok().flatten();
+        return match found {
+            Some(m) => gw.start_session(Who { id: m.id, name: m.name, owner: false }),
+            None => {
+                failed(&gw).await;
+                err(StatusCode::UNAUTHORIZED, "that email and password don't match")
+            }
+        };
     }
     if !same(&body.password, &gw.config.password) {
-        {
-            let mut f = gw.failures.lock().expect("failures lock");
-            if f.0.elapsed() >= FAILURE_WINDOW {
-                *f = (Instant::now(), 0);
-            }
-            f.1 += 1;
-        }
         // A pause makes guessing slow even inside the limit.
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        failed(&gw).await;
         return err(StatusCode::UNAUTHORIZED, "that's not the gateway password");
     }
-    let token = random_token();
-    gw.sessions.lock().expect("sessions lock").insert(token.clone(), Instant::now());
-    let mut res = StatusCode::NO_CONTENT.into_response();
-    res.headers_mut().insert(header::SET_COOKIE, gw.cookie_header(&token, SESSION_IDLE.as_secs()));
-    res
+    gw.start_session(gw.owner())
 }
 
 async fn sign_out(State(gw): State<Gw>, headers: HeaderMap) -> Response {
@@ -354,13 +488,31 @@ async fn sign_out(State(gw): State<Gw>, headers: HeaderMap) -> Response {
 }
 
 async fn core(State(gw): State<Gw>, UrlPath(name): UrlPath<String>, headers: HeaderMap, body: Bytes) -> Response {
-    if !gw.session(&headers) {
-        return err(StatusCode::UNAUTHORIZED, "sign in first");
-    }
+    let Some(who) = gw.session(&headers) else { return err(StatusCode::UNAUTHORIZED, "sign in first") };
     if !csrf_ok(&headers) {
         return err(StatusCode::FORBIDDEN, "missing the X-Mailbird header");
     }
-    let args: Value = if body.is_empty() { Value::Null } else { serde_json::from_slice(&body).unwrap_or(Value::Null) };
+    if !who.owner && !MEMBER_COMMANDS.contains(&name.as_str()) {
+        return err(StatusCode::FORBIDDEN, "only the gateway's owner can do that");
+    }
+    let mut args: Value = if body.is_empty() { Value::Null } else { serde_json::from_slice(&body).unwrap_or(Value::Null) };
+    // Who's acting comes from the session, whatever the page sent.
+    if matches!(name.as_str(), "assign_thread" | "add_thread_comment" | "remove_thread_comment") {
+        if !args.is_object() {
+            args = json!({});
+        }
+        args["by"] = who.teammate();
+        args["owner"] = Value::Bool(who.owner);
+        if name == "assign_thread" {
+            match args.get("to").and_then(|t| t.get("id")).and_then(Value::as_str).map(str::to_owned) {
+                None => {}
+                Some(id) => match gw.teammate(&id) {
+                    Some(t) => args["to"] = t,
+                    None => return err(StatusCode::BAD_REQUEST, "they aren't on the team"),
+                },
+            }
+        }
+    }
     match pim_app::dispatch(&gw.app, &gw.state, &name, args).await {
         Ok(Output::Json(v)) => Json(v).into_response(),
         Ok(Output::Bytes(b)) => ([(header::CONTENT_TYPE, "application/octet-stream")], b).into_response(),
@@ -370,13 +522,14 @@ async fn core(State(gw): State<Gw>, UrlPath(name): UrlPath<String>, headers: Hea
 }
 
 async fn events(State(gw): State<Gw>, headers: HeaderMap) -> Response {
-    if !gw.session(&headers) {
-        return err(StatusCode::UNAUTHORIZED, "sign in first");
-    }
+    let Some(who) = gw.session(&headers) else { return err(StatusCode::UNAUTHORIZED, "sign in first") };
     let rx = gw.events.subscribe();
-    let stream = futures::stream::unfold(rx, |mut rx| async move {
+    let owner = who.owner;
+    let stream = futures::stream::unfold(rx, move |mut rx| async move {
         loop {
             match rx.recv().await {
+                // A member hears mail's events only.
+                Ok((name, _)) if !owner && !MEMBER_EVENTS.contains(&name.as_str()) => continue,
                 Ok((name, payload)) => return Some((Ok::<_, Infallible>(Event::default().event(name).data(payload.to_string())), rx)),
                 // A slow page missed some events: it refetches on the next one anyway.
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
@@ -471,7 +624,7 @@ async fn change_booking(State(gw): State<Gw>, UrlPath((token, code)): UrlPath<(S
 
 /// An attachment as a download, with its own file name.
 async fn attachment(State(gw): State<Gw>, UrlPath(id): UrlPath<String>, headers: HeaderMap) -> Response {
-    if !gw.session(&headers) {
+    if gw.session(&headers).is_none() {
         return err(StatusCode::UNAUTHORIZED, "sign in first");
     }
     let found = gw.state.store.lock().map_err(|_| "the mail database is unavailable".to_string()).and_then(|s| s.attachment(&id).map_err(|e| e.to_string()));
@@ -488,4 +641,153 @@ async fn attachment(State(gw): State<Gw>, UrlPath(id): UrlPath<String>, headers:
         }
         Err(e) => err(StatusCode::NOT_FOUND, e),
     }
+}
+
+// ── The team (ADR-0063) ─────────────────────────────────────────────────────
+
+impl Gateway {
+    /// Someone you can assign to: the owner, or a member who has joined.
+    fn teammate(&self, id: &str) -> Option<Value> {
+        if id == OWNER_ID {
+            return Some(self.owner().teammate());
+        }
+        self.config.members.get(id).filter(|m| !m.pending()).map(|m| json!({ "id": m.id, "name": m.name }))
+    }
+
+    /// Someone joined or left: every page refreshes who's on the team.
+    fn team_changed(&self) {
+        let _ = self.events.send(("inbox-team:changed".into(), json!({ "threadId": "" })));
+    }
+
+    fn end_sessions_of(&self, id: &str) {
+        self.sessions.lock().expect("sessions lock").retain(|_, (_, w)| w.id != id);
+        self.here.lock().expect("here lock").remove(id);
+    }
+}
+
+fn member_json(m: &members::Member, owner_view: bool) -> Value {
+    if owner_view {
+        json!({ "id": m.id, "name": m.name, "email": m.email, "role": "member", "pending": m.pending(), "created": m.created })
+    } else {
+        json!({ "id": m.id, "name": m.name, "role": "member" })
+    }
+}
+
+/// Everyone on the team, owner first. Members see names, for assigning;
+/// the owner also sees addresses and who hasn't joined yet.
+async fn list_members(State(gw): State<Gw>, headers: HeaderMap) -> Response {
+    let Some(who) = gw.session(&headers) else { return err(StatusCode::UNAUTHORIZED, "sign in first") };
+    let owner = gw.owner();
+    let mut out = vec![json!({ "id": owner.id, "name": owner.name, "role": "owner" })];
+    out.extend(gw.config.members.list().iter().filter(|m| who.owner || !m.pending()).map(|m| member_json(m, who.owner)));
+    let mut res = Json(Value::Array(out)).into_response();
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
+}
+
+/// Why this request can't change the team, if it can't: only the owner can.
+fn not_owner(gw: &Gateway, headers: &HeaderMap) -> Option<Response> {
+    let Some(who) = gw.session(headers) else { return Some(err(StatusCode::UNAUTHORIZED, "sign in first")) };
+    if !csrf_ok(headers) {
+        return Some(err(StatusCode::FORBIDDEN, "missing the X-Mailbird header"));
+    }
+    (!who.owner).then(|| err(StatusCode::FORBIDDEN, "only the gateway's owner can do that"))
+}
+
+#[derive(Deserialize)]
+struct NewMember {
+    name: String,
+    email: String,
+}
+
+/// Adds someone. The answer carries their invitation code, once: the page
+/// turns it into a link for the owner to send.
+async fn add_member(State(gw): State<Gw>, headers: HeaderMap, Json(body): Json<NewMember>) -> Response {
+    if let Some(r) = not_owner(&gw, &headers) {
+        return r;
+    }
+    match gw.config.members.add(&body.name, &body.email) {
+        Ok((m, code)) => Json(json!({ "member": member_json(&m, true), "code": code, "days": members::INVITE_DAYS })).into_response(),
+        Err(e) => err(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+async fn reinvite_member(State(gw): State<Gw>, UrlPath(id): UrlPath<String>, headers: HeaderMap) -> Response {
+    if let Some(r) = not_owner(&gw, &headers) {
+        return r;
+    }
+    match gw.config.members.reinvite(&id) {
+        Ok((m, code)) => Json(json!({ "member": member_json(&m, true), "code": code, "days": members::INVITE_DAYS })).into_response(),
+        Err(e) => err(StatusCode::NOT_FOUND, e),
+    }
+}
+
+/// Takes someone off the team: they're signed out now, and what was assigned to them goes back to nobody.
+async fn remove_member(State(gw): State<Gw>, UrlPath(id): UrlPath<String>, headers: HeaderMap) -> Response {
+    if let Some(r) = not_owner(&gw, &headers) {
+        return r;
+    }
+    match gw.config.members.remove(&id) {
+        Ok(m) => {
+            gw.end_sessions_of(&m.id);
+            let _ = pim_app::dispatch(&gw.app, &gw.state, "unassign_member", json!({ "memberId": m.id })).await;
+            gw.broadcast_here();
+            gw.team_changed();
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(e) => err(StatusCode::NOT_FOUND, e),
+    }
+}
+
+#[derive(Deserialize)]
+struct Join {
+    code: String,
+    password: String,
+}
+
+/// Opening an invitation: they choose a password and are signed in.
+async fn join(State(gw): State<Gw>, headers: HeaderMap, Json(body): Json<Join>) -> Response {
+    if !csrf_ok(&headers) {
+        return err(StatusCode::FORBIDDEN, "missing the X-Mailbird header");
+    }
+    if locked_out(&gw) {
+        return err(StatusCode::TOO_MANY_REQUESTS, "too many tries — wait a few minutes");
+    }
+    let g = gw.clone();
+    let accepted = tokio::task::spawn_blocking(move || g.config.members.accept(&body.code, &body.password)).await.unwrap_or_else(|_| Err("try again".into()));
+    match accepted {
+        Ok(m) => {
+            gw.team_changed();
+            gw.start_session(Who { id: m.id, name: m.name, owner: false })
+        }
+        Err(e) => {
+            if e.contains("doesn't work") {
+                failed(&gw).await;
+            }
+            err(StatusCode::BAD_REQUEST, e)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Here {
+    thread_id: Option<String>,
+}
+
+/// The page says which conversation is open (or none); everyone hears who's where.
+async fn here(State(gw): State<Gw>, headers: HeaderMap, Json(body): Json<Here>) -> Response {
+    let Some(who) = gw.session(&headers) else { return err(StatusCode::UNAUTHORIZED, "sign in first") };
+    if !csrf_ok(&headers) {
+        return err(StatusCode::FORBIDDEN, "missing the X-Mailbird header");
+    }
+    {
+        let mut here = gw.here.lock().expect("here lock");
+        match body.thread_id.filter(|t| !t.is_empty() && t.len() <= 200) {
+            Some(t) => here.insert(who.id.clone(), (t, who.name.clone(), Instant::now())),
+            None => here.remove(&who.id),
+        };
+    }
+    gw.broadcast_here();
+    StatusCode::NO_CONTENT.into_response()
 }

@@ -6,7 +6,7 @@ import { AppShell } from "@/app/shell"
 import { useUi } from "@/app/ui-store"
 import { type VerticalId } from "@/app/verticals"
 import { Toaster, TooltipProvider } from "@unicron/ui"
-import { type AppJump, getCoreClient } from "@/core/client"
+import { type AppJump, getCoreClient, isMember } from "@/core/client"
 import { queryClient, useCoreEvents } from "@/core/queries"
 import { APP_JUMP_KEY } from "@/lib/app-jump"
 import { AccountsDialog } from "@/features/accounts"
@@ -87,10 +87,15 @@ function Root() {
         }}
       />
       <OutboxWatcher />
-      <ReminderWatcher />
-      <NotesSyncRunner />
-      <TeamSyncRunner />
-      <ImageTextRunner />
+      {/* Reminders, notes, and shared links are the owner's; a team member has mail (ADR-0063). */}
+      {!isMember() && (
+        <>
+          <ReminderWatcher />
+          <NotesSyncRunner />
+          <TeamSyncRunner />
+          <ImageTextRunner />
+        </>
+      )}
     </>
   )
 }

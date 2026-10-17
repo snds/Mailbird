@@ -98,6 +98,9 @@ import type {
   Template,
   TemplateInput,
   UnsubscribeMethod,
+  GatewayMember,
+  Teammate,
+  ThreadTeam,
 } from "./types"
 
 /**
@@ -176,6 +179,16 @@ export interface CoreClient {
   /** Mail's power settings (ADR-0055). */
   mailPrefs(): Promise<MailPrefs>
   setMailPrefs(prefs: MailPrefs): Promise<MailPrefs>
+  /**
+   * A shared inbox (ADR-0063): who a conversation is assigned to, and the
+   * team's notes on it. `by` is you; on a gateway, the gateway says who you
+   * are instead, whatever this sends.
+   */
+  threadTeam(threadId: string): Promise<ThreadTeam>
+  threadAssignments(): Promise<Record<string, Teammate>>
+  assignThread(threadId: string, to: Teammate | null, by: Teammate): Promise<ThreadTeam>
+  addThreadComment(threadId: string, text: string, by: Teammate): Promise<ThreadTeam>
+  removeThreadComment(id: string, by: Teammate, owner: boolean): Promise<void>
   /** Conversations shared with teammates (ADR-0060). */
   teamThreads(): Promise<TeamThread[]>
   threadShare(threadId: string): Promise<TeamThread | null>
@@ -365,7 +378,7 @@ export interface CoreClient {
   on(event: CoreEvent, handler: (payload?: unknown) => void): () => void
 }
 
-export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "compose:changed" | "team:changed" | "reminder" | "app:jump"
+export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "compose:changed" | "team:changed" | "inbox-team:changed" | "inbox:here" | "reminder" | "app:jump"
 
 /** What the mini calendar asks the main window to open (ADR-0054): an event, or a new one. */
 export type AppJump = { kind: "event"; id: string; start: number } | { kind: "newEvent" }
@@ -425,6 +438,11 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     interestingCalendars: () => call("interesting_calendars"),
     mailPrefs: () => call("mail_prefs"),
     setMailPrefs: (prefs) => call("set_mail_prefs", { prefs }),
+    threadTeam: (threadId) => call("thread_team", { threadId }),
+    threadAssignments: () => call("thread_assignments"),
+    assignThread: (threadId, to, by) => call("assign_thread", { threadId, to, by }),
+    addThreadComment: (threadId, text, by) => call("add_thread_comment", { threadId, text, by }),
+    removeThreadComment: (id, by, owner) => call("remove_thread_comment", { id, by, owner }),
     teamThreads: () => call("team_threads"),
     threadShare: (threadId) => call("thread_share", { threadId }),
     shareThread: (threadId) => call("share_thread", { threadId }),
@@ -590,7 +608,23 @@ async function createTauriClient(): Promise<CoreClient> {
 export interface GatewaySession {
   gateway: true
   signedIn: boolean
+  /** Who's signed in: the owner, or a team member (ADR-0063). */
+  me?: GatewayMe
 }
+
+export interface GatewayMe extends Teammate {
+  role: "owner" | "member"
+}
+
+let me: GatewayMe | null = null
+/**
+ * Who's signed in to the gateway, once its session was read (before the app
+ * renders). `null` off a gateway: the desktop, the phone, and the demo are
+ * one person's, with everything.
+ */
+export const gatewayMe = () => me
+/** A team member on a gateway: mail only (ADR-0063). */
+export const isMember = () => me?.role === "member"
 
 /** Every write carries this header, so another site can't post as you (CSRF). */
 const CSRF = { "X-Mailbird": "1" }
@@ -603,6 +637,7 @@ export async function gatewaySession(): Promise<GatewaySession | null> {
     const r = await fetch("/api/session", { credentials: "same-origin", headers: { Accept: "application/json" } })
     if (!r.ok || !r.headers.get("content-type")?.includes("application/json")) return null
     const v = (await r.json()) as Partial<GatewaySession> | null
+    me = v?.me ?? null
     return v?.gateway ? (v as GatewaySession) : null
   } catch {
     return null
@@ -649,10 +684,40 @@ export async function visitorChange(token: string, code: string, change: Booking
   return (await r.json()) as ManagedBooking
 }
 
-export async function signInToGateway(password: string): Promise<void> {
-  const r = await fetch("/api/session", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", ...CSRF }, body: JSON.stringify({ password }) })
+/** The owner signs in with the gateway's password; a team member with their email too. */
+export async function signInToGateway(password: string, email?: string): Promise<void> {
+  const r = await fetch("/api/session", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", ...CSRF }, body: JSON.stringify({ password, ...(email?.trim() ? { email: email.trim() } : {}) }) })
   if (!r.ok) throw await gatewayError(r)
 }
+
+// ── The gateway's team (ADR-0063) ────────────────────────────────────────────
+
+async function gatewayJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(path, { credentials: "same-origin", ...init, headers: { "Content-Type": "application/json", ...CSRF, ...init?.headers } })
+  if (!r.ok) throw await gatewayError(r)
+  return (r.status === 204 ? undefined : await r.json()) as T
+}
+
+/** Everyone on the gateway, owner first; `[]` anywhere else. */
+export const teamMembers = (): Promise<GatewayMember[]> => (onGateway() ? gatewayJson("/api/members") : Promise.resolve([]))
+
+/** An invitation: a code the page makes a link of, good for `days`. */
+export interface Invitation {
+  member: GatewayMember
+  code: string
+  days: number
+}
+
+export const addTeamMember = (name: string, email: string) => gatewayJson<Invitation>("/api/members", { method: "POST", body: JSON.stringify({ name, email }) })
+export const reinviteTeamMember = (id: string) => gatewayJson<Invitation>(`/api/members/${encodeURIComponent(id)}/invite`, { method: "POST" })
+export const removeTeamMember = (id: string) => gatewayJson<void>(`/api/members/${encodeURIComponent(id)}`, { method: "DELETE" })
+/** Opening an invitation: choose a password, and you're signed in. */
+export const joinGateway = (code: string, password: string) => gatewayJson<void>("/api/join", { method: "POST", body: JSON.stringify({ code, password }) })
+/** Says which conversation you have open, or none, so the team sees who's here. */
+export const sayHere = (threadId: string | null) => gatewayJson<void>("/api/here", { method: "POST", body: JSON.stringify({ threadId }) })
+
+/** The link that opens an invitation. The code is after `#`, so it never reaches a server log. */
+export const invitationUrl = (code: string) => `${location.origin}/join#${code}`
 
 export async function signOutOfGateway(): Promise<void> {
   await fetch("/api/session", { method: "DELETE", credentials: "same-origin", headers: CSRF })
@@ -675,7 +740,7 @@ function createGatewayClient(): CoreClient {
   // One event stream for the whole page; handlers subscribe by name.
   const handlers = new Map<string, Set<(payload?: unknown) => void>>()
   const stream = new EventSource("/api/events", { withCredentials: true })
-  const names: (CoreEvent | "open-url")[] = ["mail:changed", "outbox:changed", "accounts:changed", "pim:changed", "notes:changed", "compose:changed", "team:changed", "reminder", "open-url"]
+  const names: (CoreEvent | "open-url")[] = ["mail:changed", "outbox:changed", "accounts:changed", "pim:changed", "notes:changed", "compose:changed", "team:changed", "inbox-team:changed", "inbox:here", "reminder", "open-url"]
   for (const name of names) {
     stream.addEventListener(name, (e) => {
       const data = (e as MessageEvent<string>).data

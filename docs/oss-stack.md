@@ -80,7 +80,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | SQLite FTS5 (in rusqlite) | Full-text search | — | Public domain | ✅ |
 | tantivy | Full-text search at scale | 0.26 | MIT | ⚪ (deferred, ADR-0007) |
 | oauth2 | OAuth (Google, Microsoft) | 5.0 | MIT OR Apache-2.0 | ⚪ |
-| ring | PKCE (SHA-256) and OAuth state; sealing secrets in the push relay and the gateway (AES-256-GCM); APNs/FCM JWTs; random share keys (ADR-0062) | 0.17 | Apache-2.0 AND ISC | ✅ |
+| ring | PKCE (SHA-256) and OAuth state; sealing secrets in the push relay and the gateway (AES-256-GCM); APNs/FCM JWTs; random share keys (ADR-0062); team members' password hashes on the gateway (PBKDF2-SHA256, ADR-0063) | 0.17 | Apache-2.0 AND ISC | ✅ |
 | axum | HTTP for the push relay (`tools/push-relay`) and the web gateway (`apps/gateway`) | 0.8 | MIT | ✅ |
 | tower-http | The gateway's static web app and security headers | 0.6 | MIT | ✅ |
 | keyring | OS keychain | 3.6 (4.x for Android later) | MIT OR Apache-2.0 | ✅ |

@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
 import { Icon, type IconName, Avatar, AvatarFallback, AvatarImage, Badge, Button, AdaptiveSheetContent, Sheet, SheetTitle, Skeleton, Tooltip, TooltipContent, TooltipTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton } from "@unicron/ui"
-import { getCoreClient } from "@/core/client"
+import { getCoreClient, isMember } from "@/core/client"
 import type { Account, AttachmentInfo, MessageDetail, MessageSummary } from "@/core/types"
 import { cn } from "@/lib/utils"
 import { longTime, shortTime } from "@/lib/time"
@@ -25,8 +25,9 @@ import { UnsubscribeAction } from "./unsubscribe"
 import { CATEGORIES } from "./lanes"
 import { useSenderActions } from "./sender-actions"
 import type { Category } from "@/core/types"
-import { useAiReady, useContactPhotos, useMailAction, useMailPrefs, useThreadShare } from "@/core/queries"
+import { useAiReady, useContactPhotos, useMailAction, useMailPrefs, useSharedInbox, useThreadShare } from "@/core/queries"
 import { ShareThreadDialog } from "../team/share-thread-dialog"
+import { InboxTeamPanel } from "../team/inbox-team"
 import { OwnerTeamPanel } from "../team/owner-team-panel"
 import { SuggestedRepliesRow, SummaryCard } from "./ai-assist"
 import { useSuggestedReplies, useThreadSummary } from "./use-ai-assist"
@@ -209,6 +210,8 @@ export function ConversationView({
   // Shared with teammates (ADR-0060): the toolbar's share button, and the team panel below.
   const { data: teamShare } = useThreadShare(row?.threadId ?? null)
   const [sharing, setSharing] = useState(false)
+  // A shared inbox on the gateway (ADR-0063): assign it, and leave the team notes.
+  const sharedInbox = useSharedInbox()
   // Opt-in AI (ADR-0059): asked for here, per conversation, and forgotten on leaving it.
   const aiReady = useAiReady()
   const summary = useThreadSummary(row?.threadId ?? "")
@@ -270,7 +273,8 @@ export function ConversationView({
         </div>
         <div className="-mr-2 flex shrink-0 items-center">
           {aiReady && <ToolbarButton icon="summarize" label="Summarize" active={!summary.isIdle} onClick={() => (summary.isIdle || summary.isError ? summary.mutate() : summary.reset())} />}
-          <ToolbarButton icon={teamShare ? "group" : "group_add"} label={teamShare ? "Shared with teammates" : "Share with teammates"} active={!!teamShare} onClick={() => setSharing(true)} />
+          {/* Sharing by link is through the owner's relay; a team member works the inbox with them instead. */}
+          {!isMember() && <ToolbarButton icon={teamShare ? "group" : "group_add"} label={teamShare ? "Shared with teammates" : "Share with teammates"} active={!!teamShare} onClick={() => setSharing(true)} />}
           {other && <AboutSender from={other} threadId={row.threadId} onOpenThread={onOpenThread} />}
           <ToolbarButton icon={row.archived ? "unarchive" : "archive"} label={row.archived ? "Move to Inbox" : "Archive"} shortcut="E" onClick={() => triage.toggleArchive(row)} />
           {snoozed ? (
@@ -380,6 +384,7 @@ export function ConversationView({
         <MessageCard key={m.id} message={m} expanded={open.has(m.id)} onToggle={() => toggle(m.id)} accountAddress={account?.address} />
       ))}
 
+      {sharedInbox && <InboxTeamPanel threadId={row.threadId} />}
       {teamShare && <OwnerTeamPanel share={teamShare} onUseReply={(html) => openComposer(replyDraft(target, { quote: mailPrefs?.quote ?? true, replyBelow: mailPrefs?.replyBelow ?? false, openingHtml: html }))} />}
 
       <div className="flex gap-2 pt-2">
@@ -397,9 +402,12 @@ export function ConversationView({
       </div>
       <SuggestedRepliesRow replies={replies} onPick={(opening) => openComposer(replyDraft(target, { quote: mailPrefs?.quote ?? true, replyBelow: mailPrefs?.replyBelow ?? false, opening }))} />
       <ShareThreadDialog threadId={row.threadId} subject={subject} open={sharing} onOpenChange={setSharing} />
-      <div className="pt-4">
-        <LinkedNotes target={{ kind: "thread", id: row.threadId }} title={subject} />
-      </div>
+      {/* Notes are the gateway owner's; a team member leaves the team notes above instead. */}
+      {!isMember() && (
+        <div className="pt-4">
+          <LinkedNotes target={{ kind: "thread", id: row.threadId }} title={subject} />
+        </div>
+      )}
     </article>
     {other && (
       <aside aria-label="Sender" className="sticky top-0 hidden max-h-dvh w-72 shrink-0 overflow-y-auto pt-6 pr-6 pb-8 @4xl:block">

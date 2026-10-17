@@ -494,7 +494,7 @@ pub async fn background_pass(app: AppHandle, state: &Shared) -> Result<Backgroun
         s.store
             .lock()
             .ok()
-            .and_then(|st| st.messages(&pim_core::MessageQuery { lane: pim_core::Lane::Unread, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).ok())
+            .and_then(|st| st.messages(&pim_core::MessageQuery { lane: pim_core::Lane::Unread, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false, assigned_to: None }).ok())
             .unwrap_or_default()
     };
     let before: std::collections::HashSet<String> = unread(state).into_iter().map(|m| m.id).collect();

@@ -1,5 +1,5 @@
 import { demoLinkKey, demoShareKey } from "./demo-notes"
-import type { MessageDetail, TeamLink, TeamThread } from "./types"
+import type { MessageDetail, TeamLink, TeamThread, Teammate, ThreadTeam } from "./types"
 
 /**
  * Shared conversations in the demo (ADR-0060), kept as the core keeps them:
@@ -17,7 +17,38 @@ export function createDemoTeam(thread: (threadId: string) => MessageDetail[], fr
   }
   const touch = (t: TeamThread) => (t.updated = Math.max(now(), t.updated + 1))
   const done = <T,>(v: T) => (changed(), later(v))
+  // A shared inbox's side (ADR-0063), as inbox_team.rs keeps it: the demo is one person's, so it's only ever you.
+  const inbox = new Map<string, ThreadTeam>()
+  const teamOf = (threadId: string) => {
+    if (!thread(threadId).length) throw new Error("that conversation isn't here any more")
+    let t = inbox.get(threadId)
+    if (!t) inbox.set(threadId, (t = { assignee: null, comments: [] }))
+    return t
+  }
   return {
+    threadTeam: async (threadId: string) => later(inbox.get(threadId) ?? { assignee: null, comments: [] }),
+    threadAssignments: async () => later(Object.fromEntries([...inbox].filter(([, t]) => t.assignee).map(([id, t]) => [id, { id: t.assignee!.id, name: t.assignee!.name }]))),
+    assignThread: async (threadId: string, to: Teammate | null, by: Teammate) => {
+      const t = teamOf(threadId)
+      t.assignee = to && { id: to.id, name: to.name.trim(), by: by.name, at: now() }
+      return later(t)
+    },
+    addThreadComment: async (threadId: string, text: string, by: Teammate) => {
+      if (!text.trim()) throw new Error("write something first")
+      const t = teamOf(threadId)
+      t.comments.push({ id: crypto.randomUUID(), authorId: by.id, author: by.name, text: text.trim(), at: now() })
+      return later(t)
+    },
+    removeThreadComment: async (id: string, by: Teammate, owner: boolean) => {
+      for (const t of inbox.values()) {
+        const c = t.comments.find((c) => c.id === id)
+        if (!c) continue
+        if (c.authorId !== by.id && !owner) throw new Error("only the person who wrote a note can delete it")
+        t.comments = t.comments.filter((x) => x.id !== id)
+        return later(undefined)
+      }
+      throw new Error("that note isn't here any more")
+    },
     teamThreads: async () => later([...rows.values()].sort((a, b) => b.updated - a.updated).map(pub)),
     threadShare: async (threadId: string) => later([...rows.values()].find((t) => t.role === "owner" && t.threadId === threadId && !t.revoked) ?? null).then((t) => (t ? pub(t) : null)),
     shareThread: async (threadId: string) => {
