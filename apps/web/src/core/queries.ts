@@ -49,6 +49,7 @@ const keys = {
   notes: (q: NoteQuery) => ["notes", "list", q] as const,
   note: (id: string) => ["notes", "note", id] as const,
   noteBacklinks: (id: string) => ["notes", "backlinks", id] as const,
+  noteGraph: (q: NoteQuery) => ["notes", "graph", q] as const,
   noteTags: ["notes", "tags"] as const,
   // Tasks read notes and their linked events: they refresh with both.
   noteTasks: (done: boolean) => ["notes", "tasks", done] as const,
@@ -322,6 +323,11 @@ export function usePimAction<A, R = unknown>(fn: (c: CoreClient, args: A) => Pro
 
 export function useNotes(q: NoteQuery) {
   return useQuery({ queryKey: keys.notes(q), queryFn: () => call((c) => c.listNotes(q)), placeholderData: (prev) => prev })
+}
+
+/** The notes `q` lists, as a map (ADR-0053). Only fetched while the map shows. */
+export function useNoteGraph(q: NoteQuery, enabled: boolean) {
+  return useQuery({ queryKey: keys.noteGraph(q), queryFn: () => call((c) => c.noteGraph(q)), enabled, placeholderData: (prev) => prev })
 }
 
 /** Read once per open: after that, the editor (and its Yjs document) is the source of truth. */

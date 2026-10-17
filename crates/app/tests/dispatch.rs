@@ -91,6 +91,10 @@ async fn every_command_routes_and_works() {
     let back = json_of(dispatch(&app, &state, "note_backlinks", json!({ "id": note["id"] })).await.unwrap());
     assert_eq!(back[0]["id"], other["id"]);
     assert_eq!(json_of(dispatch(&app, &state, "find_note", json!({ "title": "HELLO" })).await.unwrap()), note["id"]);
+    // The map (ADR-0053): both notes, and the link between them.
+    let graph = json_of(dispatch(&app, &state, "note_graph", json!({ "query": {} })).await.unwrap());
+    assert_eq!(graph["notes"].as_array().unwrap().len(), 2);
+    assert_eq!(graph["links"], json!([{ "from": other["id"], "to": note["id"] }]));
     let profile = json_of(dispatch(&app, &state, "sender_profile", json!({ "email": "Nobody@Example.com" })).await.unwrap());
     assert_eq!((&profile["email"], &profile["received"], &profile["contact"]), (&json!("nobody@example.com"), &json!(0), &Value::Null));
     assert!(dispatch(&app, &state, "sender_profile", json!({ "email": "nope" })).await.is_err());

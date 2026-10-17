@@ -808,6 +808,8 @@ export interface NoteLink {
 export interface NotesPrefs {
   /** Checking an item moves it below the unchecked ones. */
   sortChecked: boolean
+  /** Notes as a map of their links instead of a list (ADR-0053). */
+  graph?: boolean
   /** Notes as cards in a grid, the way Keep shows them (ADR-0038). */
   grid?: boolean
   /** Read the text in images on this device, so search finds it (ADR-0045). On unless turned off. */
@@ -855,6 +857,16 @@ export interface NoteSummary {
   links: NoteLink[]
   created: number
   updated: number
+}
+
+/** Notes as a map (ADR-0053): the notes a list would show, the `[[links]]`
+ * between them, and what they link to. */
+export interface NoteGraph {
+  notes: NoteSummary[]
+  /** `[[Title]]` in `from` opens `to`; both are on the map. */
+  links: { from: string; to: string }[]
+  /** Each event, contact, or conversation once, with the notes that link to it. */
+  items: (NoteLink & { notes: string[] })[]
 }
 
 export interface NoteDetail extends NoteSummary {

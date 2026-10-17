@@ -45,6 +45,9 @@ pub struct NotesPrefs {
     /// Notes as cards in a grid, the way Keep shows them (ADR-0038).
     #[serde(default)]
     pub grid: bool,
+    /// Notes as a map of their links instead of a list (ADR-0053).
+    #[serde(default)]
+    pub graph: bool,
     /// Read the text in images on this device, so search finds it (ADR-0045).
     #[serde(default = "yes")]
     pub read_image_text: bool,
@@ -56,7 +59,7 @@ fn yes() -> bool {
 
 impl Default for NotesPrefs {
     fn default() -> Self {
-        Self { sort_checked: true, grid: false, read_image_text: true }
+        Self { sort_checked: true, grid: false, graph: false, read_image_text: true }
     }
 }
 

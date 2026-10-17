@@ -95,6 +95,11 @@ pub fn set_notes_prefs(app: AppHandle, state: &Shared, prefs: pim_core::NotesPre
     Ok(out)
 }
 
+/// The notes a list would show, as a map with their links (ADR-0053).
+pub fn note_graph(state: &Shared, query: NoteQuery) -> Res<pim_core::NoteGraph> {
+    with_store(state, |s| s.note_graph(&query))
+}
+
 /// Notes that link here with `[[title]]` (ADR-0034).
 pub fn note_backlinks(state: &Shared, id: String) -> Res<Vec<NoteSummary>> {
     with_store(state, |s| s.note_backlinks(&id))
