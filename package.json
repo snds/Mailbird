@@ -11,10 +11,9 @@
     "tauri": "pnpm --filter web tauri",
     "ds:scan": "dsa scan",
     "ds:patterns": "dsa patterns",
-    "ds:ratchet": "dsa ratchet",
-    "ds:raw-buttons": "node tools/ds-raw-buttons.mjs"
+    "ds:ratchet": "dsa ratchet"
   },
   "devDependencies": {
-    "@snds/dsa": "git+https://github.com/snds/dsa.git#cc4cb051cf6097f7810eacc770ebaaba3feb97ea"
+    "@snds/dsa": "git+https://github.com/snds/dsa.git#a9343c175bd365f683e32cbd92e5bd2f6abf7174"
   }
 }

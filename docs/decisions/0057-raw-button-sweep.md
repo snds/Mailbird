@@ -1,6 +1,6 @@
 # ADR-0057 · Raw buttons: a sweep and a ratchet
 
-- **Status:** Accepted
+- **Status:** Accepted. The four proposals shipped, and Mailbird adopted them in [ADR-0058](0058-ds-additions-adopted.md), which also retires the interim raw-button script.
 - **Date:** 2026-10-17
 - **Builds on:** [ADR-0048](0048-design-system-cleanup.md) (the design-system cleanup and its ratchet), [ADR-0052](0052-unicron-packages.md) (unicron as packages)
 
