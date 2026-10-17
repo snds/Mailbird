@@ -16,10 +16,8 @@ import {
   FieldError,
   FieldLabel,
   Input,
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
+  SecretField,
+  type SecretFieldHost,
 } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useNotesRelay } from "@/core/queries"
@@ -44,6 +42,8 @@ function RelayForm({ onDone }: { onDone: () => void }) {
   const [key, setKey] = useState(relay?.key ?? "")
   const [tried, setTried] = useState(false)
   const [encrypting, setEncrypting] = useState(false)
+  // Replacing a saved key, say one pasted wrong.
+  const [changingKey, setChangingKey] = useState(false)
   const qc = useQueryClient()
   const problem = url.trim() ? relayUrlProblem(url.trim()) : "Enter the relay’s address"
   const keyProblem = key.trim() && !isKey(key) ? "That isn't a whole key. Copy it again from a device that has it." : null
@@ -69,7 +69,8 @@ function RelayForm({ onDone }: { onDone: () => void }) {
       onSubmit={(e) => {
         e.preventDefault()
         setTried(true)
-        if (!problem && !keyProblem) void save({ url: url.trim(), token: token.trim(), key: key.trim() || null })
+        // An empty key field keeps the key this device has: emptying it never turns encryption off.
+        if (!problem && !keyProblem) void save({ url: url.trim(), token: token.trim(), key: key.trim() || relay?.key || null })
       }}
     >
       <DialogHeader>
@@ -97,20 +98,34 @@ function RelayForm({ onDone }: { onDone: () => void }) {
         <Input id="relay-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />
         <FieldDescription>Kept in your system keychain. Use the same token on each device.</FieldDescription>
       </Field>
-      {relay?.key ? (
-        <Field>
-          <FieldLabel htmlFor="relay-key">Encryption key</FieldLabel>
-          <KeyField id="relay-key" value={key} onChange={setKey} />
-          <FieldDescription>End-to-end encrypted: only your devices can read your notes. Enter this key on each one that syncs.</FieldDescription>
-        </Field>
+      {relay?.key && !changingKey ? (
+        <SecretField
+          label="Encryption key"
+          getSecret={async () => new TextEncoder().encode(relay.key!)}
+          host={clipboardHost}
+          // Long enough to paste it on another device; the clipboard clears after.
+          clipboardTimer={90}
+          description={
+            <>
+              End-to-end encrypted: only your devices can read your notes. Copy this key to each one that syncs.{" "}
+              <Button type="button" variant="link" size="inline" onClick={() => (setKey(""), setChangingKey(true))}>
+                Use a different key
+              </Button>
+            </>
+          }
+        />
       ) : (
         <>
-          <Field data-invalid={!!keyProblem || needsKey}>
-            <FieldLabel htmlFor="relay-key">Encryption key</FieldLabel>
-            <KeyField id="relay-key" value={key} onChange={setKey} invalid={!!keyProblem || needsKey} />
-            {keyProblem ? <FieldError>{keyProblem}</FieldError> : <FieldDescription>Only if another of your devices turned on end-to-end encryption. Copy its key here.</FieldDescription>}
-          </Field>
-          {relay && !needsKey && (
+          <SecretField
+            mode="edit"
+            id="relay-key"
+            label="Encryption key"
+            value={key}
+            onChange={setKey}
+            error={keyProblem ?? (needsKey ? "This relay is end-to-end encrypted. Paste the key from a device that syncs with it." : undefined)}
+            description={relay?.key ? "Paste the key from a device that syncs with this relay." : "Only if another of your devices turned on end-to-end encryption. Copy its key here."}
+          />
+          {relay && !relay.key && !needsKey && (
             <p className="flex gap-2 text-xs text-muted-foreground">
               <Icon name="info" className="mt-0.5 size-4" />
               <span>
@@ -136,32 +151,14 @@ function RelayForm({ onDone }: { onDone: () => void }) {
   )
 }
 
-/** A key, hidden until shown, with a way to copy it. */
-function KeyField({ id, value, onChange, invalid }: { id: string; value: string; onChange: (v: string) => void; invalid?: boolean }) {
-  const [shown, setShown] = useState(false)
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value)
-      toast.success("Key copied. Paste it on your other device.", { duration: 2500 })
-    } catch {
-      toast.error("Couldn't reach the clipboard")
-    }
-  }
-  return (
-    <InputGroup>
-      <InputGroupInput id={id} type={shown ? "text" : "password"} autoComplete="off" spellCheck={false} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={invalid} />
-      <InputGroupAddon align="inline-end">
-        <InputGroupButton size="icon-xs" aria-label={shown ? "Hide key" : "Show key"} onClick={() => setShown(!shown)}>
-          <Icon name={shown ? "visibility_off" : "visibility"} />
-        </InputGroupButton>
-        {value && (
-          <InputGroupButton size="icon-xs" aria-label="Copy key" onClick={() => void copy()}>
-            <Icon name="content_copy" />
-          </InputGroupButton>
-        )}
-      </InputGroupAddon>
-    </InputGroup>
-  )
+/**
+ * The key's clipboard (unicron SecretField): copied as text, cleared when the
+ * timer ends. The page can't read the clipboard back without asking, so the
+ * clear runs even if something else was copied since; the field says so.
+ */
+const clipboardHost: SecretFieldHost = {
+  copy: (bytes) => navigator.clipboard.writeText(new TextDecoder().decode(bytes)),
+  clear: () => navigator.clipboard.writeText(""),
 }
 
 /**
