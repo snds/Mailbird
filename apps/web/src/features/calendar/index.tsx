@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon, Button, Checkbox, AdaptiveSheetContent, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
-import { useAccounts, useCollections, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
+import { useAccounts, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
 import type { Collection, Occurrence } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 import { ariaKey, commandFor } from "@/lib/keys"
@@ -14,6 +14,7 @@ import { calendarColor } from "./colors"
 import { DAY, addDays, addMonths, dateInput, fmt, fromSecs, secs, startOfDay, startOfWeek, timeInput } from "./dates"
 import { EventDetailPane } from "./event-detail"
 import { MiniMonth } from "./mini-month"
+import { useCalendars } from "./use-calendars"
 import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
 import { BookingLinks } from "./booking-links"
@@ -30,13 +31,8 @@ interface Selected {
   start: number
 }
 
-function useCalendars() {
-  const { data = [] } = useCollections("calendar")
-  return useMemo(() => new Map(data.map((c) => [c.id, c])), [data])
-}
-
 /** Natural-language add: "Lunch with Ana tomorrow 1pm at Café". */
-function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) {
+export function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) {
   const [text, setText] = useState("")
   const create = usePimAction((c, input: Parameters<typeof c.createEvent>[0]) => c.createEvent(input))
   const target = [...calendars.values()].find((c) => c.writable && !c.hidden) ?? [...calendars.values()].find((c) => c.writable)

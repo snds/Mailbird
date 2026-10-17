@@ -17,6 +17,13 @@ pub trait Host: Send + Sync + 'static {
     fn download_dir(&self) -> Result<PathBuf, String>;
     /// Opens a saved file with its default app.
     fn open_path(&self, path: &Path) -> Result<(), String>;
+    /// Draws the menu-bar mini calendar (ADR-0054). Only the desktop has one.
+    fn menu_bar(&self, _state: &crate::menu_bar::MenuBarState) {}
+    /// Brings the main window forward, optionally opening something in it
+    /// (a `Jump`, as the UI writes it). Only the desktop has more than one window.
+    fn show_app(&self, _jump: Option<serde_json::Value>) -> Result<(), String> {
+        Err("there's only one window here".into())
+    }
 }
 
 /// A cheap, cloneable handle to the host.
@@ -47,5 +54,13 @@ impl AppHandle {
 
     pub fn open_path(&self, path: &Path) -> Result<(), String> {
         self.0.open_path(path)
+    }
+
+    pub fn menu_bar(&self, state: &crate::menu_bar::MenuBarState) {
+        self.0.menu_bar(state)
+    }
+
+    pub fn show_app(&self, jump: Option<serde_json::Value>) -> Result<(), String> {
+        self.0.show_app(jump)
     }
 }

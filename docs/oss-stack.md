@@ -57,6 +57,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | tauri, @tauri-apps/cli, @tauri-apps/api | Desktop + mobile shell | 2.12 | MIT OR Apache-2.0 | ✅ | Windows, macOS, and Linux now. iOS and Android are a spike (see [ADR-0002](decisions/0002-shells.md)). |
 | tauri-plugin-opener | Open saved attachments | 2.7 | MIT OR Apache-2.0 | ✅ | — |
 | tauri-plugin-notification | Reminder notifications | 2.4.0 (pinned) | MIT OR Apache-2.0 | ✅ | Sent from Rust; the web layer needs no JS package. Plugin 3.0 alphas exist, so expect churn. |
+| tauri features `tray-icon`, `image-png` | Menu-bar calendar ([ADR-0054](decisions/0054-menu-bar-calendar.md)) | 2.12 | MIT OR Apache-2.0 | ✅ | Pulls in `tray-icon` and, on Linux, `libappindicator` (both MIT OR Apache-2.0), plus PNG decoding: `image`, `png` (MIT OR Apache-2.0), `moxcms` and `pxfm` (BSD-3-Clause OR Apache-2.0). Linux needs `libayatana-appindicator3` at runtime for the tray. |
 | tauri-plugin-deep-link, biometric | Shell plugins | 2.4–2.6 | MIT OR Apache-2.0 | 🟦 | — |
 | @capacitor/core, ios, android | Mobile fallback shell | 8.5 | MIT | ⚪ | Used only if the Tauri mobile spike fails on background sync or push. |
 

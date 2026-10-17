@@ -349,6 +349,11 @@ export function useNoteTasks(done = false) {
   return useQuery({ queryKey: keys.noteTasks(done), queryFn: () => call((c) => c.noteTasks(done)) })
 }
 
+/** The menu-bar mini calendar's settings (ADR-0054). */
+export function useMenuBarPrefs() {
+  return useQuery({ queryKey: ["pim", "menu-bar-prefs"], queryFn: () => call((c) => c.menuBarPrefs()), staleTime: Infinity })
+}
+
 export function useMeetingPrefs() {
   return useQuery({ queryKey: ["pim", "meeting-prefs"], queryFn: () => call((c) => c.meetingPrefs()), staleTime: Infinity })
 }

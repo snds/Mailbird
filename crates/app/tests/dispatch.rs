@@ -13,6 +13,8 @@ use serde_json::{Value, json};
 struct TestHost {
     events: Arc<Mutex<Vec<String>>>,
     opened: Arc<Mutex<Vec<String>>>,
+    menu_bar: Arc<Mutex<Vec<pim_app::menu_bar::MenuBarState>>>,
+    shown: Arc<Mutex<Vec<Option<Value>>>>,
 }
 
 impl Host for TestHost {
@@ -30,6 +32,13 @@ impl Host for TestHost {
         Ok(std::env::temp_dir())
     }
     fn open_path(&self, _: &Path) -> Result<(), String> {
+        Ok(())
+    }
+    fn menu_bar(&self, state: &pim_app::menu_bar::MenuBarState) {
+        self.menu_bar.lock().unwrap().push(state.clone());
+    }
+    fn show_app(&self, jump: Option<Value>) -> Result<(), String> {
+        self.shown.lock().unwrap().push(jump);
         Ok(())
     }
 }
@@ -91,6 +100,17 @@ async fn every_command_routes_and_works() {
     let back = json_of(dispatch(&app, &state, "note_backlinks", json!({ "id": note["id"] })).await.unwrap());
     assert_eq!(back[0]["id"], other["id"]);
     assert_eq!(json_of(dispatch(&app, &state, "find_note", json!({ "title": "HELLO" })).await.unwrap()), note["id"]);
+    // The menu bar (ADR-0054): on by default, it follows its prefs, and the
+    // host is told; "Open Mailbird" reaches the host with its jump.
+    assert_eq!(json_of(dispatch(&app, &state, "menu_bar_prefs", Value::Null).await.unwrap()), json!({ "enabled": true, "showNext": true }));
+    let bar = json_of(dispatch(&app, &state, "menu_bar_state", Value::Null).await.unwrap());
+    assert_eq!(bar["enabled"], true);
+    assert!(bar["tooltip"].as_str().unwrap().len() > 4);
+    dispatch(&app, &state, "set_menu_bar_prefs", json!({ "prefs": { "enabled": true, "showNext": false } })).await.unwrap();
+    let told = host.menu_bar.lock().unwrap().last().cloned().unwrap();
+    assert!(told.enabled && told.title.is_none(), "turning the title off reaches the host at once");
+    dispatch(&app, &state, "show_app", json!({ "jump": { "kind": "event", "id": "e1" } })).await.unwrap();
+    assert_eq!(host.shown.lock().unwrap().last().cloned().unwrap(), Some(json!({ "kind": "event", "id": "e1" })));
     // The map (ADR-0053): both notes, and the link between them.
     let graph = json_of(dispatch(&app, &state, "note_graph", json!({ "query": {} })).await.unwrap());
     assert_eq!(graph["notes"].as_array().unwrap().len(), 2);

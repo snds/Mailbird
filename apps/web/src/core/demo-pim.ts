@@ -3,7 +3,8 @@
 // read-only collections, duplicate grouping, merges) on the device clock;
 // the Rust core does the real iCalendar and time-zone work.
 
-import type { CoreEvent } from "./client"
+import type { AppJump, CoreEvent } from "./client"
+import { APP_JUMP_KEY } from "@/lib/app-jump"
 import { HOLIDAY_COUNTRIES, INTERESTING, MOON, REGIONS, SPECIAL, dayKey, daysOf, holidayId, holidays, localMidnight, moonPhases, parseDay, regionName } from "./demo-interesting"
 import type {
   Address,
@@ -24,6 +25,7 @@ import type {
   ManagedBooking,
   BookingChange,
   MeetingPrefs,
+  MenuBarPrefs,
   EditScope,
   EventDetail,
   EventInput,
@@ -675,6 +677,7 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
 
   /** Stable keys for note links: the event's UID, the contact's id (demo cards have no UID). */
   let meetingPrefs: MeetingPrefs = { openInApps: true }
+  let menuBarPrefs: MenuBarPrefs = { enabled: true, showNext: true }
   const noteLinks = {
     event: (id: string) => events.find((e) => e.id === id) ?? null,
     eventByUid: (uid: string) => events.find((e) => e.uid === uid)?.id ?? null,
@@ -689,6 +692,21 @@ export function createDemoPim(emit: (event: CoreEvent, payload?: unknown) => voi
     proposeFor,
     answerCounter,
     findTimes: async (q: FindTimes) => later(findTimes(q)),
+    menuBarPrefs: async () => later({ ...menuBarPrefs }),
+    setMenuBarPrefs: async (p: MenuBarPrefs) => {
+      menuBarPrefs = { ...p }
+      changed()
+      return later({ ...menuBarPrefs })
+    },
+    // The demo's mini calendar is its own page (/?mini): open the app in its place.
+    showApp: async (jump: AppJump | null) => {
+      try {
+        if (jump) sessionStorage.setItem(APP_JUMP_KEY, JSON.stringify(jump))
+      } catch {
+        // No storage (a private window): the app opens without the jump.
+      }
+      location.assign("/")
+    },
     meetingPrefs: async () => later({ ...meetingPrefs }),
     setMeetingPrefs: async (p: MeetingPrefs) => {
       meetingPrefs = { ...p }

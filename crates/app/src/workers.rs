@@ -22,6 +22,8 @@ const IDLE_RETRY: Duration = Duration::from_secs(60);
 const BACKFILL_PAUSE: Duration = Duration::from_secs(3);
 /// How often due reminders are checked.
 const REMINDER_TICK: Duration = Duration::from_secs(10);
+/// How often the menu bar's "in 25 min" is brought up to date (ADR-0054).
+const MENU_BAR_TICK: Duration = Duration::from_secs(30);
 /// How often Outlook subscriptions to the push relay are checked (renewed at half-life).
 const RENEW_EVERY: Duration = Duration::from_secs(6 * 3600);
 /// How long a phone's background pass may run (iOS gives about 30 seconds).
@@ -105,6 +107,16 @@ pub fn start(app: AppHandle, state: Shared) {
                 let _ = st.set_reminders_checked(until);
                 saved = until;
             }
+        }
+    });
+
+    // The menu-bar mini calendar (ADR-0054): its "in 25 min" moves on every half minute.
+    let (a, s) = (app.clone(), state.clone());
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(MENU_BAR_TICK);
+        loop {
+            tick.tick().await;
+            crate::menu_bar::refresh(&a, &s);
         }
     });
 
