@@ -38,7 +38,7 @@ export function SmartGroupChips({ active, onPick }: { active: string | null; onP
         </Button>
       )}
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           {editing && (
             <SmartGroupForm
               key={editing.group?.id ?? "new"}

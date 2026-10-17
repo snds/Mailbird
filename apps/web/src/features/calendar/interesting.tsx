@@ -38,7 +38,7 @@ export function InterestingCalendarsPicker() {
         <Icon name="add" data-icon="inline-start" /> Add holidays and more
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">{open && <Catalog />}</DialogContent>
+        <DialogContent size="md">{open && <Catalog />}</DialogContent>
       </Dialog>
     </>
   )

@@ -24,7 +24,7 @@ export function AiSettingsDialog() {
   const setOpen = useUi((s) => s.setAiSettingsOpen)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>AI summaries and replies</DialogTitle>
           <DialogDescription>Off unless you turn it on. A conversation goes to the model only when you ask for its summary or replies.</DialogDescription>

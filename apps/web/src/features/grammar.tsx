@@ -43,7 +43,7 @@ export function GrammarDialog() {
         setCapturing(null)
       }}
     >
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent size="lg">
         {open && <Grammar capturing={capturing} setCapturing={setCapturing} />}
       </DialogContent>
     </Dialog>

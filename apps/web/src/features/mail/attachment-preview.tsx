@@ -68,7 +68,7 @@ export function AttachmentPreview({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(85dvh,56rem)] flex-col sm:max-w-3xl" aria-describedby={undefined}>
+      <DialogContent size="2xl" className="flex h-[min(85dvh,56rem)] flex-col" aria-describedby={undefined}>
         <DialogHeader className="pr-8">
           <DialogTitle className="truncate">{file.filename}</DialogTitle>
           <p className="text-xs text-muted-foreground">

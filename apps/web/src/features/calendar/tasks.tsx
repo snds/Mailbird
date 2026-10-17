@@ -76,7 +76,7 @@ export function TasksPanel({ onOpen }: { onOpen: (eventId: string, start: number
         </Button>
       )}
       <Dialog open={planning !== null} onOpenChange={(o) => !o && setPlanning(null)}>
-        <DialogContent className="sm:max-w-md">{planning && <PlanForm key={`${planning.noteId}:${planning.index}`} task={planning} onDone={() => setPlanning(null)} onOpen={onOpen} />}</DialogContent>
+        <DialogContent size="md">{planning && <PlanForm key={`${planning.noteId}:${planning.index}`} task={planning} onDone={() => setPlanning(null)} onOpen={onOpen} />}</DialogContent>
       </Dialog>
     </section>
   )

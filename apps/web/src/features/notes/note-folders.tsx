@@ -42,7 +42,7 @@ export function NoteFolderChips({ active, onPick }: { active: string | null; onP
         </Button>
       )}
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           {editing && (
             <NoteFolderForm
               key={editing.folder?.id ?? "new"}

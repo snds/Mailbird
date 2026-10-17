@@ -33,7 +33,7 @@ export function UnsubscribeAction({ message, onArchive }: { message: MessageDeta
         <Icon name="unsubscribe" data-icon="inline-start" /> Unsubscribe
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Unsubscribe from {sender}?</DialogTitle>
             <DialogDescription>{plan(u)}</DialogDescription>

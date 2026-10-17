@@ -110,7 +110,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={(o) => (onOpenChange(o), !o && setReport(null))}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Import notes</DialogTitle>
           <DialogDescription>Notes are copied in as Markdown, with their images. Nothing changes in the app they came from.</DialogDescription>
