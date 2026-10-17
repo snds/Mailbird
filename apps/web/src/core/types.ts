@@ -687,6 +687,44 @@ export interface MailPrefs {
   requestReceipts: boolean
 }
 
+/** Where opt-in AI's model runs (ADR-0059). */
+export type AiProvider = "off" | "local" | "anthropic" | "compatible"
+
+export interface AiEndpoint {
+  url: string
+  model: string
+}
+
+export interface AiPrefs {
+  provider: AiProvider
+  /** A model server on this computer or network (Ollama, LM Studio), OpenAI-style. */
+  local: AiEndpoint
+  anthropicModel: string
+  /** Another hosted service with the OpenAI-style API. */
+  compatible: AiEndpoint
+}
+
+/** The settings, and which providers have a key saved (never the keys). */
+export interface AiSettings {
+  prefs: AiPrefs
+  keys: { local: boolean; anthropic: boolean; compatible: boolean }
+}
+
+export interface ThreadSummary {
+  points: string[]
+  /** How many of the thread's messages the model read: the newest ones. */
+  used: number
+  total: number
+  provider: AiProvider
+  model: string
+}
+
+export interface SuggestedReplies {
+  replies: string[]
+  provider: AiProvider
+  model: string
+}
+
 export interface SwipeActions {
   right: SwipeActionId
   rightLong: SwipeActionId

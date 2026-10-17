@@ -13,6 +13,7 @@ import { AccountsDialog } from "@/features/accounts"
 import { CommandPalette } from "@/features/command-palette"
 import { WritingDialog } from "@/features/writing-settings"
 import { AdvancedMailDialog } from "@/features/advanced-mail"
+import { AiSettingsDialog } from "@/features/ai-settings"
 import { GatewayGate } from "@/features/gateway-sign-in"
 import { BookingPage, ManageBookingPage } from "@/features/booking/page"
 import { CalendarView } from "@/features/calendar"
@@ -75,6 +76,7 @@ function Root() {
       <AccountsDialog />
       <WritingDialog />
       <AdvancedMailDialog />
+      <AiSettingsDialog />
       <CommandPalette
         onCreate={{
           mail: () => (setActive("mail"), openComposer()),

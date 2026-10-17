@@ -10,6 +10,7 @@ import type {
   LocalTime,
 } from "./types"
 import { DEFAULT_KEYS, KEY_COMMANDS, keyProblem, mergedKeys } from "@/lib/keys"
+import { createDemoAi } from "./demo-ai"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
 import { signatureFromMessage } from "./demo-signature"
@@ -369,6 +370,7 @@ export function createDemoClient(): CoreClient {
   const done = () => emit("mail:changed")
   const pim = createDemoPim(emit, later)
   let swipes: SwipeActions = { right: "read", rightLong: "none", left: "archive", leftLong: "none" }
+  const ai = createDemoAi(thread, later)
   let mailPrefs: MailPrefs = { images: "ask", markRead: "open", quote: true, replyBelow: false, checkMinutes: 2, requestReceipts: false }
   let keysSaved: KeyBindings = {}
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
@@ -629,6 +631,8 @@ export function createDemoClient(): CoreClient {
       done()
       return later(splits)
     },
+    // Opt-in AI (ADR-0059), answered from the thread itself.
+    ...ai,
     // Power settings (ADR-0055), with the core's private defaults and its snapping.
     mailPrefs: async () => later({ ...mailPrefs }),
     setMailPrefs: async (p) => {

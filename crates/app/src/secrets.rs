@@ -30,6 +30,11 @@ pub fn get(key: &str) -> Result<String, String> {
     store()?.get(key)?.ok_or_else(|| "the saved password is missing — sign in to this account again".into())
 }
 
+/// A secret that may not have been saved, such as an optional API key.
+pub fn find(key: &str) -> Result<Option<String>, String> {
+    store()?.get(key)
+}
+
 pub fn delete(key: &str) {
     if let Ok(s) = store() {
         s.delete(key);

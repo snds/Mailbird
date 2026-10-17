@@ -7,6 +7,7 @@
 //! Workers read what they need, release the lock, talk to the server, then
 //! lock again to write the result.
 
+pub mod ai_commands;
 pub mod commands;
 pub mod compose_commands;
 pub mod sender_commands;
