@@ -365,6 +365,26 @@ pub fn note_file_records(state: &Shared) -> Res<Vec<pim_core::NoteFile>> {
     with_store(state, |s| s.note_file_records())
 }
 
+/// Images dropped here (ADR-0066), for sync to tell other devices.
+pub fn note_files_gone(state: &Shared) -> Res<Vec<NoteFileGone>> {
+    with_store(state, |s| s.note_files_gone()).map(|v| v.into_iter().map(|(id, at)| NoteFileGone { id, at }).collect())
+}
+
+/// Another device dropped these images.
+pub fn forget_note_files(app: AppHandle, state: &Shared, ids: Vec<String>) -> Res<()> {
+    if with_store(state, |s| s.forget_note_files(&ids))? > 0 {
+        let _ = app.emit(events::NOTES_CHANGED, ());
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteFileGone {
+    pub id: String,
+    pub at: i64,
+}
+
 /// An image's bytes as stored (sealed stays sealed), for the relay.
 pub fn note_file_raw(state: &Shared, id: String) -> Res<String> {
     with_store(state, |s| s.note_file_raw(&id))

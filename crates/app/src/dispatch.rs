@@ -212,6 +212,8 @@ pub const COMMANDS: &[&str] = &[
     "note_file",
     "note_files",
     "note_file_records",
+    "note_files_gone",
+    "forget_note_files",
     "note_file_raw",
     "put_note_file",
     "set_note_file_text",
@@ -799,6 +801,11 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(notes_commands::note_files(state, note_id)?)
         }
         "note_file_records" => Output::json(notes_commands::note_file_records(state)?),
+        "note_files_gone" => Output::json(notes_commands::note_files_gone(state)?),
+        "forget_note_files" => {
+            args!(args, ids: Vec<String>);
+            Output::json(notes_commands::forget_note_files(app.clone(), state, ids)?)
+        }
         "note_file_raw" => {
             args!(args, id: String);
             Output::json(notes_commands::note_file_raw(state, id)?)

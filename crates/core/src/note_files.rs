@@ -54,6 +54,16 @@ CREATE TRIGGER notes_au AFTER UPDATE OF title, body, tags, image_text ON notes B
 END;
 INSERT INTO notes_fts (notes_fts) VALUES ('rebuild');";
 
+/// Version 23: when an image stopped being in its note, so it can go after
+/// a grace period (ADR-0066).
+/// Dropped images are remembered, so sync never brings one back.
+pub(crate) const MIGRATE_V23: &str = "ALTER TABLE note_files ADD COLUMN orphaned_at INTEGER;
+CREATE TABLE note_files_gone (id TEXT PRIMARY KEY, at INTEGER NOT NULL);";
+
+/// How long an image no note points at is kept, for undo and for devices
+/// that haven't synced yet.
+pub const ORPHAN_GRACE: i64 = 30 * 24 * 3600;
+
 /// More text than any page holds; anything longer is cut.
 const MAX_TEXT: usize = 20_000;
 /// What a sealed image's text is bound to, apart from its bytes.
@@ -318,6 +328,71 @@ impl Store {
         Ok(())
     }
 
+    /// Drops images no note points at any more, once they've gone unused for
+    /// [`ORPHAN_GRACE`] (ADR-0066). An image found unused is marked, and the
+    /// mark clears if a note points at it again. Locked notes are skipped,
+    /// since their text is sealed, and so are deleted ones, which can come
+    /// back with their images. Returns how many images went.
+    pub fn sweep_note_files(&self, at: i64) -> Result<usize> {
+        let mut st = self.db.prepare(
+            "SELECT f.id, f.orphaned_at,
+                    EXISTS (SELECT 1 FROM notes m WHERE m.deleted = 0 AND m.locked = 0 AND instr(m.body, 'note-file:' || f.id) > 0)
+             FROM note_files f JOIN notes n ON n.id = f.note_id
+             WHERE n.deleted = 0 AND n.locked = 0 AND f.sealed = 0",
+        )?;
+        let rows: Vec<(String, Option<i64>, bool)> = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+        drop(st);
+        let mut gone = 0;
+        let mut touched = std::collections::BTreeSet::new();
+        for (id, since, used) in rows {
+            match (used, since) {
+                (true, Some(_)) => {
+                    self.db.execute("UPDATE note_files SET orphaned_at = NULL WHERE id = ?1", [&id])?;
+                }
+                (false, None) => {
+                    self.db.execute("UPDATE note_files SET orphaned_at = ?2 WHERE id = ?1", params![id, at])?;
+                }
+                (false, Some(t)) if at - t >= ORPHAN_GRACE => {
+                    touched.extend(self.drop_note_file(&id, at)?);
+                    gone += 1;
+                }
+                _ => {}
+            }
+        }
+        // Their text leaves search with them.
+        for note in touched {
+            self.refresh_image_text(&note)?;
+        }
+        Ok(gone)
+    }
+
+    /// Deletes one image and remembers that it went. Returns its note.
+    fn drop_note_file(&self, id: &str, at: i64) -> Result<Option<String>> {
+        let note: Option<String> = self.db.query_row("SELECT note_id FROM note_files WHERE id = ?1", [id], |r| r.get(0)).optional()?;
+        self.db.execute("DELETE FROM note_files WHERE id = ?1", [id])?;
+        self.db.execute("INSERT INTO note_files_gone (id, at) VALUES (?1, ?2) ON CONFLICT(id) DO NOTHING", params![id, at])?;
+        Ok(note)
+    }
+
+    /// Images dropped here, for sync to tell other devices: (id, when).
+    pub fn note_files_gone(&self) -> Result<Vec<(String, i64)>> {
+        let mut st = self.db.prepare("SELECT id, at FROM note_files_gone ORDER BY at")?;
+        Ok(st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Another device dropped these images: drop them here too.
+    pub fn forget_note_files(&self, ids: &[String]) -> Result<usize> {
+        let mut touched = std::collections::BTreeSet::new();
+        let at = now();
+        for id in ids {
+            touched.extend(self.drop_note_file(id, at)?);
+        }
+        for note in &touched {
+            self.refresh_image_text(note)?;
+        }
+        Ok(ids.len())
+    }
+
     // ── Sync (ADR-0044) ───────────────────────────────────────────────────
 
     /// Every image's facts, for the relay's index.
@@ -334,6 +409,10 @@ impl Store {
 
     /// Another device's image, kept when it's new here or newer. Returns whether it was.
     pub fn put_note_file(&self, f: &NoteFile, raw_base64: &str) -> Result<bool> {
+        // Dropped here (ADR-0066): a device that hasn't heard yet doesn't bring it back.
+        if self.db.query_row("SELECT 1 FROM note_files_gone WHERE id = ?1", [&f.id], |_| Ok(())).optional()?.is_some() {
+            return Ok(false);
+        }
         let ours: Option<i64> = self.db.query_row("SELECT updated FROM note_files WHERE id = ?1", [&f.id], |r| r.get(0)).optional()?;
         if ours.is_some_and(|u| u >= f.updated) {
             return Ok(false);
@@ -376,6 +455,40 @@ mod tests {
         assert_eq!(ext_mime("Photo.JPEG"), Some("image/jpeg"));
         assert_eq!(ext_mime("notes.pdf"), None);
         assert_eq!(mime_ext("image/webp"), "webp");
+    }
+
+    #[test]
+    fn unused_images_go_after_the_grace_period() {
+        let s = Store::open_in_memory().unwrap();
+        let id = note(&s);
+        let kept = s.add_note_file(&id, "image/png", &B64.encode(PNG), None, None, None).unwrap().id;
+        let dropped = s.add_note_file(&id, "image/png", &B64.encode(PNG), None, None, None).unwrap().id;
+        s.save_note_body(&id, &format!("Plan ![](note-file:{kept})"), None, true).unwrap();
+        let t = now();
+        assert_eq!(s.sweep_note_files(t).unwrap(), 0, "the first sweep only marks it");
+        assert_eq!(s.sweep_note_files(t + ORPHAN_GRACE - 1).unwrap(), 0, "kept inside the grace period");
+        // Pointed at again (an undo), the mark clears and the clock restarts.
+        s.save_note_body(&id, &format!("Plan ![](note-file:{kept}) ![](note-file:{dropped})"), None, true).unwrap();
+        s.sweep_note_files(t + ORPHAN_GRACE - 1).unwrap();
+        s.save_note_body(&id, &format!("Plan ![](note-file:{kept})"), None, true).unwrap();
+        assert_eq!(s.sweep_note_files(t + ORPHAN_GRACE).unwrap(), 0, "marked again, from now");
+        assert_eq!(s.sweep_note_files(t + 2 * ORPHAN_GRACE).unwrap(), 1);
+        assert!(s.note_file_info(&dropped).is_err(), "gone");
+        assert!(s.note_file_info(&kept).is_ok(), "the one in use stays");
+        assert_eq!(s.note_files_gone().unwrap().iter().map(|g| g.0.clone()).collect::<Vec<_>>(), vec![dropped.clone()], "remembered");
+        let f = NoteFile { id: dropped.clone(), note_id: id.clone(), mime: "image/png".into(), width: None, height: None, size: 0, sealed: false, created: t, updated: t + 9_999_999, text: None };
+        assert!(!s.put_note_file(&f, &B64.encode(PNG)).unwrap(), "sync can't bring it back");
+        assert!(s.note_file_info(&dropped).is_err());
+        // Another device dropped one: it goes here too.
+        assert_eq!(s.forget_note_files(std::slice::from_ref(&kept)).unwrap(), 1);
+        assert!(s.note_file_info(&kept).is_err());
+        // A deleted note keeps its images, so restoring it brings them back.
+        let other = note(&s);
+        let img = s.add_note_file(&other, "image/png", &B64.encode(PNG), None, None, None).unwrap().id;
+        s.delete_note(&other).unwrap();
+        s.sweep_note_files(t).unwrap();
+        assert_eq!(s.sweep_note_files(t + 3 * ORPHAN_GRACE).unwrap(), 0);
+        assert!(s.note_file_info(&img).is_ok());
     }
 
     #[test]
