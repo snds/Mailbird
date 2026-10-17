@@ -21,6 +21,9 @@ jobs:
       # Design-system analytics ratchet: fails when correct-use violations on
       # @unicron/ui components grow beyond .dsa/baseline.json.
       - run: pnpm ds:ratchet
+      # Raw <button>s bypass the design system, so dsa can't see them: their
+      # count per file may only shrink (.dsa/raw-buttons.json says why each stays).
+      - run: pnpm ds:raw-buttons
       # Notes relay: two clients merge, refusals, persistence across restart.
       - run: pnpm --filter notes-relay test
 

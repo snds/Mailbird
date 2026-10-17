@@ -341,7 +341,7 @@ function LinkedFrom({ id }: { id: string }) {
 function LinkChip({ link, onOpen, onRemove }: { link: NoteLink; onOpen: (target: string) => void; onRemove: () => void }) {
   const here = !!link.target
   return (
-    <span className="inline-flex h-7 items-center overflow-hidden rounded-full border bg-muted/50 text-xs" data-slot="note-link">
+    <span className="inline-flex h-7 items-center overflow-hidden rounded-full border bg-muted/50 pr-0.5 text-xs" data-slot="note-link">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -358,9 +358,7 @@ function LinkChip({ link, onOpen, onRemove }: { link: NoteLink; onOpen: (target:
         </TooltipTrigger>
         <TooltipContent>{here ? `Open ${link.kind === "thread" ? "conversation" : link.kind}` : "Not on this device"}</TooltipContent>
       </Tooltip>
-      <button type="button" aria-label={`Unlink ${link.label}`} className="flex h-full items-center px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onRemove}>
-        <Icon name="close" className="size-3.5" />
-      </button>
+      <IconButton label={`Unlink ${link.label}`} icon="close" render={<Button variant="ghost-muted" size="icon-xs" shape="pill" />} onClick={onRemove} />
     </span>
   )
 }
@@ -376,11 +374,9 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (tags: string
   return (
     <>
       {tags.map((t) => (
-        <span key={t} className="inline-flex h-7 items-center rounded-full bg-secondary pl-2.5 text-xs text-secondary-foreground">
+        <span key={t} className="inline-flex h-7 items-center gap-0.5 rounded-full bg-secondary pr-0.5 pl-2.5 text-xs text-secondary-foreground">
           #{t}
-          <button type="button" aria-label={`Remove tag ${t}`} className="flex h-full items-center px-1.5 opacity-60 hover:opacity-100" onClick={() => onChange(tags.filter((x) => x !== t))}>
-            <Icon name="close" className="size-3.5" />
-          </button>
+          <IconButton label={`Remove tag ${t}`} icon="close" render={<Button variant="ghost-muted" size="icon-xs" shape="pill" />} onClick={() => onChange(tags.filter((x) => x !== t))} />
         </span>
       ))}
       {adding === null ? (

@@ -1,0 +1,89 @@
+{
+  "total": 35,
+  "files": {
+    "apps/web/src/app/shell.tsx": {
+      "count": 1,
+      "why": "Whole surface: the nav rail's icon-over-label tab with its own active pill."
+    },
+    "apps/web/src/components/list-row.tsx": {
+      "count": 1,
+      "why": "Whole surface: ListRow is the app's row primitive, the one place a list row's hit area is drawn."
+    },
+    "apps/web/src/features/accounts.tsx": {
+      "count": 4,
+      "why": "Two text actions waits on a flush link size (text actions inside a line of text, aligned with it); the provider choices and SettingsRow waits on Item hover for button renders (bordered or list rows with an icon, title, and hint)."
+    },
+    "apps/web/src/features/calendar/agenda.tsx": {
+      "count": 1,
+      "why": "Whole surface: an agenda event row."
+    },
+    "apps/web/src/features/calendar/booking-links.tsx": {
+      "count": 1,
+      "why": "A booking link's row waits on Item hover for button renders (bordered or list rows with an icon, title, and hint)."
+    },
+    "apps/web/src/features/calendar/calendar-sets.tsx": {
+      "count": 1,
+      "why": "'Save what's showing as a set' waits on a flush link size (text actions inside a line of text, aligned with it)."
+    },
+    "apps/web/src/features/calendar/mini-month.tsx": {
+      "count": 1,
+      "why": "Whole surface: a day cell in the mini month."
+    },
+    "apps/web/src/features/calendar/month-grid.tsx": {
+      "count": 3,
+      "why": "Whole surface: month day cells, their event bars, and '+N more'."
+    },
+    "apps/web/src/features/calendar/tasks.tsx": {
+      "count": 2,
+      "why": "A task's 'planned for' and note links waits on a flush link size (text actions inside a line of text, aligned with it)."
+    },
+    "apps/web/src/features/calendar/time-grid.tsx": {
+      "count": 1,
+      "why": "Whole surface: an event block in the day and week grid."
+    },
+    "apps/web/src/features/contacts/contact-detail.tsx": {
+      "count": 3,
+      "why": "The email address action waits on a flush link size (text actions inside a line of text, aligned with it); the event and conversation rows waits on Item hover for button renders (bordered or list rows with an icon, title, and hint)."
+    },
+    "apps/web/src/features/contacts/contact-editor.tsx": {
+      "count": 2,
+      "why": "The full-width 'Add \u2026' and 'Paste a signature' rows waits on Item hover for button renders (bordered or list rows with an icon, title, and hint)."
+    },
+    "apps/web/src/features/contacts/index.tsx": {
+      "count": 2,
+      "why": "The Duplicates and Recently deleted rows waits on Item hover for button renders (bordered or list rows with an icon, title, and hint)."
+    },
+    "apps/web/src/features/mail/conversation-view.tsx": {
+      "count": 3,
+      "why": "Whole surface: an attachment card's body and its Save side, and a message's collapsed header."
+    },
+    "apps/web/src/features/mail/splits.tsx": {
+      "count": 1,
+      "why": "The newsletter bundle's row waits on Item hover for button renders (bordered or list rows with an icon, title, and hint)."
+    },
+    "apps/web/src/features/notes/index.tsx": {
+      "count": 1,
+      "why": "Whole surface: a note's card in the grid."
+    },
+    "apps/web/src/features/notes/linked-notes.tsx": {
+      "count": 1,
+      "why": "A linked note's row waits on Item hover for button renders (bordered or list rows with an icon, title, and hint)."
+    },
+    "apps/web/src/features/notes/note-detail.tsx": {
+      "count": 3,
+      "why": "The open side of split chips (a link, a backlink, a reminder's Done): waits on a library chip with a separate action."
+    },
+    "apps/web/src/features/notes/note-folders.tsx": {
+      "count": 1,
+      "why": "Whole surface: a color swatch."
+    },
+    "apps/web/src/features/notes/scan-sheet.tsx": {
+      "count": 1,
+      "why": "Whole surface: a draggable corner handle."
+    },
+    "apps/web/src/features/notes/sketch-sheet.tsx": {
+      "count": 1,
+      "why": "Whole surface: a color swatch."
+    }
+  }
+}
