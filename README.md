@@ -116,6 +116,7 @@ Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratche
 | **39 · The identity holds the notes key** ✅ | Locked notes keep their passphrase, and the key is also kept in the shared identity, so it can open them instead (and its recovery kit can reach them); on desktop, with nothing moved or resealed ([ADR-0051](docs/decisions/0051-identity-holds-the-notes-key.md)) |
 | **40 · The design system as packages** ✅ | unicron now arrives as versioned releases (`@unicron/ui` 0.2.0, `@unicron/tokens` 0.1.0) instead of a submodule: a plain clone builds, and moving to a new release is a version change; nothing on screen changed ([ADR-0052](docs/decisions/0052-unicron-packages.md)) |
 | **41 · Map of notes** ✅ | An optional map of your notes and their `[[links]]`, with the events, people, and conversations they link to, so notes about the same meeting or person meet there; it follows search, tags, and folders, holds still once laid out, and works by keyboard and screen reader ([ADR-0053](docs/decisions/0053-map-of-notes.md)) |
+| **42 · Menu-bar calendar** ✅ | What's next, from the menu bar (macOS) or tray (Windows, Linux) without opening the app: "Design review in 25 min" beside the icon, and a click opens today, the month, the day's events with Join, and quick add; closing the window keeps it running there ([ADR-0054](docs/decisions/0054-menu-bar-calendar.md)) |
 
 ## License
 

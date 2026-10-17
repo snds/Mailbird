@@ -13,6 +13,7 @@ pub mod sender_commands;
 pub mod dispatch;
 pub mod host;
 pub mod identity;
+pub mod menu_bar;
 pub mod notes_commands;
 pub mod oauth_commands;
 pub mod pim_commands;

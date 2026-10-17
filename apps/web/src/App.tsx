@@ -1,11 +1,14 @@
 import { QueryClientProvider } from "@tanstack/react-query"
+import { useEffect } from "react"
 import { ThemeProvider } from "next-themes"
 
 import { AppShell } from "@/app/shell"
 import { useUi } from "@/app/ui-store"
 import { type VerticalId } from "@/app/verticals"
 import { Toaster, TooltipProvider } from "@unicron/ui"
+import { type AppJump, getCoreClient } from "@/core/client"
 import { queryClient, useCoreEvents } from "@/core/queries"
+import { APP_JUMP_KEY } from "@/lib/app-jump"
 import { AccountsDialog } from "@/features/accounts"
 import { CommandPalette } from "@/features/command-palette"
 import { WritingDialog } from "@/features/writing-settings"
@@ -14,6 +17,7 @@ import { BookingPage, ManageBookingPage } from "@/features/booking/page"
 import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
 import { EventEditor } from "@/features/calendar/event-editor"
+import { MiniCalendar } from "@/features/calendar/mini-calendar"
 import { ReminderWatcher } from "@/features/calendar/reminder-watcher"
 import { ContactEditor } from "@/features/contacts/contact-editor"
 import { GrammarDialog } from "@/features/grammar"
@@ -42,6 +46,7 @@ function Root() {
   const openContactEditor = useUi((s) => s.openContactEditor)
   const setAccountsOpen = useUi((s) => s.setAccountsOpen)
   useCoreEvents()
+  useAppJumps()
   const View = VIEWS[active]
 
   return (
@@ -84,6 +89,41 @@ function Root() {
   )
 }
 
+/** What the menu-bar mini calendar asks this window to open (ADR-0054): an
+ * `app:jump` event on the desktop, or a note the demo's mini page left. */
+function useAppJumps() {
+  useEffect(() => {
+    const go = (j: AppJump) => {
+      const ui = useUi.getState()
+      if (j.kind === "newEvent") {
+        ui.setVertical("calendar")
+        ui.openEventEditor()
+      } else ui.jumpTo({ kind: "event", id: j.id, start: j.start })
+    }
+    let saved: AppJump | null = null
+    try {
+      const v = sessionStorage.getItem(APP_JUMP_KEY)
+      sessionStorage.removeItem(APP_JUMP_KEY)
+      saved = v ? (JSON.parse(v) as AppJump) : null
+    } catch {
+      // No storage, or a bad entry: open as usual.
+    }
+    if (saved) go(saved)
+    let off: (() => void) | null = null
+    let gone = false
+    void getCoreClient().then((c) => {
+      if (!gone) off = c.on("app:jump", (p) => go(p as AppJump))
+    })
+    return () => {
+      gone = true
+      off?.()
+    }
+  }, [])
+}
+
+/** The menu-bar mini calendar's own window loads the app with `?mini`. */
+const mini = new URLSearchParams(location.search).has("mini")
+
 /** A scheduling link's public page: `/book/<token>`, no sign-in (ADR-0026),
  *  and a booking's own page, `/book/<token>/b/<code>` (ADR-0031). */
 const bookingPath = /^\/book\/([A-Za-z0-9_-]{8,64})(?:\/b\/([A-Za-z0-9_-]{8,64}))?\/?$/.exec(location.pathname)
@@ -100,9 +140,7 @@ export default function App() {
               {bookingCode ? <ManageBookingPage token={bookingToken} code={bookingCode} /> : <BookingPage token={bookingToken} />}
             </div>
           ) : (
-            <GatewayGate>
-              <Root />
-            </GatewayGate>
+            <GatewayGate>{mini ? <MiniCalendar /> : <Root />}</GatewayGate>
           )}
           <Toaster position="top-center" />
         </TooltipProvider>

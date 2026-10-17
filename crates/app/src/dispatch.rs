@@ -159,6 +159,10 @@ pub const COMMANDS: &[&str] = &[
     "note_tags",
     "note_backlinks",
     "note_graph",
+    "menu_bar_prefs",
+    "set_menu_bar_prefs",
+    "menu_bar_state",
+    "show_app",
     "find_note",
     "notes_linking_to",
     "export_notes",
@@ -603,6 +607,18 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(notes_commands::restore_note(app.clone(), state, id)?)
         }
         "note_tags" => Output::json(notes_commands::note_tags(state)?),
+        // The menu-bar mini calendar (ADR-0054).
+        "menu_bar_prefs" => Output::json(crate::menu_bar::prefs(state)?),
+        "set_menu_bar_prefs" => {
+            args!(args, prefs: crate::menu_bar::MenuBarPrefs);
+            Output::json(crate::menu_bar::set_prefs(app, state, prefs)?)
+        }
+        "menu_bar_state" => Output::json(crate::menu_bar::current(state)?),
+        "show_app" => {
+            args!(args, jump: Option<Value>);
+            app.show_app(jump)?;
+            Output::json(())
+        }
         "note_graph" => {
             args!(args, query: NoteQuery);
             Output::json(notes_commands::note_graph(state, query)?)

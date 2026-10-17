@@ -12,6 +12,7 @@ import { longTime } from "@/lib/time"
 import { OAuthSignIn } from "./oauth-sign-in"
 import { PushSettingsSection } from "./push-settings"
 import { MeetingSettingsSection } from "./meeting-settings"
+import { MenuBarSettingsSection } from "./menu-bar-settings"
 import { ScreenerSettingsSection } from "./screener-settings"
 
 interface Preset {
@@ -229,6 +230,9 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
       </button>
 
       <MeetingSettingsSection />
+
+      {/* The menu bar is the desktop's; the demo stands in for it. */}
+      {!core?.remote && <MenuBarSettingsSection />}
 
       {accounts.length > 0 && <ScreenerSettingsSection />}
 

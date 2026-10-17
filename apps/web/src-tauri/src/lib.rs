@@ -4,6 +4,8 @@
 //! routes every UI call through one `core` command to `pim_app::dispatch`,
 //! the same entry point the web gateway uses (ADR-0016).
 
+mod menu_bar;
+
 use std::path::{Path, PathBuf};
 
 use pim_app::{AppHandle, AppState, Host, Output, Shared, secrets::SecretStore};
@@ -12,7 +14,7 @@ use tauri::{Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
-struct TauriHost(tauri::AppHandle);
+struct TauriHost(tauri::AppHandle, menu_bar::InTray);
 
 impl Host for TauriHost {
     fn emit(&self, event: &str, payload: serde_json::Value) {
@@ -33,6 +35,17 @@ impl Host for TauriHost {
 
     fn open_path(&self, path: &Path) -> Result<(), String> {
         self.0.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
+    }
+
+    // Tray and window calls belong on the main thread (macOS requires it).
+    fn menu_bar(&self, state: &pim_app::menu_bar::MenuBarState) {
+        let (app, in_tray, state) = (self.0.clone(), self.1.clone(), state.clone());
+        let _ = self.0.run_on_main_thread(move || menu_bar::draw(&app, &in_tray, &state));
+    }
+
+    fn show_app(&self, jump: Option<serde_json::Value>) -> Result<(), String> {
+        let app = self.0.clone();
+        self.0.run_on_main_thread(move || menu_bar::show_main(&app, jump)).map_err(|e| e.to_string())
     }
 }
 
@@ -76,10 +89,12 @@ async fn core(app: State<'_, AppHandle>, state: State<'_, Shared>, name: String,
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let in_tray = menu_bar::InTray::default();
+    let closing = in_tray.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .setup(|app| {
+        .setup(move |app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
@@ -90,14 +105,34 @@ pub fn run() {
             if let Some(config) = pim_app::identity::desktop_config(&data_dir) {
                 state.enable_identity(config);
             }
-            let handle = AppHandle::new(TauriHost(app.handle().clone()));
+            let handle = AppHandle::new(TauriHost(app.handle().clone(), in_tray.clone()));
             app.manage(state.clone());
             app.manage(handle.clone());
             // Inside Tauri's async runtime: the workers spawn Tokio tasks.
             tauri::async_runtime::spawn(async move { pim_app::workers::start(handle, state) });
             Ok(())
         })
+        // With the menu-bar calendar up, closing the window keeps Mailbird
+        // running there (ADR-0054); the mini calendar closes when you click away.
+        .on_window_event(move |window, event| match (window.label(), event) {
+            (menu_bar::MAIN, tauri::WindowEvent::CloseRequested { api, .. }) if closing.get() => {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+            (menu_bar::MINI, tauri::WindowEvent::Focused(false)) => {
+                let _ = window.hide();
+            }
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![core])
-        .run(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS: clicking the Dock icon brings a hidden window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                menu_bar::show_main(app, None);
+            }
+            let _ = (app, event);
+        });
 }

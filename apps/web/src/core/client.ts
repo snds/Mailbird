@@ -66,6 +66,7 @@ import type {
   ManagedBooking,
   BookingChange,
   MeetingPrefs,
+  MenuBarPrefs,
   NotesPrefs,
   NoteFolder,
   NotesLockInfo,
@@ -280,6 +281,11 @@ export interface CoreClient {
   /** Checklist items across notes; done ones only with `done`. */
   noteTasks(done?: boolean): Promise<NoteTask[]>
   /** How Join opens calls; open one with the system (desktop) (ADR-0030). */
+  /** The menu-bar mini calendar (ADR-0054). */
+  menuBarPrefs(): Promise<MenuBarPrefs>
+  setMenuBarPrefs(prefs: MenuBarPrefs): Promise<MenuBarPrefs>
+  /** From the mini calendar: brings the main window forward, opening `jump` in it. */
+  showApp(jump: AppJump | null): Promise<void>
   meetingPrefs(): Promise<MeetingPrefs>
   setMeetingPrefs(prefs: MeetingPrefs): Promise<MeetingPrefs>
   openMeeting(url: string): Promise<void>
@@ -324,7 +330,10 @@ export interface CoreClient {
   on(event: CoreEvent, handler: (payload?: unknown) => void): () => void
 }
 
-export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "compose:changed" | "reminder"
+export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "compose:changed" | "reminder" | "app:jump"
+
+/** What the mini calendar asks the main window to open (ADR-0054): an event, or a new one. */
+export type AppJump = { kind: "event"; id: string; start: number } | { kind: "newEvent" }
 
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
@@ -460,6 +469,9 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     restoreNote: (id) => call("restore_note", { id }),
     noteTags: () => call("note_tags"),
     noteTasks: (done) => call("note_tasks", { done: done ?? false }),
+    menuBarPrefs: () => call("menu_bar_prefs"),
+    setMenuBarPrefs: (prefs) => call("set_menu_bar_prefs", { prefs }),
+    showApp: (jump) => call("show_app", { jump }),
     meetingPrefs: () => call("meeting_prefs"),
     setMeetingPrefs: (prefs) => call("set_meeting_prefs", { prefs }),
     openMeeting: (url) => call("open_meeting", { url }),
