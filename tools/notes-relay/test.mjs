@@ -7,7 +7,7 @@
 import assert from "node:assert/strict"
 import { createHmac } from "node:crypto"
 import { spawn } from "node:child_process"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -33,6 +33,43 @@ function connect(name, token = TOKEN) {
       document: doc,
       token,
       onSynced: () => resolve({ doc, provider }),
+      onAuthenticationFailed: () => reject(new Error("refused")),
+    })
+    setTimeout(() => reject(new Error("timeout")), 5000)
+  })
+}
+// A device on a sealed document (ADR-0062): it speaks only in stateless messages.
+function sealedClient(name, token = TOKEN) {
+  const heard = []
+  const waiting = []
+  return new Promise((resolve, reject) => {
+    const provider = new HocuspocusProvider({
+      url: `ws://127.0.0.1:${PORT}`,
+      name,
+      document: new Y.Doc(),
+      token,
+      awareness: null,
+      onStateless: ({ payload }) => {
+        const m = JSON.parse(payload)
+        heard.push(m)
+        const w = waiting.findIndex((x) => x.match(m))
+        if (w >= 0) waiting.splice(w, 1)[0].resolve(m)
+      },
+      onSynced: () => {
+        let n = 0
+        const send = (o) => provider.sendStateless(JSON.stringify(o))
+        const ask = (o, match) => new Promise((res) => (waiting.push({ match, resolve: res }), send(o)))
+        resolve({
+          provider,
+          heard,
+          send,
+          pull: () => ask({ t: "pull" }, (m) => m.t === "log").then((m) => m.items),
+          push: (u) => {
+            const id = ++n
+            return ask({ t: "push", id, u }, (m) => (m.t === "ok" || m.t === "no") && m.id === id)
+          },
+        })
+      },
       onAuthenticationFailed: () => reject(new Error("refused")),
     })
     setTimeout(() => reject(new Error("timeout")), 5000)
@@ -142,16 +179,71 @@ try {
   assert.match(page, /Open a link/)
   console.log("ok a share link in a browser explains itself")
 
+  // End-to-end encryption (ADR-0062): sealed documents are logs the relay keeps but can't read.
+  const s1 = await sealedClient("mailbird/x/note/n9")
+  const s2 = await sealedClient("mailbird/x/note/n9")
+  assert.deepEqual(await s1.pull(), [])
+  const UPDATE = Buffer.from("not really encrypted, but opaque to the relay").toString("base64")
+  assert.equal((await s1.push(UPDATE)).t, "ok")
+  await until(() => s2.heard.some((m) => m.t === "u" && m.u === UPDATE))
+  assert.ok(!s1.heard.some((m) => m.t === "u"), "the sender doesn't hear its own update back")
+  assert.deepEqual(await s2.pull(), [UPDATE])
+  assert.equal((await s1.push("plain text!")).t, "no")
+  console.log("ok a sealed document keeps encrypted updates and passes them on")
+  s1.send({ t: "push", id: 9, u: UPDATE })
+  s1.send({ t: "compact", upto: 2, u: Buffer.from("both of them, in one").toString("base64") })
+  await new Promise((r) => setTimeout(r, 200))
+  assert.equal((await s2.pull()).length, 1)
+  console.log("ok a device can fold the log into one update")
+  s1.send({ t: "p", u: UPDATE })
+  await until(() => s2.heard.some((m) => m.t === "p"))
+  console.log("ok who's here passes through, sealed")
+
+  // A sealed share: the registry lists it; a view-only link reads but can't add.
+  const SEALED_SHARE = "s3aledShareId_012345678"
+  const registry = await connect("mailbird/registry")
+  registry.doc.getMap("shares").set(SEALED_SHARE, { mode: "view", revoked: false, updated: 1 })
+  await new Promise((r) => setTimeout(r, 200))
+  const sOwner = await sealedClient(`mailbird/x/shared/${SEALED_SHARE}`)
+  await sOwner.push(UPDATE)
+  const sGuest = await sealedClient(`mailbird/x/shared/${SEALED_SHARE}`, shareToken(SEALED_SHARE))
+  assert.deepEqual(await sGuest.pull(), [UPDATE])
+  assert.equal((await sGuest.push(UPDATE)).t, "no")
+  await sealedClient(`mailbird/x/shared/${SEALED_SHARE}/files`, shareToken(SEALED_SHARE)).then((c) => c.provider.destroy())
+  await assert.rejects(sealedClient("mailbird/x/index", shareToken(SEALED_SHARE)), /refused/)
+  console.log("ok a sealed share opens with its link, read-only when view-only")
+  const sDropped = Promise.race([closed(sGuest.provider), new Promise((r) => setTimeout(() => r(false), 3000))])
+  registry.doc.getMap("shares").set(SEALED_SHARE, { mode: "view", revoked: true, updated: 2 })
+  assert.equal(await sDropped, true, "a sealed share's guest is dropped when it stops")
+  sGuest.provider.destroy()
+  console.log("ok stopping a sealed share drops its guests")
+
+  // Turning it on: the owner's device purges, and readable documents are gone.
+  const sIndex = await sealedClient("mailbird/x/index")
+  const plainLeft = Promise.race([closed(a.provider), new Promise((r) => setTimeout(() => r(false), 3000))])
+  sIndex.send({ t: "purge" })
+  await until(() => sIndex.heard.some((m) => m.t === "purged"))
+  assert.equal(await plainLeft, true, "readable documents' devices are sent away")
+  await assert.rejects(connect("mailbird/note/n1"), /refused/)
+  await assert.rejects(connect("mailbird/index"), /refused/)
+  const files = await readdir(data)
+  assert.ok(!files.some((f) => f.endsWith(".ydoc") && !f.startsWith("mailbird__x__") && f !== "mailbird__registry.ydoc"), `only sealed documents are left: ${files}`)
+  assert.ok(!(await Promise.all(files.filter((f) => f.endsWith(".log")).map((f) => readFile(join(data, f), "utf8")))).some((t) => t.includes("milk")))
+  console.log("ok turning it on drops every readable document and refuses new ones")
+  for (const c of [s1, s2, sOwner, sIndex]) c.provider.destroy()
+  registry.provider.destroy()
+
   // Let the debounced save run, then restart and read it back.
   await new Promise((r) => setTimeout(r, 1500))
   a.provider.destroy()
   b.provider.destroy()
   await stop(server)
   server = await start()
-  const c = await connect("mailbird/note/n1")
-  assert.equal(c.doc.getText("t").toString(), "A:hello:B")
+  await assert.rejects(connect("mailbird/note/n1"), /refused/)
+  const c = await sealedClient("mailbird/x/note/n9")
+  assert.equal((await c.pull()).length, 1)
   c.provider.destroy()
-  console.log("ok documents survive a restart")
+  console.log("ok sealed documents survive a restart, and the relay stays sealed")
 } finally {
   await stop(server)
   await rm(data, { recursive: true, force: true })

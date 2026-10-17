@@ -32,6 +32,9 @@ CREATE TABLE team_threads (
 CREATE INDEX team_threads_thread ON team_threads(thread_id);
 ";
 
+/// Version 21: a share's own key, when it's end-to-end encrypted (ADR-0062).
+pub(crate) const MIGRATE_V21: &str = "ALTER TABLE team_threads ADD COLUMN key TEXT;";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamThread {
@@ -45,6 +48,9 @@ pub struct TeamThread {
     /// A teammate's way in: the owner's relay and the link's token.
     pub relay: Option<String>,
     pub token: Option<String>,
+    /// Its key when it's end-to-end encrypted (ADR-0062): the document is
+    /// then `mailbird/x/shared/<id>`.
+    pub key: Option<String>,
     pub title: String,
     /// Who shared it, as their accounts name them.
     pub from: Option<String>,
@@ -63,9 +69,11 @@ pub struct TeamLink {
     pub title: String,
     #[serde(default)]
     pub from: Option<String>,
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
-const COLS: &str = "id, role, thread_id, revoked, relay, token, title, sender, created, updated";
+const COLS: &str = "id, role, thread_id, revoked, relay, token, title, sender, created, updated, key";
 
 fn row(r: &rusqlite::Row) -> rusqlite::Result<TeamThread> {
     Ok(TeamThread {
@@ -79,6 +87,7 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<TeamThread> {
         from: r.get(7)?,
         created: r.get(8)?,
         updated: r.get(9)?,
+        key: r.get(10)?,
     })
 }
 
@@ -103,8 +112,9 @@ impl Store {
     }
 
     /// Shares one of your conversations. Sharing one that's already shared
-    /// returns its link; one that was stopped gets a new link.
-    pub fn share_thread(&self, thread_id: &str, from: Option<&str>) -> Result<TeamThread> {
+    /// returns its link; one that was stopped gets a new link. With `sealed`
+    /// (your sync is end-to-end encrypted), a new link gets a key.
+    pub fn share_thread(&self, thread_id: &str, from: Option<&str>, sealed: bool) -> Result<TeamThread> {
         let live: Option<String> = self
             .db
             .query_row("SELECT id FROM team_threads WHERE role = 'owner' AND thread_id = ?1 AND revoked = 0", [thread_id], |r| r.get(0))
@@ -117,8 +127,8 @@ impl Store {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let t = now();
         self.db.execute(
-            "INSERT INTO team_threads (id, role, thread_id, title, sender, created, updated) VALUES (?1, 'owner', ?2, ?3, ?4, ?5, ?5)",
-            params![id, thread_id, last.summary.subject, from.map(str::trim).filter(|f| !f.is_empty()), t],
+            "INSERT INTO team_threads (id, role, thread_id, title, sender, created, updated, key) VALUES (?1, 'owner', ?2, ?3, ?4, ?5, ?5, ?6)",
+            params![id, thread_id, last.summary.subject, from.map(str::trim).filter(|f| !f.is_empty()), t, sealed.then(crate::note_shares::new_share_key)],
         )?;
         self.team_thread(&id)
     }
@@ -140,6 +150,7 @@ impl Store {
         if !valid_id(&link.id) || !(relay.starts_with("ws://") || relay.starts_with("wss://")) || token.is_empty() {
             return Err(Error::Invalid("that link isn't complete".into()));
         }
+        let key = crate::note_shares::link_key(link.key.as_deref()).map_err(|_| Error::Invalid("that link isn't complete".into()))?;
         if let Ok(t) = self.team_thread(&link.id) {
             if t.revoked {
                 return Err(Error::Invalid("That conversation isn't shared any more.".into()));
@@ -148,8 +159,8 @@ impl Store {
         }
         let t = now();
         self.db.execute(
-            "INSERT INTO team_threads (id, role, relay, token, title, sender, created, updated) VALUES (?1, 'guest', ?2, ?3, ?4, ?5, ?6, ?6)",
-            params![link.id, relay, token, link.title.trim(), link.from.as_deref().map(str::trim).filter(|f| !f.is_empty()), t],
+            "INSERT INTO team_threads (id, role, relay, token, title, sender, created, updated, key) VALUES (?1, 'guest', ?2, ?3, ?4, ?5, ?6, ?6, ?7)",
+            params![link.id, relay, token, link.title.trim(), link.from.as_deref().map(str::trim).filter(|f| !f.is_empty()), t, key],
         )?;
         self.team_thread(&link.id)
     }
@@ -212,26 +223,26 @@ mod tests {
     #[test]
     fn sharing_a_conversation_keeps_one_live_link() {
         let (s, tid) = store_with_thread();
-        let a = s.share_thread(&tid, Some(" Sam ")).unwrap();
+        let a = s.share_thread(&tid, Some(" Sam "), false).unwrap();
         assert_eq!((a.role, a.title.as_str(), a.from.as_deref(), a.revoked), (ShareRole::Owner, "Offsite venue", Some("Sam"), false));
         assert!(valid_id(&a.id));
-        assert_eq!(s.share_thread(&tid, None).unwrap().id, a.id, "sharing again finds the same link");
+        assert_eq!(s.share_thread(&tid, None, false).unwrap().id, a.id, "sharing again finds the same link");
         assert_eq!(s.thread_share(&tid).unwrap().map(|t| t.id), Some(a.id.clone()));
         assert!(s.remove_team_thread(&a.id).is_err(), "a live link is stopped first");
         let stopped = s.stop_team_thread(&a.id).unwrap();
         assert!(stopped.revoked);
         assert_eq!(s.thread_share(&tid).unwrap(), None);
-        let b = s.share_thread(&tid, None).unwrap();
+        let b = s.share_thread(&tid, None, false).unwrap();
         assert_ne!(b.id, a.id, "a stopped link never comes back");
         s.remove_team_thread(&a.id).unwrap();
         assert_eq!(s.team_threads().unwrap().len(), 1);
-        assert!(s.share_thread("nope", None).is_err());
+        assert!(s.share_thread("nope", None, false).is_err());
     }
 
     #[test]
     fn a_teammate_joins_once_and_keeps_a_copy() {
         let s = Store::open_in_memory().unwrap();
-        let link = TeamLink { id: "0123456789abcdef0123".into(), relay: " wss://notes.example.com ".into(), token: "s1.x".into(), title: "Offsite venue".into(), from: Some("Sam".into()) };
+        let link = TeamLink { id: "0123456789abcdef0123".into(), relay: " wss://notes.example.com ".into(), token: "s1.x".into(), title: "Offsite venue".into(), from: Some("Sam".into()), key: None };
         let t = s.join_team_thread(&link).unwrap();
         assert_eq!((t.role, t.relay.as_deref(), t.thread_id.as_deref()), (ShareRole::Guest, Some("wss://notes.example.com"), None));
         assert_eq!(s.join_team_thread(&link).unwrap().created, t.created, "the same link twice is one conversation");
@@ -244,8 +255,17 @@ mod tests {
         assert_eq!(s.team_doc(&t.id).unwrap().as_deref(), Some("AAA="), "the copy stays");
         s.remove_team_thread(&t.id).unwrap();
         assert!(s.team_threads().unwrap().is_empty());
-        for bad in [TeamLink { id: "short".into(), ..link.clone() }, TeamLink { relay: "https://x".into(), ..link.clone() }, TeamLink { token: " ".into(), ..link }] {
+        for bad in [TeamLink { id: "short".into(), ..link.clone() }, TeamLink { relay: "https://x".into(), ..link.clone() }, TeamLink { token: " ".into(), ..link.clone() }, TeamLink { key: Some("short".into()), ..link }] {
             assert!(s.join_team_thread(&bad).is_err());
         }
+    }
+
+    #[test]
+    fn a_sealed_conversation_carries_its_key() {
+        let (s, tid) = store_with_thread();
+        let key = s.share_thread(&tid, None, true).unwrap().key.expect("a sealed share has a key");
+        assert_eq!(key.len(), 43);
+        let link = TeamLink { id: "0123456789abcdef9999".into(), relay: "wss://n.example.com".into(), token: "s1.x".into(), title: String::new(), from: None, key: Some(key.clone()) };
+        assert_eq!(s.join_team_thread(&link).unwrap().key, Some(key));
     }
 }

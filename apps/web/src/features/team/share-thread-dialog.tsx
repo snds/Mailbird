@@ -38,7 +38,7 @@ function ShareThreadForm({ threadId, subject, onDone }: { threadId: string; subj
   const { data: link } = useQuery({
     queryKey: ["team", "link", share?.id, relay?.url],
     enabled: !!share && !!relay,
-    queryFn: async () => shareUrl({ relay: relay!.url, id: share!.id, mode: "edit", token: await shareToken(relay!.token, share!.id), title: subject, from: share!.from, kind: "thread" }),
+    queryFn: async () => shareUrl({ relay: relay!.url, id: share!.id, mode: "edit", token: await shareToken(relay!.token, share!.id), title: subject, from: share!.from, kind: "thread", ...(share!.key ? { k: share!.key } : {}) }),
   })
 
   if (isPending || loading) return null

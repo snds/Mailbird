@@ -23,9 +23,10 @@ pub fn thread_share(state: &Shared, thread_id: String) -> Res<Option<TeamThread>
 
 /// Shares a conversation; teammates see you by your first account's name.
 pub fn share_thread(app: AppHandle, state: &Shared, thread_id: String) -> Res<TeamThread> {
+    let sealed = crate::notes_commands::relay_sealed(state)?;
     let t = with_store(state, |s| {
         let from = s.accounts()?.into_iter().next().map(|a| if a.config.display_name.trim().is_empty() { a.config.address } else { a.config.display_name });
-        s.share_thread(&thread_id, from.as_deref())
+        s.share_thread(&thread_id, from.as_deref(), sealed)
     })?;
     changed(&app);
     Ok(t)

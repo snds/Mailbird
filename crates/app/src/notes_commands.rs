@@ -11,6 +11,8 @@ use crate::{Shared, events, secrets};
 
 const RELAY_URL: &str = "notes_relay_url";
 const RELAY_SECRET: &str = "notes-relay";
+/// The key that encrypts everything you sync, when it's on (ADR-0062).
+const RELAY_KEY_SECRET: &str = "notes-relay-key";
 
 /// Locked notes lock again after this long without being used (ADR-0043).
 const AUTO_LOCK: std::time::Duration = std::time::Duration::from_secs(10 * 60);
@@ -49,7 +51,8 @@ pub fn set_note_meta(app: AppHandle, state: &Shared, id: String, meta: NoteMeta)
 
 /// Shares a note by link, or changes what its link allows (ADR-0056).
 pub fn share_note(app: AppHandle, state: &Shared, id: String, mode: ShareMode) -> Res<NoteSummary> {
-    let n = with_store(state, |s| s.share_note(&id, mode))?;
+    let sealed = relay_sealed(state)?;
+    let n = with_store(state, |s| s.share_note(&id, mode, sealed))?;
     changed(&app);
     Ok(n)
 }
@@ -190,22 +193,40 @@ pub fn apply_note_records(app: AppHandle, state: &Shared, records: Vec<NoteRecor
 pub struct RelayConfig {
     pub url: String,
     pub token: String,
+    /// End-to-end encryption's key (ADR-0062): 32 bytes, base64url. Without
+    /// it, the relay can read what syncs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
-/// The notes relay, if one is set up. The token lives in the keychain.
+/// The notes relay, if one is set up. The token and key live in the keychain.
 pub fn get_notes_relay(state: &Shared) -> Res<Option<RelayConfig>> {
     let Some(url) = with_store(state, |s| s.setting(RELAY_URL))? else { return Ok(None) };
-    Ok(Some(RelayConfig { url, token: secrets::get(RELAY_SECRET).unwrap_or_default() }))
+    Ok(Some(RelayConfig { url, token: secrets::get(RELAY_SECRET).unwrap_or_default(), key: secrets::get(RELAY_KEY_SECRET).ok().filter(|k| !k.is_empty()) }))
+}
+
+/// Whether what you sync is end-to-end encrypted, so new links get keys too.
+pub(crate) fn relay_sealed(state: &Shared) -> Res<bool> {
+    Ok(get_notes_relay(state)?.is_some_and(|r| r.key.is_some()))
 }
 
 pub fn set_notes_relay(state: &Shared, relay: Option<RelayConfig>) -> Res<()> {
     match relay {
         Some(r) => {
+            let key = r.key.as_deref().map(str::trim).filter(|k| !k.is_empty());
+            if key.is_some_and(|k| k.len() != 43 || !k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')) {
+                return Err("That encryption key isn't complete. Copy it again from a device that has it.".into());
+            }
             secrets::set(RELAY_SECRET, &r.token)?;
+            match key {
+                Some(k) => secrets::set(RELAY_KEY_SECRET, k)?,
+                None => secrets::delete(RELAY_KEY_SECRET),
+            }
             with_store(state, |s| s.set_setting(RELAY_URL, Some(&r.url)))
         }
         None => {
             secrets::delete(RELAY_SECRET);
+            secrets::delete(RELAY_KEY_SECRET);
             with_store(state, |s| s.set_setting(RELAY_URL, None))
         }
     }

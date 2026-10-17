@@ -11,11 +11,13 @@ export function TeamSyncRunner() {
   const { data: relay, isPending } = useNotesRelay()
   const url = relay?.url
   const token = relay?.token
+  // Turning on end-to-end encryption reconnects too: links made after it are sealed.
+  const key = relay?.key ?? null
   useEffect(() => {
     if (!core || isPending) return
     return startTeamSync(core, url ? { url, token: token ?? "" } : null, (title, from) =>
       toast(`${from ?? "The owner"} stopped sharing “${title || "a conversation"}”`, { description: "What you had stays in Team as your copy. Only you can see it.", duration: 8000 }),
     )
-  }, [core, isPending, url, token])
+  }, [core, isPending, url, token, key])
   return null
 }

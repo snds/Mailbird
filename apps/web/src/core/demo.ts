@@ -372,7 +372,8 @@ export function createDemoClient(): CoreClient {
   const pim = createDemoPim(emit, later)
   let swipes: SwipeActions = { right: "read", rightLong: "none", left: "archive", leftLong: "none" }
   const ai = createDemoAi(thread, later)
-  const team = createDemoTeam(thread, () => state.accounts[0]?.displayName ?? null, later, () => emit("team:changed"))
+  // `notes` is made below; the team only asks once someone shares.
+  const team = createDemoTeam(thread, () => state.accounts[0]?.displayName ?? null, later, () => emit("team:changed"), () => relaySealed())
   let mailPrefs: MailPrefs = { images: "ask", markRead: "open", quote: true, replyBelow: false, checkMinutes: 2, requestReceipts: false }
   let keysSaved: KeyBindings = {}
   const address = (accountId: string) => state.accounts.find((a) => a.id === accountId)!.address
@@ -386,7 +387,7 @@ export function createDemoClient(): CoreClient {
     }
     return out
   })
-  const notes = createDemoNotes(emit, later, {
+  const { relaySealed, ...notes } = createDemoNotes(emit, later, {
     linkFor: (t) => {
       if (t.kind === "event") {
         const e = noteLinks.event(t.id)

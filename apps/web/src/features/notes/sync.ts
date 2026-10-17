@@ -5,6 +5,7 @@ import { create } from "zustand"
 import type { CoreClient } from "@/core/client"
 import type { NoteFile, NoteRecord, NoteShare, NotesLockSetting, RelayConfig } from "@/core/types"
 
+import { type DocProvider, SealedProvider } from "./sealed"
 import { activeOwnerShare } from "./share-link"
 import { SharedDocWatch } from "./shared-docs"
 import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
@@ -20,8 +21,12 @@ import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
  *   for live edits; others connect briefly when their record says they
  *   changed, then save Markdown plus state to the core.
  *
- * The relay only ever sees Yjs updates. It isn't end-to-end encrypted, so
- * run your own (tools/notes-relay) or one you trust. Locked notes are the
+ * The relay only ever sees Yjs updates. Unless you turn on end-to-end
+ * encryption (ADR-0062), it can read them, so run your own (tools/notes-relay)
+ * or one you trust. With it on, every document above syncs sealed
+ * (`mailbird/x/…`, SealedProvider) under your sync key, and the relay's list
+ * of shares moves to `mailbird/registry`, which says only what checking a
+ * link needs. Locked notes are the
  * exception (ADR-0043): their text travels sealed in the record, their own
  * document is emptied when they're locked and never synced while they are,
  * and the passphrase's salt and check ride in the index for other devices.
@@ -38,7 +43,10 @@ import { FIELD, isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
  * the owner's relay (GuestShares), never on yours.
  */
 
-/** A share as the relay reads it from the index (tools/notes-relay): a note's, or a shared conversation's (ADR-0060). */
+/**
+ * A share as the relay reads it (tools/notes-relay): a note's, or a shared
+ * conversation's (ADR-0060). Sealed, the registry leaves out which.
+ */
 interface ShareEntry {
   note?: string
   thread?: string
@@ -47,12 +55,16 @@ interface ShareEntry {
   updated: number
 }
 
+/** What the relay said, for people. */
+const refusal = (reason: string) => (/end-to-end|encryption key/.test(reason) ? reason : "The relay refused the token")
+
 /** Text that syncs somewhere other than `note/<id>`. */
 const elsewhere = (r: { share?: NoteShare | null }) => activeOwnerShare(r.share) || r.share?.role === "guest"
 
 export type SyncStatus = "off" | "connecting" | "synced" | "error"
 
-export const useSyncStatus = create<{ status: SyncStatus; error: string | null }>(() => ({ status: "off", error: null }))
+/** `run` counts syncs started, so an open note reconnects when the settings change. */
+export const useSyncStatus = create<{ status: SyncStatus; error: string | null; run: number }>(() => ({ status: "off", error: null, run: 0 }))
 
 const set = (status: SyncStatus, error: string | null = null) => useSyncStatus.setState({ status, error })
 
@@ -81,19 +93,24 @@ export class NotesSync {
   private lockSetting = this.index.getMap<NotesLockSetting>("lock")
   /** Every image's facts; the bytes are in `file/<id>`. Newest `updated` wins. */
   private fileRecords = this.index.getMap<NoteFile>("files")
+  /** Your sync is end-to-end encrypted (ADR-0062). */
+  private sealed: boolean
+  /** Sealed, the relay's list of shares is apart from the index, and readable. */
+  private registry = new Y.Doc()
+  private registryProvider: HocuspocusProvider | null = null
   /** Shares by id: which note, editable or not, and whether it was stopped. */
-  private shares = this.index.getMap<ShareEntry>("shares")
+  private shares: Y.Map<ShareEntry>
   /** Notes you've shared, each connected to its shared document. */
   private shared = new Map<string, SharedDocWatch>()
   private sharedOpen = new Set<string>()
   /** Images moving now, one at a time so a big first sync doesn't flood the relay. */
   private filesBusy = new Set<string>()
   private fileChain: Promise<void> = Promise.resolve()
-  private indexProvider: HocuspocusProvider
+  private indexProvider: DocProvider
   /** Notes open in an editor, with their live connection. */
-  private open = new Map<string, HocuspocusProvider>()
+  private open = new Map<string, DocProvider>()
   /** Connections of just-closed notes, finishing their last sends. */
-  private closing = new Set<HocuspocusProvider>()
+  private closing = new Set<DocProvider>()
   /** Closed notes being merged in the background; opening one cancels its merge. */
   private background = new Map<string, () => void>()
   /** The `updated` each note's text was last synced at. */
@@ -109,8 +126,22 @@ export class NotesSync {
   constructor(core: CoreClient, relay: RelayConfig) {
     this.core = core
     this.relay = relay
+    this.sealed = !!relay.key
     this.socket = new HocuspocusProviderWebsocket({ url: relay.url })
     set("connecting")
+    this.shares = (this.sealed ? this.registry : this.index).getMap<ShareEntry>("shares")
+    if (this.sealed) {
+      this.registryProvider = new HocuspocusProvider({
+        websocketProvider: this.socket,
+        name: `${PREFIX}registry`,
+        document: this.registry,
+        token: relay.token,
+        sessionAwareness: true,
+        onSynced: () => this.schedulePush(),
+        onAuthenticationFailed: ({ reason }) => set("error", refusal(reason)),
+      })
+      this.registryProvider.attach()
+    }
     this.indexProvider = this.provider("index", this.index, () => void this.reconcile())
     this.records.observe((e) => {
       if (e.transaction.local) return
@@ -129,19 +160,21 @@ export class NotesSync {
     this.offCore = () => (offNotes(), offTeam())
   }
 
-  private provider(name: string, document: Y.Doc, onSynced?: () => void) {
-    const p = new HocuspocusProvider({
+  private provider(name: string, document: Y.Doc, onSynced?: () => void): DocProvider {
+    const common = {
       websocketProvider: this.socket,
       name: PREFIX + name,
       document,
       token: this.relay.token,
-      // Each provider is its own session on the shared socket, so closing a
-      // note's background merge can't unsubscribe the editor that replaced it.
-      sessionAwareness: true,
       // An explicit `undefined` would replace Hocuspocus' default no-op handler.
       ...(onSynced ? { onSynced } : {}),
-      onAuthenticationFailed: () => set("error", "The relay refused the token"),
-    })
+      onAuthenticationFailed: ({ reason }: { reason: string }) => set("error", refusal(reason)),
+    }
+    const p = this.relay.key
+      ? new SealedProvider({ ...common, rootKey: this.relay.key })
+      : // Each provider is its own session on the shared socket, so closing a
+        // note's background merge can't unsubscribe the editor that replaced it.
+        new HocuspocusProvider({ ...common, sessionAwareness: true })
     p.attach()
     return p
   }
@@ -159,22 +192,42 @@ export class NotesSync {
     await this.pull()
     for (const r of await this.core.noteRecords()) if (!r.deleted && !elsewhere(r)) this.enqueue(r.id)
     set("synced")
+    if (this.sealed) void this.purgeWhenDone()
+  }
+
+  /**
+   * Sealed: once everything here is up, the relay drops any readable copy it
+   * still has, and refuses new ones. Asking again later does nothing more.
+   */
+  private async purgeWhenDone() {
+    for (let i = 0; i < 240 && !this.stopped && (this.queue.size || this.running || this.filesBusy.size); i++) await new Promise((r) => setTimeout(r, 500))
+    if (this.stopped || !(this.indexProvider instanceof SealedProvider)) return
+    await this.indexProvider.purge()
   }
 
   /** Local records newer than the index's go up. */
   private async push() {
     if (this.stopped || !this.indexProvider.synced) return
+    // The relay checks links against this list: write it only once it's here, so an old entry can't win.
+    const sharesReady = !this.registryProvider || this.registryProvider.synced
     const local = await this.core.noteRecords()
     const lock = await this.core.notesLockSetting()
     const team = await this.core.teamThreads().catch(() => [])
-    this.index.transact(() => {
+    const listShare = (id: string, entry: ShareEntry, changed: (was: ShareEntry) => boolean) => {
+      if (!sharesReady) return
+      // Sealed, the relay learns nothing about what's shared, only that the link is good.
+      if (this.sealed) entry = { mode: entry.mode, revoked: entry.revoked, updated: entry.updated }
+      const was = this.shares.get(id)
+      if (!was || (was.updated < entry.updated && changed(was))) this.shares.set(id, entry)
+    }
+    this.registry.transact(() => {
       // Shared conversations: teammates edit their comments and reply, so the link allows editing.
       for (const t of team) {
         if (t.role !== "owner" || !t.threadId) continue
-        const entry: ShareEntry = { thread: t.threadId, mode: "edit", revoked: t.revoked, updated: t.updated }
-        const was = this.shares.get(t.id)
-        if (!was || (was.updated < entry.updated && was.revoked !== entry.revoked)) this.shares.set(t.id, entry)
+        listShare(t.id, { thread: t.threadId, mode: "edit", revoked: t.revoked, updated: t.updated }, (was) => was.revoked !== t.revoked)
       }
+    })
+    this.index.transact(() => {
       const remote = this.lockSetting.get("setting")
       if (lock && (!remote || remote.updated < lock.updated)) this.lockSetting.set("setting", lock)
       for (const r of local) {
@@ -183,8 +236,7 @@ export class NotesSync {
         // The relay's list of shares, before anyone uses the link. A deleted note's link stops working.
         if (r.share?.role === "owner") {
           const entry: ShareEntry = { note: r.id, mode: r.share.mode, revoked: !!r.share.revoked || r.deleted, updated: r.updated }
-          const was = this.shares.get(r.share.id)
-          if (!was || (was.updated < entry.updated && (was.mode !== entry.mode || was.revoked !== entry.revoked))) this.shares.set(r.share.id, entry)
+          listShare(r.share.id, entry, (was) => was.mode !== entry.mode || was.revoked !== entry.revoked)
         }
       }
     })
@@ -426,6 +478,7 @@ export class NotesSync {
     for (const cancel of this.background.values()) cancel()
     for (const w of this.shared.values()) w.stop()
     this.indexProvider.destroy()
+    this.registryProvider?.destroy()
     this.socket.destroy()
     set("off")
   }
@@ -439,6 +492,7 @@ export function startNotesSync(core: CoreClient, relay: RelayConfig | null) {
   current?.stop()
   current = relay && !relayUrlProblem(relay.url) ? new NotesSync(core, relay) : null
   if (!current) set("off")
+  else useSyncStatus.setState((s) => ({ run: s.run + 1 }))
   return () => {
     current?.stop()
     current = null

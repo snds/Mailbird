@@ -21,6 +21,7 @@ import { SortChecked } from "./checklists"
 import { noteExtensions } from "./extensions"
 import { NOTE_FILE } from "./note-src"
 import { ScanSheet } from "./scan-sheet"
+import { SealedProvider } from "./sealed"
 import { SketchSheet } from "./sketch-sheet"
 import { useSketchSheet } from "./sketch-store"
 import { guestShares, useLiveShareModes } from "./shared-docs"
@@ -35,7 +36,7 @@ const SAVE_DELAY = 400
 const sortsChecked = () => queryClient.getQueryData<NotesPrefs>(["notes", "prefs"])?.sortChecked ?? true
 
 /** Origins that aren't this person typing: loading, seeding, and other devices. */
-const notMine = (origin: unknown) => origin === "load" || origin === "seed" || origin instanceof HocuspocusProvider
+const notMine = (origin: unknown) => origin === "load" || origin === "seed" || origin instanceof HocuspocusProvider || origin instanceof SealedProvider
 
 /**
  * The note's text, edited as a Yjs document so other devices' edits merge
@@ -147,7 +148,8 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
   const [scanning, setScanning] = useState(false)
 
   // Live edits from other devices while this note is open.
-  const syncing = useSyncStatus((s) => s.status !== "off")
+  // Which sync is running: a new one (say, encryption turned on) needs the note again.
+  const syncing = useSyncStatus((s) => (s.status !== "off" ? s.run : 0))
   // Who the others see here (ADR-0061), read when the connection opens.
   const me = useMyName()
   const meRef = useRef(me)

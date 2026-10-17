@@ -12,7 +12,7 @@ export function useOpenTeamLink() {
     const sync = teamSync()
     if (!sync) return false
     try {
-      const t = await sync.join({ id: link.id, relay: link.relay, token: link.token, title: link.title, from: link.from })
+      const t = await sync.join({ id: link.id, relay: link.relay, token: link.token, title: link.title, from: link.from, key: link.k ?? null })
       if (t.role === "guest") toast.success(link.from ? `Joined ${link.from}'s conversation` : "Joined the conversation", { duration: 2500 })
       showTeam(t.id)
       return true

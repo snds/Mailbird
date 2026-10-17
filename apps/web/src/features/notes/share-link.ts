@@ -23,6 +23,8 @@ export interface ShareLink {
   from: string | null
   /** What it opens: a note (ADR-0056), or a conversation shared with teammates (ADR-0060). */
   kind: "note" | "thread"
+  /** The share's key when it's end-to-end encrypted (ADR-0062). */
+  k?: string
 }
 
 const b64url = (bytes: Uint8Array) => toBase64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
@@ -46,9 +48,9 @@ function pageOf(relay: string): string {
 }
 
 export function shareUrl(link: Omit<ShareLink, "v" | "kind"> & { kind?: ShareLink["kind"] }): string {
-  // A note's link leaves `kind` out, so links from before conversations read the same.
-  const { kind, ...rest } = link
-  const body = { v: 1 as const, ...rest, ...(kind === "thread" ? { kind } : {}) }
+  // A note's link leaves `kind` out, so links from before conversations read the same; a plain one leaves out `k`.
+  const { kind, k, ...rest } = link
+  const body = { v: 1 as const, ...rest, ...(kind === "thread" ? { kind } : {}), ...(k ? { k } : {}) }
   return `${pageOf(link.relay)}#${b64url(new TextEncoder().encode(JSON.stringify(body)))}`
 }
 
@@ -59,7 +61,7 @@ export function parseShareUrl(text: string): ShareLink | null {
   try {
     const j = JSON.parse(new TextDecoder().decode(unb64url(m[1]))) as Partial<ShareLink>
     if (j.v !== 1 || typeof j.relay !== "string" || !/^wss?:\/\//.test(j.relay) || typeof j.id !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(j.id) || typeof j.token !== "string" || !j.token) return null
-    return { v: 1, relay: j.relay, id: j.id, mode: j.mode === "view" ? "view" : "edit", token: j.token, title: typeof j.title === "string" ? j.title : "", from: typeof j.from === "string" && j.from.trim() ? j.from.trim() : null, kind: j.kind === "thread" ? "thread" : "note" }
+    return { v: 1, relay: j.relay, id: j.id, mode: j.mode === "view" ? "view" : "edit", token: j.token, title: typeof j.title === "string" ? j.title : "", from: typeof j.from === "string" && j.from.trim() ? j.from.trim() : null, kind: j.kind === "thread" ? "thread" : "note", ...(typeof j.k === "string" && /^[A-Za-z0-9_-]{43}$/.test(j.k) ? { k: j.k } : {}) }
   } catch {
     return null
   }
@@ -76,7 +78,7 @@ export function shareLinksIn(text: string): ShareLink[] {
 }
 
 /** The guest's side of a link, as the core keeps it. */
-export const guestShareOf = (l: ShareLink): NoteShare => ({ id: l.id, role: "guest", mode: l.mode, revoked: false, relay: l.relay, token: l.token, from: l.from })
+export const guestShareOf = (l: ShareLink): NoteShare => ({ id: l.id, role: "guest", mode: l.mode, revoked: false, relay: l.relay, token: l.token, from: l.from, ...(l.k ? { key: l.k } : {}) })
 
 /** The note's text document on its relay. */
 export const sharedDocName = (shareId: string) => `mailbird/shared/${shareId}`

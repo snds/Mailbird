@@ -12,10 +12,11 @@ export function NotesSyncRunner() {
   const { data: relay } = useNotesRelay()
   const url = relay?.url
   const token = relay?.token
+  const key = relay?.key ?? null
   useEffect(() => {
     if (!core || !url) return
-    return startNotesSync(core, { url, token: token ?? "" })
-  }, [core, url, token])
+    return startNotesSync(core, { url, token: token ?? "", key })
+  }, [core, url, token, key])
   // Notes shared with you (ADR-0056) sync on the owner's relay, so they don't need one of your own.
   useEffect(() => {
     if (!core) return

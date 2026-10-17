@@ -1,3 +1,4 @@
+import { demoLinkKey, demoShareKey } from "./demo-notes"
 import type { MessageDetail, TeamLink, TeamThread } from "./types"
 
 /**
@@ -5,7 +6,7 @@ import type { MessageDetail, TeamLink, TeamThread } from "./types"
  * the list, and each document's last state. The documents themselves sync
  * on a real relay, as in the desktop app, when one is set up.
  */
-export function createDemoTeam(thread: (threadId: string) => MessageDetail[], fromName: () => string | null, later: <T>(v: T) => Promise<T>, changed: () => void) {
+export function createDemoTeam(thread: (threadId: string) => MessageDetail[], fromName: () => string | null, later: <T>(v: T) => Promise<T>, changed: () => void, sealed: () => boolean) {
   const rows = new Map<string, TeamThread & { ydoc: string | null }>()
   const now = () => Math.floor(Date.now() / 1000)
   const pub = ({ ydoc: _y, ...t }: TeamThread & { ydoc: string | null }): TeamThread => t
@@ -24,7 +25,7 @@ export function createDemoTeam(thread: (threadId: string) => MessageDetail[], fr
       if (live) return later(pub(live))
       const list = thread(threadId).sort((a, b) => a.date - b.date)
       if (!list.length) throw new Error("that conversation is no longer here")
-      const t = { id: crypto.randomUUID().replaceAll("-", ""), role: "owner" as const, threadId, revoked: false, relay: null, token: null, title: list.at(-1)!.subject, from: fromName(), created: now(), updated: now(), ydoc: null }
+      const t = { id: crypto.randomUUID().replaceAll("-", ""), role: "owner" as const, threadId, revoked: false, relay: null, token: null, key: sealed() ? demoShareKey() : null, title: list.at(-1)!.subject, from: fromName(), created: now(), updated: now(), ydoc: null }
       rows.set(t.id, t)
       return done(pub(t))
     },
@@ -33,7 +34,8 @@ export function createDemoTeam(thread: (threadId: string) => MessageDetail[], fr
       const was = rows.get(l.id)
       if (was?.revoked) throw new Error("That conversation isn't shared any more.")
       if (was) return later(pub(was))
-      const t = { id: l.id, role: "guest" as const, threadId: null, revoked: false, relay: l.relay.trim(), token: l.token.trim(), title: l.title.trim(), from: l.from?.trim() || null, created: now(), updated: now(), ydoc: null }
+      const key = demoLinkKey(l.key)
+      const t = { id: l.id, role: "guest" as const, threadId: null, revoked: false, relay: l.relay.trim(), token: l.token.trim(), key, title: l.title.trim(), from: l.from?.trim() || null, created: now(), updated: now(), ydoc: null }
       rows.set(t.id, t)
       return done(pub(t))
     },
