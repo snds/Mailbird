@@ -698,6 +698,8 @@ export interface TeamThread {
   revoked: boolean
   relay: string | null
   token: string | null
+  /** Its key when it's end-to-end encrypted (ADR-0062). */
+  key: string | null
   title: string
   /** Who shared it. */
   from: string | null
@@ -712,6 +714,7 @@ export interface TeamLink {
   token: string
   title: string
   from: string | null
+  key?: string | null
 }
 
 /** Where opt-in AI's model runs (ADR-0059). */
@@ -943,6 +946,8 @@ export interface NoteShare {
   relay?: string | null
   token?: string | null
   from?: string | null
+  /** The share's key when it's end-to-end encrypted (ADR-0062): its document is `mailbird/x/shared/<id>`. */
+  key?: string | null
 }
 
 export interface NoteSummary {
@@ -1102,4 +1107,6 @@ export interface RelayConfig {
   /** wss://… (ws:// only on this device). */
   url: string
   token: string
+  /** End-to-end encryption's key (ADR-0062). Without it, the relay can read what syncs. */
+  key?: string | null
 }

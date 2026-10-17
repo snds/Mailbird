@@ -17,6 +17,24 @@ fn valid_id(id: &str) -> bool {
     (16..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// A new share's key (ADR-0062): 32 random bytes, base64url.
+pub fn new_share_key() -> String {
+    use base64::Engine;
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 32];
+    ring::rand::SystemRandom::new().fill(&mut bytes).expect("the OS random source works");
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// A link's key, if it has one; one that isn't a key spoils the link.
+pub(crate) fn link_key(key: Option<&str>) -> Result<Option<String>> {
+    match key.map(str::trim).filter(|k| !k.is_empty()) {
+        None => Ok(None),
+        Some(k) if k.len() == 43 && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') => Ok(Some(k.into())),
+        Some(_) => Err(Error::Invalid("that share link isn't complete".into())),
+    }
+}
+
 /// A share from someone's link, checked: a guest's, with somewhere to sync.
 pub(crate) fn guest_share(s: &NoteShare) -> Result<NoteShare> {
     let relay = s.relay.as_deref().map(str::trim).filter(|r| r.starts_with("ws://") || r.starts_with("wss://"));
@@ -30,6 +48,7 @@ pub(crate) fn guest_share(s: &NoteShare) -> Result<NoteShare> {
             relay: Some(relay.into()),
             token: Some(token.into()),
             from: s.from.as_deref().map(str::trim).filter(|f| !f.is_empty()).map(Into::into),
+            key: link_key(s.key.as_deref())?,
         }),
         _ => Err(Error::Invalid("that share link isn't complete".into())),
     }
@@ -37,8 +56,9 @@ pub(crate) fn guest_share(s: &NoteShare) -> Result<NoteShare> {
 
 impl Store {
     /// Shares a note by link, or changes what its link allows. A link that
-    /// was stopped never comes back: sharing again makes a new one.
-    pub fn share_note(&self, id: &str, mode: ShareMode) -> Result<NoteSummary> {
+    /// was stopped never comes back: sharing again makes a new one. With
+    /// `sealed` (your sync is end-to-end encrypted), a new link gets a key.
+    pub fn share_note(&self, id: &str, mode: ShareMode, sealed: bool) -> Result<NoteSummary> {
         let n = self.note(id)?.summary;
         if n.locked {
             return Err(Error::Invalid("a locked note can't be shared; remove its lock first".into()));
@@ -46,7 +66,16 @@ impl Store {
         let share = match n.share {
             Some(s) if s.role == ShareRole::Guest => return Err(Error::Invalid("only the person who shared this note can change its link".into())),
             Some(s) if !s.revoked => NoteShare { mode, ..s },
-            _ => NoteShare { id: uuid::Uuid::new_v4().simple().to_string(), role: ShareRole::Owner, mode, revoked: false, relay: None, token: None, from: None },
+            _ => NoteShare {
+                id: uuid::Uuid::new_v4().simple().to_string(),
+                role: ShareRole::Owner,
+                mode,
+                revoked: false,
+                relay: None,
+                token: None,
+                from: None,
+                key: sealed.then(new_share_key),
+            },
         };
         self.write_share(id, Some(&share))
     }
@@ -97,6 +126,7 @@ mod tests {
             relay: Some(" wss://notes.example.com ".into()),
             token: Some("s1.abc".into()),
             from: Some("Ada".into()),
+            key: None,
         }
     }
 
@@ -104,10 +134,10 @@ mod tests {
     fn sharing_makes_a_link_and_changing_it_keeps_the_link() {
         let s = Store::open_in_memory().unwrap();
         let n = note(&s, "Trip plan");
-        let a = s.share_note(&n, ShareMode::Edit).unwrap().share.unwrap();
+        let a = s.share_note(&n, ShareMode::Edit, false).unwrap().share.unwrap();
         assert_eq!((a.role, a.mode, a.revoked), (ShareRole::Owner, ShareMode::Edit, false));
         assert!(valid_id(&a.id));
-        let b = s.share_note(&n, ShareMode::View).unwrap().share.unwrap();
+        let b = s.share_note(&n, ShareMode::View, false).unwrap().share.unwrap();
         assert_eq!((b.id.as_str(), b.mode), (a.id.as_str(), ShareMode::View), "the same link, now view-only");
     }
 
@@ -115,11 +145,11 @@ mod tests {
     fn a_stopped_link_stays_stopped() {
         let s = Store::open_in_memory().unwrap();
         let n = note(&s, "Trip plan");
-        let a = s.share_note(&n, ShareMode::Edit).unwrap().share.unwrap();
+        let a = s.share_note(&n, ShareMode::Edit, false).unwrap().share.unwrap();
         let stopped = s.unshare_note(&n).unwrap().share.unwrap();
         assert!(stopped.revoked);
         assert_eq!(stopped.id, a.id, "kept, so the relay refuses the old link");
-        let again = s.share_note(&n, ShareMode::Edit).unwrap().share.unwrap();
+        let again = s.share_note(&n, ShareMode::Edit, false).unwrap().share.unwrap();
         assert_ne!(again.id, a.id, "sharing again makes a new link");
         assert!(!again.revoked);
     }
@@ -130,9 +160,24 @@ mod tests {
         let g = s.create_note(&NoteInput { markdown: "Trip plan".into(), share: Some(guest()), ..Default::default() }).unwrap().summary;
         let share = g.share.clone().unwrap();
         assert_eq!((share.role, share.relay.as_deref(), share.from.as_deref()), (ShareRole::Guest, Some("wss://notes.example.com"), Some("Ada")));
-        assert!(s.share_note(&g.id, ShareMode::Edit).is_err(), "only the owner changes the link");
+        assert!(s.share_note(&g.id, ShareMode::Edit, false).is_err(), "only the owner changes the link");
         assert_eq!(s.unshare_note(&g.id).unwrap().share, None, "a guest's note becomes their own copy");
         assert_eq!(s.note(&g.id).unwrap().markdown, "Trip plan");
+    }
+
+    #[test]
+    fn a_sealed_share_carries_its_key() {
+        let s = Store::open_in_memory().unwrap();
+        let n = note(&s, "Trip plan");
+        let a = s.share_note(&n, ShareMode::Edit, true).unwrap().share.unwrap();
+        let key = a.key.clone().expect("a sealed share has a key");
+        assert_eq!(key.len(), 43);
+        assert_eq!(s.share_note(&n, ShareMode::View, true).unwrap().share.unwrap().key, Some(key.clone()), "changing the link keeps its key");
+        assert_eq!(s.share_note(&note(&s, "Plain"), ShareMode::Edit, false).unwrap().share.unwrap().key, None);
+        let g = s.create_note(&NoteInput { markdown: "x".into(), share: Some(NoteShare { key: Some(key.clone()), ..guest() }), ..Default::default() }).unwrap().summary;
+        assert_eq!(g.share.unwrap().key, Some(key), "a guest keeps the link's key");
+        let bad = NoteShare { key: Some("not-a-key".into()), ..guest() };
+        assert!(s.create_note(&NoteInput { markdown: "x".into(), share: Some(bad), ..Default::default() }).is_err());
     }
 
     #[test]
@@ -149,9 +194,9 @@ mod tests {
         let n = note(&s, "Secret");
         let key = s.set_notes_passphrase(None, "correct horse", None).unwrap();
         s.lock_note(&n, &key).unwrap();
-        assert!(s.share_note(&n, ShareMode::Edit).is_err(), "a locked note can't be shared");
+        assert!(s.share_note(&n, ShareMode::Edit, false).is_err(), "a locked note can't be shared");
         let m = note(&s, "Shared");
-        s.share_note(&m, ShareMode::Edit).unwrap();
+        s.share_note(&m, ShareMode::Edit, false).unwrap();
         assert!(s.lock_note(&m, &key).is_err(), "a shared note can't be locked");
         s.unshare_note(&m).unwrap();
         s.lock_note(&m, &key).unwrap();
@@ -161,7 +206,7 @@ mod tests {
     fn shares_sync_with_the_record() {
         let a = Store::open_in_memory().unwrap();
         let n = note(&a, "Trip plan");
-        a.share_note(&n, ShareMode::View).unwrap();
+        a.share_note(&n, ShareMode::View, false).unwrap();
         let b = Store::open_in_memory().unwrap();
         for rec in a.note_records().unwrap() {
             b.apply_note_record(&rec).unwrap();

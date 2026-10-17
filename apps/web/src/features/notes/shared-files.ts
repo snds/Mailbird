@@ -42,8 +42,8 @@ export class SharedFiles {
   private p: ReturnType<typeof rejoining>
   private stopped = false
 
-  constructor(socket: HocuspocusProviderWebsocket, shareId: string, token: string, on: { synced?: () => void; denied?: () => void }) {
-    this.p = rejoining(socket, filesDocName(shareId), this.doc, token, { synced: on.synced, denied: () => on.denied?.() })
+  constructor(socket: HocuspocusProviderWebsocket, shareId: string, token: string, on: { synced?: () => void; denied?: () => void; key?: string | null }) {
+    this.p = rejoining(socket, filesDocName(shareId), this.doc, token, { key: on.key, synced: on.synced, denied: () => on.denied?.() })
   }
 
   get images() {

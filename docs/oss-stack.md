@@ -28,7 +28,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | @tiptap/react, pm, core, starter-kit, extensions, extension-list | Composer and notes editor | 3.31.3 (pinned) | MIT | ✅ | **Avoid Tiptap Pro** (paid). Transitive menu packages are pinned to the same release in `pnpm-workspace.yaml`. |
 | @tiptap/markdown | Notes ↔ Markdown | 3.31.3 (pinned) | MIT | ✅ | Uses `marked` (MIT). Also runs headless for sync. |
 | @tiptap/extension-collaboration, @tiptap/y-tiptap | Editor ↔ Yjs binding | 3.31.3 / 3.0.9 (pinned) | MIT | ✅ | — |
-| yjs, y-protocols | CRDT for notes sync | 13.6.33 / 1.0.7 (pinned) | MIT | ✅ | See [ADR-0012](decisions/0012-notes.md). |
+| yjs, y-protocols | CRDT for notes sync; awareness for who's here, also when it travels encrypted | 13.6.33 / 1.0.7 (pinned) | MIT | ✅ | See [ADR-0012](decisions/0012-notes.md) and [ADR-0062](decisions/0062-end-to-end-encrypted-sync.md); encryption itself is the browser's WebCrypto (AES-256-GCM, HKDF), no library. |
 | @hocuspocus/provider, @hocuspocus/server | Notes sync client and relay | 4.7.0 (pinned) | MIT | ✅ | The relay is `tools/notes-relay`. Hocuspocus Cloud and Tiptap Collab are paid hosted options; not needed. |
 | tesseract.js, tesseract.js-core | Reading text in note images, on the device | 7.0.0 (pinned) | Apache-2.0 | ✅ | Served from the app's own `ocr/` folder, never a CDN; only the LSTM engines ship. See [ADR-0045](decisions/0045-scans-and-text-in-images.md). |
 | @tesseract.js-data/eng (`4.0.0_best_int`) | English model for the above | 1.0.0 (pinned) | MIT package; model Apache-2.0 (tessdata) | ✅ | 2.9 MB; downloaded by a device only when it first reads an image. |
@@ -80,7 +80,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | SQLite FTS5 (in rusqlite) | Full-text search | — | Public domain | ✅ |
 | tantivy | Full-text search at scale | 0.26 | MIT | ⚪ (deferred, ADR-0007) |
 | oauth2 | OAuth (Google, Microsoft) | 5.0 | MIT OR Apache-2.0 | ⚪ |
-| ring | PKCE (SHA-256) and OAuth state; sealing secrets in the push relay and the gateway (AES-256-GCM); APNs/FCM JWTs | 0.17 | Apache-2.0 AND ISC | ✅ |
+| ring | PKCE (SHA-256) and OAuth state; sealing secrets in the push relay and the gateway (AES-256-GCM); APNs/FCM JWTs; random share keys (ADR-0062) | 0.17 | Apache-2.0 AND ISC | ✅ |
 | axum | HTTP for the push relay (`tools/push-relay`) and the web gateway (`apps/gateway`) | 0.8 | MIT | ✅ |
 | tower-http | The gateway's static web app and security headers | 0.6 | MIT | ✅ |
 | keyring | OS keychain | 3.6 (4.x for Android later) | MIT OR Apache-2.0 | ✅ |

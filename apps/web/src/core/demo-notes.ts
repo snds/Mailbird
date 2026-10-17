@@ -120,12 +120,24 @@ function cleanColor(c: string | null | undefined): NoteColor | null {
 /** Keep's Takeout names: two blues fold into ours, DEFAULT is none. */
 const keepColor = (c: unknown) => (c === "CERULEAN" ? "blue" : typeof c === "string" ? cleanColor(c) : null)
 
+/** A new share's key (ADR-0062), as new_share_key makes them: 32 random bytes, base64url. */
+export const demoShareKey = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
+
+/** A link's key, checked like link_key in note_shares.rs. */
+export function demoLinkKey(k: string | null | undefined): string | null {
+  const key = k?.trim()
+  if (!key) return null
+  if (!/^[A-Za-z0-9_-]{43}$/.test(key)) throw new Error("that share link isn't complete")
+  return key
+}
+
 /** A share from someone's link, checked like guest_share in note_shares.rs. */
 function guestShare(s: NoteShare): NoteShare {
   const relay = s.relay?.trim()
   const token = s.token?.trim()
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(s.id) || !relay || !/^wss?:\/\//.test(relay) || !token) throw new Error("that share link isn't complete")
-  return { id: s.id, role: "guest", mode: s.mode === "view" ? "view" : "edit", revoked: false, relay, token, from: s.from?.trim() || null }
+  const key = demoLinkKey(s.key)
+  return { id: s.id, role: "guest", mode: s.mode === "view" ? "view" : "edit", revoked: false, relay, token, from: s.from?.trim() || null, ...(key ? { key } : {}) }
 }
 
 export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void, later: <T>(v: T) => Promise<T>, links: DemoLinks) {
@@ -389,7 +401,10 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       const x = find(id)
       if (x.locked) throw new Error("a locked note can't be shared; remove its lock first")
       if (x.share?.role === "guest") throw new Error("only the person who shared this note can change its link")
-      x.share = x.share && !x.share.revoked ? { ...x.share, mode } : { id: crypto.randomUUID().replaceAll("-", ""), role: "owner", mode, revoked: false, relay: null, token: null, from: null }
+      x.share =
+        x.share && !x.share.revoked
+          ? { ...x.share, mode }
+          : { id: crypto.randomUUID().replaceAll("-", ""), role: "owner", mode, revoked: false, relay: null, token: null, from: null, ...(relay?.key ? { key: demoShareKey() } : {}) }
       bump(x)
       changed()
       return later(summary(x))
@@ -609,8 +624,11 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       return later(ids)
     },
     getNotesRelay: async () => later(relay),
+    /** Not the client's: whether new links get keys, for the demo's shared conversations. */
+    relaySealed: () => !!relay?.key,
     setNotesRelay: async (r: RelayConfig | null) => {
-      relay = r
+      if (r?.key && !/^[A-Za-z0-9_-]{43}$/.test(r.key.trim())) throw new Error("That encryption key isn't complete. Copy it again from a device that has it.")
+      relay = r && { ...r, key: r.key?.trim() || null }
       try {
         if (r) localStorage.setItem("mailbird.demo.relay", JSON.stringify(r))
         else localStorage.removeItem("mailbird.demo.relay")

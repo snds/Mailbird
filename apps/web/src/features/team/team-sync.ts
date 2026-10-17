@@ -3,7 +3,7 @@ import * as Y from "yjs"
 import { create } from "zustand"
 
 import type { CoreClient } from "@/core/client"
-import type { RelayConfig, TeamThread } from "@/core/types"
+import type { RelayConfig, TeamLink, TeamThread } from "@/core/types"
 
 import { setPeople } from "../notes/presence"
 import { rejoining } from "../notes/shared-docs"
@@ -56,6 +56,7 @@ class TeamWatch {
     setTimeout(() => this.settle("timeout"), FIRST_SYNC)
     doc.on("update", this.onUpdate)
     this.p = rejoining(o.socket, sharedDocName(t.id), doc, o.token, {
+      key: t.key,
       synced: () => {
         this.settle("synced")
         useTeamLive.setState({ [t.id]: true })
@@ -68,7 +69,7 @@ class TeamWatch {
       },
       onPeople: (people) => setPeople(t.id, people),
     })
-    this.files = new SharedFiles(o.socket, t.id, o.token, {})
+    this.files = new SharedFiles(o.socket, t.id, o.token, { key: t.key })
     this.files.doc.on("update", () => bump(t.id))
   }
 
@@ -235,7 +236,7 @@ export class TeamSync {
    * Joins a conversation from a teammate's link and waits to hear from the
    * relay. The same link twice opens the one already joined.
    */
-  async join(link: { id: string; relay: string; token: string; title: string; from: string | null }): Promise<TeamThread> {
+  async join(link: TeamLink): Promise<TeamThread> {
     const mine = (await this.core.teamThreads()).find((t) => t.id === link.id)
     if (mine && !mine.revoked) return mine
     const t = await this.core.joinTeamThread(link)

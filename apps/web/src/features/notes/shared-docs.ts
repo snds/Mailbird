@@ -7,6 +7,7 @@ import type { NoteRecord, NoteShare, ShareMode } from "@/core/types"
 import { fromBase64 } from "@/lib/base64"
 
 import { type Person, setPeople } from "./presence"
+import { type DocProvider, SealedProvider } from "./sealed"
 import { SharedFiles } from "./shared-files"
 import { type ShareLink, guestShareOf, sharedDocName } from "./share-link"
 import { isEmpty, loadDoc, markdownOf, seed, stateOf } from "./ydoc"
@@ -40,15 +41,17 @@ export const useLiveShareModes = create<Record<string, ShareMode>>(() => ({}))
  * With `presence`, it also says who has the document open (ADR-0061):
  * `here(name)` while it's open here, `here(null)` when it closes, and
  * `onPeople` hears everyone else.
+ *
+ * With `key` (the share's, ADR-0062), the document is end-to-end encrypted.
  */
 export function rejoining(
   socket: HocuspocusProviderWebsocket,
   name: string,
   doc: Y.Doc,
   token: string,
-  on: { synced?: () => void; denied: () => void; onPeople?: (people: Person[]) => void },
+  on: { synced?: () => void; denied: () => void; onPeople?: (people: Person[]) => void; key?: string | null },
 ) {
-  let p: HocuspocusProvider
+  let p: DocProvider
   let gone = false
   let me: string | null = null
   const report = () => {
@@ -61,20 +64,13 @@ export function rejoining(
     on.onPeople(people)
   }
   const join = () => {
-    p = new HocuspocusProvider({
-      websocketProvider: socket,
-      name,
-      document: doc,
-      token,
-      sessionAwareness: true,
-      ...(on.synced ? { onSynced: on.synced } : {}),
-      onAuthenticationFailed: () => on.denied(),
-      onClose: () => {
-        if (gone || socket.status !== WebSocketStatus.Connected) return
-        p.destroy()
-        setTimeout(() => !gone && join(), 200)
-      },
-    })
+    const onClose = () => {
+      if (gone || socket.status !== WebSocketStatus.Connected) return
+      p.destroy()
+      setTimeout(() => !gone && join(), 200)
+    }
+    const common = { websocketProvider: socket, name, document: doc, token, ...(on.synced ? { onSynced: on.synced } : {}), onAuthenticationFailed: () => on.denied(), onClose }
+    p = on.key ? new SealedProvider({ ...common, rootKey: on.key }) : new HocuspocusProvider({ ...common, sessionAwareness: true })
     p.awareness?.on("change", report)
     if (me) p.setAwarenessField("person", { name: me })
     p.attach()
@@ -143,6 +139,7 @@ export class SharedDocWatch {
     this.saved = note.ydoc
     const meta = doc.getMap<string>("share")
     this.p = rejoining(this.o.socket, sharedDocName(this.o.share.id), doc, this.o.token, {
+      key: this.o.share.key,
       synced: () => {
         this.settle("synced")
         this.scheduleSave()
@@ -159,7 +156,7 @@ export class SharedDocWatch {
     })
     // Images go with the note: the owner puts them up, a guest takes them as their own.
     const owner = this.o.owner
-    this.files = new SharedFiles(this.o.socket, this.o.share.id, this.o.token, { synced: () => owner && void this.files?.putImages(core, noteId) })
+    this.files = new SharedFiles(this.o.socket, this.o.share.id, this.o.token, { key: this.o.share.key, synced: () => owner && void this.files?.putImages(core, noteId) })
     if (!owner) this.files.takeImages(core, noteId)
     if (!this.o.owner) {
       const read = () => {
@@ -206,7 +203,7 @@ export class SharedDocWatch {
   /** A live connection for the note's editor, on the same socket. */
   attach(doc: Y.Doc, me?: string): () => void {
     const id = this.o.share.id
-    const p = rejoining(this.o.socket, sharedDocName(id), doc, this.o.token, { denied: () => this.o.onDenied(), onPeople: (people) => setPeople(id, people) })
+    const p = rejoining(this.o.socket, sharedDocName(id), doc, this.o.token, { key: this.o.share.key, denied: () => this.o.onDenied(), onPeople: (people) => setPeople(id, people) })
     // Open here: the others see you're here (ADR-0061).
     if (me) p.here(me)
     return () => {

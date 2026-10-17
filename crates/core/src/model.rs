@@ -1114,6 +1114,11 @@ pub struct NoteShare {
     /// A guest's: who shared it, as the link names them.
     #[serde(default)]
     pub from: Option<String>,
+    /// The share's own key when it's end-to-end encrypted (ADR-0062): its
+    /// document is then `mailbird/x/shared/<id>`. The link carries it after
+    /// `#`, so it never reaches the relay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

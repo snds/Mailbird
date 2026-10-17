@@ -46,7 +46,7 @@ function ShareForm({ note, onSetUpSync, onDone }: { note: NoteSummary; onSetUpSy
   const { data: link } = useQuery({
     queryKey: ["notes", "share-link", live?.id, live?.mode, relay?.url, note.title, from],
     enabled: !!live && !!relay,
-    queryFn: async () => shareUrl({ relay: relay!.url, id: live!.id, mode: live!.mode, token: await shareToken(relay!.token, live!.id), title: note.title, from }),
+    queryFn: async () => shareUrl({ relay: relay!.url, id: live!.id, mode: live!.mode, token: await shareToken(relay!.token, live!.id), title: note.title, from, ...(live!.key ? { k: live!.key } : {}) }),
   })
 
   if (isPending) return null
