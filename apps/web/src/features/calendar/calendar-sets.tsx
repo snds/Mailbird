@@ -62,9 +62,11 @@ export function CalendarSets({ calendars }: { calendars: Map<string, Collection>
           </Button>
         </form>
       ) : (
-        <button type="button" className="flex h-7 items-center gap-1.5 self-start text-xs font-medium text-primary hover:underline" onClick={() => setNaming(true)}>
-          <Icon name="add" className="size-3.5" /> Save what's showing as a set
-        </button>
+        <p className="text-xs">
+          <Button variant="link" size="inline" onClick={() => setNaming(true)}>
+            <Icon name="add" /> Save what's showing as a set
+          </Button>
+        </p>
       )}
     </section>
   )

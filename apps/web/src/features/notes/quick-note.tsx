@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { type QuickContext, useUi } from "@/app/ui-store"
-import { Icon, type IconName, Button, Kbd, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, IconButton } from "@unicron/ui"
+import { Icon, type IconName, Button, Kbd, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, Chip, ChipRemove } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLinkedNotes } from "@/core/queries"
 
@@ -81,11 +81,11 @@ function Composer({ target, onChange, onDone }: { target: QuickContext | null; o
       <SheetDescription className="sr-only">A note saved to Notes when you close this.</SheetDescription>
       {target && linked && (
         <div className="flex">
-          <span className="inline-flex h-7 max-w-full items-center gap-1 rounded-full border bg-muted/50 pr-0.5 pl-2.5 text-xs" data-slot="quick-link">
-            <Icon name={ICON[target.kind]} className="size-3.5" />
+          <Chip variant="outline" data-role="quick-link">
+            <Icon name={ICON[target.kind]} />
             <span className="truncate">{label}</span>
-            <IconButton label={`Don't link to ${label}`} icon="close" render={<Button variant="ghost-muted" size="icon-xs" shape="pill" />} onClick={() => update(text, false)} />
-          </span>
+            <ChipRemove label={`Don't link to ${label}`} onClick={() => update(text, false)} />
+          </Chip>
         </div>
       )}
       <textarea

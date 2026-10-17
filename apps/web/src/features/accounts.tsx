@@ -3,7 +3,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Icon, type IconName, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption } from "@unicron/ui"
 import { getCoreClient, signOutOfGateway } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
 import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provider, Security, ServerConfig } from "@/core/types"
@@ -145,9 +145,9 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
                   <span className="flex flex-wrap items-center gap-x-2 text-xs text-destructive">
                     Sync problem: {a.lastError}
                     {a.oauth && core?.kind === "native" && (
-                      <button type="button" className="font-medium text-primary hover:underline" disabled={reauth.isPending} onClick={() => reauth.mutate(a.id)}>
+                      <Button variant="link" size="inline" disabled={reauth.isPending} onClick={() => reauth.mutate(a.id)}>
                         {reauth.isPending && reauth.variables === a.id ? "Waiting for the browser…" : "Sign in again"}
-                      </button>
+                      </Button>
                     )}
                   </span>
                 ) : (
@@ -161,9 +161,11 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
                   )
                 ) : (
                   core?.kind === "native" && (
-                    <button type="button" className="self-start text-xs font-medium text-primary hover:underline" onClick={() => onConnect(a)}>
-                      Connect calendars and contacts
-                    </button>
+                    <span className="text-xs">
+                      <Button variant="link" size="inline" onClick={() => onConnect(a)}>
+                        Connect calendars and contacts
+                      </Button>
+                    </span>
                   )
                 )}
               </div>
@@ -183,19 +185,15 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
           {PRESETS.map((preset) => {
             const p = core?.remote && preset.oauth && !SAME_COMPUTER ? { ...preset, unavailable: OAUTH_REMOTE } : preset
             return (
-              <button
-                key={p.id}
-                type="button"
-                disabled={!!p.unavailable || (core?.kind === "demo" && !p.oauth)}
-                onClick={() => onAdd(p)}
-                className="flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
-              >
-                <Icon name={p.icon} tone="muted" className="mt-0.5 size-5" />
-                <span className="flex flex-col gap-0.5">
-                  <span className="font-medium">{p.label}</span>
-                  {p.unavailable && <span className="text-xs text-muted-foreground">{p.unavailable}</span>}
-                </span>
-              </button>
+              <Item key={p.id} variant="outline" render={<button type="button" disabled={!!p.unavailable || (core?.kind === "demo" && !p.oauth)} onClick={() => onAdd(p)} />}>
+                <ItemMedia>
+                  <Icon name={p.icon} tone="muted" />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{p.label}</ItemTitle>
+                  {p.unavailable && <ItemDescription>{p.unavailable}</ItemDescription>}
+                </ItemContent>
+              </Item>
             )
           })}
         </div>
@@ -475,17 +473,17 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
 /** A row that opens a settings dialog of its own, closing this one. */
 function SettingsRow({ icon, title, hint, open }: { icon: IconName; title: string; hint: string; open: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={() => (useUi.getState().setAccountsOpen(false), open())}
-      className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
-    >
-      <Icon name={icon} tone="muted" className="size-5" />
-      <span className="flex flex-1 flex-col gap-0.5">
-        <span className="font-medium">{title}</span>
-        <span className="text-xs text-muted-foreground">{hint}</span>
-      </span>
-      <Icon name="chevron_right" tone="muted" className="size-5" />
-    </button>
+    <Item variant="outline" render={<button type="button" onClick={() => (useUi.getState().setAccountsOpen(false), open())} />}>
+      <ItemMedia>
+        <Icon name={icon} tone="muted" />
+      </ItemMedia>
+      <ItemContent>
+        <ItemTitle>{title}</ItemTitle>
+        <ItemDescription>{hint}</ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <Icon name="chevron_right" tone="muted" />
+      </ItemActions>
+    </Item>
   )
 }

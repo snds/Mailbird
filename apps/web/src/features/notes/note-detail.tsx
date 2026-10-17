@@ -3,7 +3,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger, IconButton } from "@unicron/ui"
+import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger, IconButton, Chip, ChipAction, ChipRemove } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLockedNote, useNote, useNoteAction, useNoteBacklinks, useNotesLock, useNoteTags } from "@/core/queries"
 import type { NoteLink, NoteMeta } from "@/core/types"
@@ -324,15 +324,14 @@ function LinkedFrom({ id }: { id: string }) {
     <section aria-label="Linked from" className="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pt-1.5 text-xs md:px-8">
       <span className="text-muted-foreground">Linked from</span>
       {back.map((n) => (
-        <button
-          key={n.id}
-          type="button"
-          className="inline-flex h-7 max-w-56 items-center gap-1 rounded-full border bg-muted/50 px-2.5 hover:bg-muted"
-          onClick={() => setOpenNote({ id: n.id, fresh: false })}
-        >
-          <Icon name="description" className="size-3.5" />
-          <span className="truncate">{n.title || "New note"}</span>
-        </button>
+        <span key={n.id} className="flex max-w-56">
+          <Chip variant="outline">
+            <ChipAction onClick={() => setOpenNote({ id: n.id, fresh: false })}>
+              <Icon name="description" />
+              <span>{n.title || "New note"}</span>
+            </ChipAction>
+          </Chip>
+        </span>
       ))}
     </section>
   )
@@ -341,24 +340,17 @@ function LinkedFrom({ id }: { id: string }) {
 function LinkChip({ link, onOpen, onRemove }: { link: NoteLink; onOpen: (target: string) => void; onRemove: () => void }) {
   const here = !!link.target
   return (
-    <span className="inline-flex h-7 items-center overflow-hidden rounded-full border bg-muted/50 pr-0.5 text-xs" data-slot="note-link">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              className="flex h-full max-w-56 items-center gap-1 pr-1 pl-2.5 hover:bg-muted disabled:opacity-60"
-              disabled={!here}
-              onClick={() => link.target && onOpen(link.target)}
-            />
-          }
-        >
-          <Icon name={LINK_ICON[link.kind]} className="size-3.5" />
-          <span className="truncate">{link.label || "(untitled)"}</span>
-        </TooltipTrigger>
-        <TooltipContent>{here ? `Open ${link.kind === "thread" ? "conversation" : link.kind}` : "Not on this device"}</TooltipContent>
-      </Tooltip>
-      <IconButton label={`Unlink ${link.label}`} icon="close" render={<Button variant="ghost-muted" size="icon-xs" shape="pill" />} onClick={onRemove} />
+    <span className="flex max-w-64">
+      <Chip variant="outline" data-role="note-link">
+        <Tooltip>
+          <TooltipTrigger render={<ChipAction disabled={!here} onClick={() => link.target && onOpen(link.target)} />}>
+            <Icon name={LINK_ICON[link.kind]} />
+            <span>{link.label || "(untitled)"}</span>
+          </TooltipTrigger>
+          <TooltipContent>{here ? `Open ${link.kind === "thread" ? "conversation" : link.kind}` : "Not on this device"}</TooltipContent>
+        </Tooltip>
+        <ChipRemove label={`Unlink ${link.label}`} onClick={onRemove} />
+      </Chip>
     </span>
   )
 }
@@ -374,10 +366,10 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (tags: string
   return (
     <>
       {tags.map((t) => (
-        <span key={t} className="inline-flex h-7 items-center gap-0.5 rounded-full bg-secondary pr-0.5 pl-2.5 text-xs text-secondary-foreground">
+        <Chip key={t} variant="secondary">
           #{t}
-          <IconButton label={`Remove tag ${t}`} icon="close" render={<Button variant="ghost-muted" size="icon-xs" shape="pill" />} onClick={() => onChange(tags.filter((x) => x !== t))} />
-        </span>
+          <ChipRemove label={`Remove tag ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))} />
+        </Chip>
       ))}
       {adding === null ? (
         <Button variant="ghost-muted" size="sm" shape="pill" className="h-7" onClick={() => setAdding("")}>
@@ -423,24 +415,17 @@ function ReminderChip({ at, onDone }: { at: number; onDone: () => void }) {
   const now = useNowSecs(30_000)
   const due = at <= now
   return (
-    <span
-      data-slot="note-reminder"
-      data-due={due || undefined}
-      className="inline-flex h-7 items-center overflow-hidden rounded-full border bg-muted/50 text-xs data-due:border-vertical-notes data-due:bg-vertical-notes/15"
-    >
-      <span className="inline-flex items-center gap-1 pr-1 pl-2.5">
-        <Icon name={due ? "notifications_active" : "schedule"} fill={due} className="size-3.5" />
-        {due ? `Due · ${reminderLabel(at)}` : reminderLabel(at)}
-      </span>
-      <button
-        type="button"
-        className="inline-flex h-full items-center gap-1 px-2 hover:bg-muted"
-        aria-label={due ? "Done with this reminder" : "Remove reminder"}
-        onClick={onDone}
-      >
-        <Icon name={due ? "check" : "close"} className="size-3.5" />
-        {due && "Done"}
-      </button>
-    </span>
+    // Due, it takes the notes hue (an app role, so it stays here) and offers Done.
+    <Chip variant="outline" data-role="note-reminder" data-due={due || undefined} className="data-due:border-vertical-notes data-due:bg-vertical-notes/15">
+      <Icon name={due ? "notifications_active" : "schedule"} fill={due} />
+      {due ? `Due · ${reminderLabel(at)}` : reminderLabel(at)}
+      {due ? (
+        <ChipAction aria-label="Done with this reminder" onClick={onDone}>
+          <Icon name="check" /> Done
+        </ChipAction>
+      ) : (
+        <ChipRemove label="Remove reminder" onClick={onDone} />
+      )}
+    </Chip>
   )
 }

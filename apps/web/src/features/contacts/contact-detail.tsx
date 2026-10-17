@@ -1,7 +1,7 @@
 import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Badge, Button, Skeleton } from "@unicron/ui"
+import { Icon, type IconName, Badge, Button, Item, ItemActions, ItemContent, Skeleton } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContact, useContactActivity, useContactCopies, usePimAction } from "@/core/queries"
 import type { ContactActivity, MessageSummary, Occurrence } from "@/core/types"
@@ -127,9 +127,9 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
           <div key={`e-${e.value}`} className="flex flex-col px-4 py-2.5">
             <dt className="text-xs text-muted-foreground capitalize">{e.label ?? "email"}</dt>
             <dd>
-              <button type="button" className="text-primary hover:underline" onClick={() => openComposer({ to: [{ name: c.fullName, email: e.value }] })}>
+              <Button variant="link" size="inline" onClick={() => openComposer({ to: [{ name: c.fullName, email: e.value }] })}>
                 {e.value}
-              </button>
+              </Button>
             </dd>
           </div>
         ))}
@@ -229,12 +229,18 @@ export function Activity({ activity: { threads, upcoming, past }, onThread }: { 
           <h3 className="pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Recent mail</h3>
           <ul>
             {threads.map((t) => (
-              <li key={t.threadId} className="border-b last:border-0">
-                <button type="button" className="flex w-full gap-2 py-2 text-left text-sm hover:text-primary" onClick={() => (onThread ? onThread(t) : jumpTo({ kind: "thread", id: t.threadId, row: t }))}>
-                  <span className={t.seen ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate font-semibold"}>{t.subject || "(no subject)"}</span>
-                  {t.threadCount > 1 && <span className="shrink-0 text-xs text-muted-foreground tabular-nums" aria-label={`${t.threadCount} messages`}>{t.threadCount}</span>}
-                  <span className="shrink-0 text-xs text-muted-foreground">{shortTime(t.date)}</span>
-                </button>
+              <li key={t.threadId}>
+                <Item size="xs" render={<button type="button" onClick={() => (onThread ? onThread(t) : jumpTo({ kind: "thread", id: t.threadId, row: t }))} />}>
+                  <ItemContent>
+                    <span className={t.seen ? "truncate" : "truncate font-semibold"}>{t.subject || "(no subject)"}</span>
+                  </ItemContent>
+                  <ItemActions>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {t.threadCount > 1 && <span aria-label={`${t.threadCount} messages`}>{t.threadCount} · </span>}
+                      {shortTime(t.date)}
+                    </span>
+                  </ItemActions>
+                </Item>
               </li>
             ))}
           </ul>
