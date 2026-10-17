@@ -435,6 +435,22 @@ fn mailbox(a: &Address) -> Result<Mailbox> {
 }
 
 /// Build the RFC 5322 message for a draft.
+/// Asks for a read receipt (RFC 8098 §2.1). lettre has no type for it.
+#[derive(Debug, Clone)]
+struct DispositionNotificationTo(String);
+
+impl lettre::message::header::Header for DispositionNotificationTo {
+    fn name() -> lettre::message::header::HeaderName {
+        lettre::message::header::HeaderName::new_from_ascii_str("Disposition-Notification-To")
+    }
+    fn parse(s: &str) -> std::result::Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(Self(s.to_string()))
+    }
+    fn display(&self) -> lettre::message::header::HeaderValue {
+        lettre::message::header::HeaderValue::new(Self::name(), self.0.clone())
+    }
+}
+
 pub fn build_message(config: &AccountConfig, draft: &Draft) -> Result<Message> {
     let from = mailbox(&Address { name: Some(config.display_name.clone()), email: config.address.clone() })?;
     // Our own Message-ID, so replies thread on it and the server's Sent copy
@@ -450,6 +466,10 @@ pub fn build_message(config: &AccountConfig, draft: &Draft) -> Result<Message> {
     }
     for cc in &draft.cc {
         b = b.cc(mailbox(cc)?);
+    }
+    if draft.request_receipt {
+        // Just the address: it's what receipts go back to, and it needs no encoding.
+        b = b.header(DispositionNotificationTo(format!("<{}>", config.address.trim())));
     }
     let bracket = |id: &str| format!("<{}>", id.trim().trim_matches(['<', '>']));
     if let Some(parent) = &draft.in_reply_to {
@@ -563,6 +583,30 @@ mod tests {
     }
 
     #[test]
+    fn a_read_receipt_is_asked_for_only_when_wanted() {
+        let mut draft = Draft {
+            account_id: "a".into(),
+            to: vec![Address { name: None, email: "bo@example.com".into() }],
+            cc: vec![],
+            subject: "Hi".into(),
+            body: "x".into(),
+            body_html: None,
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![],
+            calendar: None,
+            follow_up_after: None,
+            request_receipt: false,
+        };
+        let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
+        assert!(!raw.contains("Disposition-Notification-To"));
+        draft.request_receipt = true;
+        let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
+        let line = raw.lines().find(|l| l.starts_with("Disposition-Notification-To:")).expect("the header");
+        assert_eq!(line, format!("Disposition-Notification-To: <{}>", config().address), "receipts go back to the sender's address");
+    }
+
+    #[test]
     fn builds_a_threaded_reply() {
         let draft = Draft {
             account_id: "a".into(),
@@ -576,6 +620,7 @@ mod tests {
             attachments: vec![],
             calendar: None,
             follow_up_after: None,
+            request_receipt: false,
         };
         let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
         assert!(raw.contains("From: Sean <sean@example.com>"));
@@ -604,6 +649,7 @@ mod tests {
             attachments: vec![],
             calendar: None,
             follow_up_after: None,
+            request_receipt: false,
         };
         assert!(matches!(build_message(&config(), &draft), Err(Error::Invalid(_))));
     }
@@ -626,6 +672,7 @@ mod tests {
             }],
             calendar: None,
             follow_up_after: None,
+            request_receipt: false,
         };
         let raw = build_message(&config(), &draft).unwrap().formatted();
         let parsed = crate::mime::parse(&raw).unwrap();
@@ -649,6 +696,7 @@ mod tests {
             attachments: vec![],
             calendar: None,
             follow_up_after: None,
+            request_receipt: false,
         };
         let raw = String::from_utf8(build_message(&config(), &draft).unwrap().formatted()).unwrap();
         assert!(raw.contains("multipart/alternative"));
@@ -684,6 +732,7 @@ mod tests {
             attachments: vec![],
             calendar: Some(crate::CalendarPart { method: "request".into(), ics: "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n".into() }),
             follow_up_after: None,
+            request_receipt: false,
         };
         let raw = build_message(&config(), &draft).unwrap().formatted();
         let text = String::from_utf8_lossy(&raw);

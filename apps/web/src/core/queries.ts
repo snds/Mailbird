@@ -4,7 +4,7 @@ import { useEffect } from "react"
 import { fromBase64 } from "@/lib/base64"
 
 import { getCoreClient, type CoreClient } from "./client"
-import type { CollectionKind, KeyBindings, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
+import type { CollectionKind, KeyBindings, MailPrefs, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -231,6 +231,19 @@ export function useContactLabels() {
 }
 
 /** Your swipe mapping; shared by every browser on the gateway (ADR-0025). */
+/** Mail's power settings (ADR-0055). */
+export function useMailPrefs() {
+  return useQuery({ queryKey: ["settings", "mail"], queryFn: () => call((c) => c.mailPrefs()), staleTime: Infinity })
+}
+
+export function useSetMailPrefs() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: MailPrefs) => call((c) => c.setMailPrefs(p)),
+    onSuccess: (p) => qc.setQueryData(["settings", "mail"], p),
+  })
+}
+
 export function useSwipeActions() {
   return useQuery({ queryKey: ["settings", "swipes"], queryFn: () => call((c) => c.swipeActions()), staleTime: Infinity })
 }

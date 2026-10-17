@@ -202,32 +202,14 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
       </div>
 
       {accounts.length > 0 && (
-        <button
-          type="button"
-          onClick={() => (useUi.getState().setAccountsOpen(false), useUi.getState().setWritingOpen(true))}
-          className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
-        >
-          <Icon name="edit_note" tone="muted" className="size-5" />
-          <span className="flex flex-1 flex-col gap-0.5">
-            <span className="font-medium">Signatures and templates</span>
-            <span className="text-xs text-muted-foreground">What goes at the end of your messages, and text you reuse.</span>
-          </span>
-          <Icon name="chevron_right" tone="muted" className="size-5" />
-        </button>
+        <SettingsRow icon="edit_note" title="Signatures and templates" hint="What goes at the end of your messages, and text you reuse." open={() => useUi.getState().setWritingOpen(true)} />
       )}
 
-      <button
-        type="button"
-        onClick={() => (useUi.getState().setAccountsOpen(false), useUi.getState().setGrammarOpen(true))}
-        className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
-      >
-        <Icon name="swipe" tone="muted" className="size-5" />
-        <span className="flex flex-1 flex-col gap-0.5">
-          <span className="font-medium">Shortcuts and gestures</span>
-          <span className="text-xs text-muted-foreground">What your swipes do, and the keys for everything.</span>
-        </span>
-        <Icon name="chevron_right" tone="muted" className="size-5" />
-      </button>
+      <SettingsRow icon="swipe" title="Shortcuts and gestures" hint="What your swipes do, and the keys for everything." open={() => useUi.getState().setGrammarOpen(true)} />
+
+      {accounts.length > 0 && (
+        <SettingsRow icon="tune" title="Advanced mail settings" hint="Remote images, marking read, how replies quote, read receipts, and how often to check." open={() => useUi.getState().setAdvancedMailOpen(true)} />
+      )}
 
       <MeetingSettingsSection />
 
@@ -487,5 +469,23 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+/** A row that opens a settings dialog of its own, closing this one. */
+function SettingsRow({ icon, title, hint, open }: { icon: IconName; title: string; hint: string; open: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => (useUi.getState().setAccountsOpen(false), open())}
+      className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
+    >
+      <Icon name={icon} tone="muted" className="size-5" />
+      <span className="flex flex-1 flex-col gap-0.5">
+        <span className="font-medium">{title}</span>
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      </span>
+      <Icon name="chevron_right" tone="muted" className="size-5" />
+    </button>
   )
 }

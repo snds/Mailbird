@@ -1,3 +1,4 @@
+import type { ComposerDraft } from "@/app/ui-store"
 import type { Address, Draft, MessageDetail } from "@/core/types"
 import { longTime } from "@/lib/time"
 
@@ -31,23 +32,31 @@ export function parseRecipients(text: string): Address[] {
 export const formatRecipients = (list: Address[] = []) =>
   list.map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(", ")
 
-export function replyDraft(m: MessageDetail): Partial<Draft> {
+/** How replies quote (ADR-0055): with the message or without, above it or below. */
+export interface ReplyStyle {
+  quote: boolean
+  replyBelow: boolean
+}
+
+export function replyDraft(m: MessageDetail, style: ReplyStyle = { quote: true, replyBelow: false }): ComposerDraft {
   const quoted = m.bodyText
     .split("\n")
     .map((l) => `> ${l}`)
     .join("\n")
   const intro = `On ${longTime(m.date)}, ${displayName(m.from)} wrote:`
-  return {
+  // The quote is rebuilt from the text part: the sender's HTML is untrusted
+  // and the editor's schema would drop most of it anyway.
+  const quoteHtml = `<p>${escapeHtml(intro)}</p><blockquote>${textToHtml(m.bodyText.trimEnd())}</blockquote>`
+  const head = {
     accountId: m.accountId,
     to: [m.from],
     subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
-    body: `\n\n${intro}\n${quoted}`,
-    // The quote is rebuilt from the text part: the sender's HTML is untrusted
-    // and the editor's schema would drop most of it anyway.
-    bodyHtml: `<p></p><p>${escapeHtml(intro)}</p><blockquote>${textToHtml(m.bodyText.trimEnd())}</blockquote>`,
     inReplyTo: m.messageId,
     references: m.references,
   }
+  if (!style.quote) return { ...head, body: "", bodyHtml: "<p></p>" }
+  if (style.replyBelow) return { ...head, body: `${intro}\n${quoted}\n\n`, bodyHtml: `${quoteHtml}<p></p>`, cursorAfterQuote: true }
+  return { ...head, body: `\n\n${intro}\n${quoted}`, bodyHtml: `<p></p>${quoteHtml}` }
 }
 
 /** The message a Reply answers: the newest one you didn't send yourself. */

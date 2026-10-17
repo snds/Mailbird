@@ -8,6 +8,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# This computer's name, for the identity's device record (ADR-0055). MIT.
+hostname = "0.4"
 pim-core = { path = "../core" }
 # The shared identity: the locked-notes key is wrapped under it (ADR-0051).
 # Extracted to its own repository (ADR-0049); pinned by commit, bumped on purpose.

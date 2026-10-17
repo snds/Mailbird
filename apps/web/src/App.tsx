@@ -12,6 +12,7 @@ import { APP_JUMP_KEY } from "@/lib/app-jump"
 import { AccountsDialog } from "@/features/accounts"
 import { CommandPalette } from "@/features/command-palette"
 import { WritingDialog } from "@/features/writing-settings"
+import { AdvancedMailDialog } from "@/features/advanced-mail"
 import { GatewayGate } from "@/features/gateway-sign-in"
 import { BookingPage, ManageBookingPage } from "@/features/booking/page"
 import { CalendarView } from "@/features/calendar"
@@ -73,6 +74,7 @@ function Root() {
       <QuickNote />
       <AccountsDialog />
       <WritingDialog />
+      <AdvancedMailDialog />
       <CommandPalette
         onCreate={{
           mail: () => (setActive("mail"), openComposer()),

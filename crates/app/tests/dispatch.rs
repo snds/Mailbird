@@ -100,6 +100,13 @@ async fn every_command_routes_and_works() {
     let back = json_of(dispatch(&app, &state, "note_backlinks", json!({ "id": note["id"] })).await.unwrap());
     assert_eq!(back[0]["id"], other["id"]);
     assert_eq!(json_of(dispatch(&app, &state, "find_note", json!({ "title": "HELLO" })).await.unwrap()), note["id"]);
+    // Mail's power settings (ADR-0055): private defaults, saved as set, intervals snapped.
+    let prefs = json_of(dispatch(&app, &state, "mail_prefs", Value::Null).await.unwrap());
+    assert_eq!(prefs, json!({ "images": "ask", "markRead": "open", "quote": true, "replyBelow": false, "checkMinutes": 2, "requestReceipts": false }));
+    let set = json!({ "images": "contacts", "markRead": "delay", "quote": false, "replyBelow": true, "checkMinutes": 7, "requestReceipts": true });
+    let saved = json_of(dispatch(&app, &state, "set_mail_prefs", json!({ "prefs": set })).await.unwrap());
+    assert_eq!((saved["checkMinutes"].clone(), saved["images"].clone()), (json!(5), json!("contacts")));
+    assert_eq!(json_of(dispatch(&app, &state, "mail_prefs", Value::Null).await.unwrap()), saved);
     // The menu bar (ADR-0054): on by default, it follows its prefs, and the
     // host is told; "Open Mailbird" reaches the host with its jump.
     assert_eq!(json_of(dispatch(&app, &state, "menu_bar_prefs", Value::Null).await.unwrap()), json!({ "enabled": true, "showNext": true }));

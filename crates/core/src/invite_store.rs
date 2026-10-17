@@ -214,6 +214,7 @@ impl Store {
             attachments: vec![],
             calendar: Some(CalendarPart { method: method.to_string(), ics }),
             follow_up_after: None,
+            request_receipt: false,
         };
         // No undo window: answers and invitations leave with the next pass.
         self.queue_send(&draft, 0, None)?;

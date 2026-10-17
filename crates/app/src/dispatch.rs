@@ -160,6 +160,8 @@ pub const COMMANDS: &[&str] = &[
     "note_backlinks",
     "note_graph",
     "menu_bar_prefs",
+    "mail_prefs",
+    "set_mail_prefs",
     "set_menu_bar_prefs",
     "menu_bar_state",
     "show_app",
@@ -607,6 +609,12 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             Output::json(notes_commands::restore_note(app.clone(), state, id)?)
         }
         "note_tags" => Output::json(notes_commands::note_tags(state)?),
+        // Mail's power settings (ADR-0055).
+        "mail_prefs" => Output::json(crate::commands::with_store(state, |s| s.mail_prefs())?),
+        "set_mail_prefs" => {
+            args!(args, prefs: pim_core::MailPrefs);
+            Output::json(crate::commands::with_store(state, |s| s.set_mail_prefs(&prefs))?)
+        }
         // The menu-bar mini calendar (ADR-0054).
         "menu_bar_prefs" => Output::json(crate::menu_bar::prefs(state)?),
         "set_menu_bar_prefs" => {

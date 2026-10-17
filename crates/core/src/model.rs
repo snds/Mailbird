@@ -478,6 +478,10 @@ pub struct Draft {
     /// nobody has replied by then.
     #[serde(default)]
     pub follow_up_after: Option<i64>,
+    /// Ask for a read receipt (`Disposition-Notification-To`, RFC 8098).
+    /// The recipient's app decides whether to send one (ADR-0055).
+    #[serde(default)]
+    pub request_receipt: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

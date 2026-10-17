@@ -72,6 +72,9 @@ interface UiState {
   setWritingOpen: (open: boolean) => void
   /** Shortcuts and gestures: the key list and your swipes. */
   grammarOpen: boolean
+  /** Mail's power settings (ADR-0055). */
+  advancedMailOpen: boolean
+  setAdvancedMailOpen: (open: boolean) => void
   setGrammarOpen: (open: boolean) => void
   /** The ⌘K command menu. */
   paletteOpen: boolean
@@ -103,7 +106,11 @@ interface UiState {
 }
 
 /** A draft for the composer; `sendAt` reopens a scheduled message with its time. */
-export type ComposerDraft = Partial<Draft> & { sendAt?: number | null }
+export type ComposerDraft = Partial<Draft> & {
+  sendAt?: number | null
+  /** A bottom-posted reply: the cursor starts below the quote (ADR-0055). */
+  cursorAfterQuote?: boolean
+}
 
 export const useUi = create<UiState>((set, get) => ({
   vertical: "mail",
@@ -135,6 +142,8 @@ export const useUi = create<UiState>((set, get) => ({
   writingOpen: false,
   setWritingOpen: (writingOpen) => set({ writingOpen }),
   grammarOpen: false,
+  advancedMailOpen: false,
+  setAdvancedMailOpen: (advancedMailOpen) => set({ advancedMailOpen }),
   setGrammarOpen: (grammarOpen) => set({ grammarOpen }),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
