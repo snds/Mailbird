@@ -25,7 +25,9 @@ import { UnsubscribeAction } from "./unsubscribe"
 import { CATEGORIES } from "./lanes"
 import { useSenderActions } from "./sender-actions"
 import type { Category } from "@/core/types"
-import { useAiReady, useContactPhotos, useMailAction, useMailPrefs } from "@/core/queries"
+import { useAiReady, useContactPhotos, useMailAction, useMailPrefs, useThreadShare } from "@/core/queries"
+import { ShareThreadDialog } from "../team/share-thread-dialog"
+import { OwnerTeamPanel } from "../team/owner-team-panel"
 import { SuggestedRepliesRow, SummaryCard } from "./ai-assist"
 import { useSuggestedReplies, useThreadSummary } from "./use-ai-assist"
 import { useNowSecs } from "@/hooks/use-now"
@@ -204,6 +206,9 @@ export function ConversationView({
   const cancelFollowUp = useMailAction<string>((c, threadId) => c.cancelFollowUp(threadId))
   // Quick Note links to the conversation that's open (ADR-0037).
   useQuickContext(row ? { kind: "thread", id: row.threadId, label: row.subject || "(no subject)" } : null)
+  // Shared with teammates (ADR-0060): the toolbar's share button, and the team panel below.
+  const { data: teamShare } = useThreadShare(row?.threadId ?? null)
+  const [sharing, setSharing] = useState(false)
   // Opt-in AI (ADR-0059): asked for here, per conversation, and forgotten on leaving it.
   const aiReady = useAiReady()
   const summary = useThreadSummary(row?.threadId ?? "")
@@ -265,6 +270,7 @@ export function ConversationView({
         </div>
         <div className="-mr-2 flex shrink-0 items-center">
           {aiReady && <ToolbarButton icon="summarize" label="Summarize" active={!summary.isIdle} onClick={() => (summary.isIdle || summary.isError ? summary.mutate() : summary.reset())} />}
+          <ToolbarButton icon={teamShare ? "group" : "group_add"} label={teamShare ? "Shared with teammates" : "Share with teammates"} active={!!teamShare} onClick={() => setSharing(true)} />
           {other && <AboutSender from={other} threadId={row.threadId} onOpenThread={onOpenThread} />}
           <ToolbarButton icon={row.archived ? "unarchive" : "archive"} label={row.archived ? "Move to Inbox" : "Archive"} shortcut="E" onClick={() => triage.toggleArchive(row)} />
           {snoozed ? (
@@ -374,6 +380,8 @@ export function ConversationView({
         <MessageCard key={m.id} message={m} expanded={open.has(m.id)} onToggle={() => toggle(m.id)} accountAddress={account?.address} />
       ))}
 
+      {teamShare && <OwnerTeamPanel share={teamShare} onUseReply={(html) => openComposer(replyDraft(target, { quote: mailPrefs?.quote ?? true, replyBelow: mailPrefs?.replyBelow ?? false, openingHtml: html }))} />}
+
       <div className="flex gap-2 pt-2">
         <Button variant="outline" onClick={() => openComposer(replyDraft(target, { quote: mailPrefs?.quote ?? true, replyBelow: mailPrefs?.replyBelow ?? false }))}>
           <Icon name="reply" data-icon="inline-start" /> Reply
@@ -388,6 +396,7 @@ export function ConversationView({
         )}
       </div>
       <SuggestedRepliesRow replies={replies} onPick={(opening) => openComposer(replyDraft(target, { quote: mailPrefs?.quote ?? true, replyBelow: mailPrefs?.replyBelow ?? false, opening }))} />
+      <ShareThreadDialog threadId={row.threadId} subject={subject} open={sharing} onOpenChange={setSharing} />
       <div className="pt-4">
         <LinkedNotes target={{ kind: "thread", id: row.threadId }} title={subject} />
       </div>

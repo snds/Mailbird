@@ -17,6 +17,7 @@ import { CATEGORIES, LANES, type MailTab } from "./lanes"
 import { useSenderActions } from "./sender-actions"
 import { displayName, initials } from "./format"
 import { ScheduledList } from "./scheduled-list"
+import { TeamList, TeamThreadView } from "../team/team-view"
 import { BundleRow, SplitChips } from "./splits"
 import { SwipeRow } from "./swipe-row"
 import { useMailVerbs } from "./vocabulary"
@@ -26,7 +27,10 @@ export function MailView() {
   // In the UI store, so the command menu can switch it.
   const tab = useUi((s) => s.mailTab)
   const setTab = useUi((s) => s.setMailTab)
-  const lane: Lane = tab === "scheduled" ? "inbox" : tab
+  const lane: Lane = tab === "scheduled" || tab === "team" ? "inbox" : tab
+  // Mail → Team (ADR-0060): shared conversations open in their own view.
+  const teamOpen = useUi((s) => s.teamOpen)
+  const setTeamOpen = useUi((s) => s.setTeamOpen)
   // People / Updates / Newsletters chips filter the inbox.
   const category = useUi((s) => s.mailCategory)
   const setCategory = useUi((s) => s.setMailCategory)
@@ -110,7 +114,7 @@ export function MailView() {
     <MasterDetail
       emptyIcon="mail"
       emptyLabel="Choose a conversation to read it here."
-      onBack={() => setSelected(null)}
+      onBack={() => (tab === "team" ? setTeamOpen(null) : setSelected(null))}
       header={
         <>
           <PaneHeader title={accountId ? (accounts.find((a) => a.id === accountId)?.displayName ?? "Inbox") : "All inboxes"}>
@@ -204,6 +208,8 @@ export function MailView() {
       list={
         tab === "scheduled" ? (
           <ScheduledList />
+        ) : tab === "team" ? (
+          <TeamList />
         ) : isPending ? (
           <ListSkeleton />
         ) : accounts.length === 0 ? (
@@ -271,7 +277,9 @@ export function MailView() {
         )
       }
       detail={
-        selectedId && (
+        tab === "team" ? (
+          teamOpen && <TeamThreadView key={teamOpen} id={teamOpen} />
+        ) : selectedId && (
           <ConversationView
             key={selectedId}
             row={row}

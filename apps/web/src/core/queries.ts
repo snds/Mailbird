@@ -102,6 +102,7 @@ export function useCoreEvents() {
         void qc.invalidateQueries({ queryKey: ["notes"], predicate: (q) => q.queryKey[1] !== "note" && !(q.queryKey[1] === "file" && q.state.status === "success") }),
       ),
       core.on("compose:changed", () => void qc.invalidateQueries({ queryKey: ["compose"] })),
+      core.on("team:changed", () => void qc.invalidateQueries({ queryKey: ["team"] })),
     ]
     // All-day events sit on the device clock; tell the core which one that is.
     void core.setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone).then(() => qc.invalidateQueries({ queryKey: ["pim"] }))
@@ -242,6 +243,16 @@ export function useSetMailPrefs() {
     mutationFn: (p: MailPrefs) => call((c) => c.setMailPrefs(p)),
     onSuccess: (p) => qc.setQueryData(["settings", "mail"], p),
   })
+}
+
+/** Conversations shared with teammates (ADR-0060). */
+export function useTeamThreads() {
+  return useQuery({ queryKey: ["team", "list"], queryFn: () => call((c) => c.teamThreads()) })
+}
+
+/** Your share of this conversation, if it's shared now. */
+export function useThreadShare(threadId: string | null) {
+  return useQuery({ queryKey: ["team", "thread", threadId], queryFn: () => call((c) => c.threadShare(threadId!)), enabled: !!threadId })
 }
 
 /** Opt-in AI's settings (ADR-0059). */

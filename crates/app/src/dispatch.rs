@@ -164,6 +164,14 @@ pub const COMMANDS: &[&str] = &[
     "menu_bar_prefs",
     "mail_prefs",
     "set_mail_prefs",
+    "team_threads",
+    "thread_share",
+    "share_thread",
+    "join_team_thread",
+    "stop_team_thread",
+    "remove_team_thread",
+    "team_doc",
+    "save_team_doc",
     "ai_settings",
     "set_ai_prefs",
     "set_ai_key",
@@ -630,6 +638,36 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "set_mail_prefs" => {
             args!(args, prefs: pim_core::MailPrefs);
             Output::json(crate::commands::with_store(state, |s| s.set_mail_prefs(&prefs))?)
+        }
+        // Conversations shared with teammates (ADR-0060).
+        "team_threads" => Output::json(crate::team_commands::team_threads(state)?),
+        "thread_share" => {
+            args!(args, thread_id: String);
+            Output::json(crate::team_commands::thread_share(state, thread_id)?)
+        }
+        "share_thread" => {
+            args!(args, thread_id: String);
+            Output::json(crate::team_commands::share_thread(app.clone(), state, thread_id)?)
+        }
+        "join_team_thread" => {
+            args!(args, link: pim_core::TeamLink);
+            Output::json(crate::team_commands::join_team_thread(app.clone(), state, link)?)
+        }
+        "stop_team_thread" => {
+            args!(args, id: String);
+            Output::json(crate::team_commands::stop_team_thread(app.clone(), state, id)?)
+        }
+        "remove_team_thread" => {
+            args!(args, id: String);
+            Output::json(crate::team_commands::remove_team_thread(app.clone(), state, id)?)
+        }
+        "team_doc" => {
+            args!(args, id: String);
+            Output::json(crate::team_commands::team_doc(state, id)?)
+        }
+        "save_team_doc" => {
+            args!(args, id: String, ydoc: String, title: Option<String>);
+            Output::json(crate::team_commands::save_team_doc(app.clone(), state, id, ydoc, title)?)
         }
         // Opt-in AI (ADR-0059).
         "ai_settings" => Output::json(crate::ai_commands::ai_settings(state)?),

@@ -90,6 +90,11 @@ interface UiState {
   closeQuickNote: () => void
   /** The mail tab: a lane, or "scheduled". Back to the inbox when you leave Mail. */
   mailTab: MailTab
+  /** The shared conversation open in Mail's Team tab (ADR-0060). */
+  teamOpen: string | null
+  setTeamOpen: (id: string | null) => void
+  /** Opens a shared conversation in Mail → Team. */
+  showTeam: (id: string) => void
   setMailTab: (tab: MailTab) => void
   /** Open Mail on a tab (from the command menu), optionally searching. */
   showMailTab: (tab: MailTab, search?: string) => void
@@ -157,6 +162,9 @@ export const useUi = create<UiState>((set, get) => ({
   openQuickNote: (target) => set((s) => ({ quickNote: { target: target === undefined ? s.quickContext : target }, paletteOpen: false })),
   closeQuickNote: () => set({ quickNote: null }),
   mailTab: "inbox",
+  teamOpen: null,
+  setTeamOpen: (teamOpen) => set({ teamOpen }),
+  showTeam: (teamOpen) => set({ vertical: "mail", mailTab: "team", teamOpen, mailSearch: "", mailCategory: null, mailSplit: null, jump: null, openNote: null }),
   setMailTab: (mailTab) => set({ mailTab }),
   showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
   mailCategory: null,

@@ -22,6 +22,8 @@ import type {
   SwipeActions,
   MailPrefs,
   AiPrefs,
+  TeamLink,
+  TeamThread,
   AiProvider,
   AiSettings,
   SuggestedReplies,
@@ -174,6 +176,16 @@ export interface CoreClient {
   /** Mail's power settings (ADR-0055). */
   mailPrefs(): Promise<MailPrefs>
   setMailPrefs(prefs: MailPrefs): Promise<MailPrefs>
+  /** Conversations shared with teammates (ADR-0060). */
+  teamThreads(): Promise<TeamThread[]>
+  threadShare(threadId: string): Promise<TeamThread | null>
+  shareThread(threadId: string): Promise<TeamThread>
+  joinTeamThread(link: TeamLink): Promise<TeamThread>
+  stopTeamThread(id: string): Promise<TeamThread>
+  removeTeamThread(id: string): Promise<void>
+  /** The shared document's last saved state (base64 Yjs). */
+  teamDoc(id: string): Promise<string | null>
+  saveTeamDoc(id: string, ydoc: string, title: string | null): Promise<TeamThread>
   /** Opt-in AI (ADR-0059). Keys go to the keychain (or the gateway's sealed store) and never come back. */
   aiSettings(): Promise<AiSettings>
   setAiPrefs(prefs: AiPrefs): Promise<AiSettings>
@@ -353,7 +365,7 @@ export interface CoreClient {
   on(event: CoreEvent, handler: (payload?: unknown) => void): () => void
 }
 
-export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "compose:changed" | "reminder" | "app:jump"
+export type CoreEvent = "mail:changed" | "outbox:changed" | "accounts:changed" | "pim:changed" | "notes:changed" | "compose:changed" | "team:changed" | "reminder" | "app:jump"
 
 /** What the mini calendar asks the main window to open (ADR-0054): an event, or a new one. */
 export type AppJump = { kind: "event"; id: string; start: number } | { kind: "newEvent" }
@@ -413,6 +425,14 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     interestingCalendars: () => call("interesting_calendars"),
     mailPrefs: () => call("mail_prefs"),
     setMailPrefs: (prefs) => call("set_mail_prefs", { prefs }),
+    teamThreads: () => call("team_threads"),
+    threadShare: (threadId) => call("thread_share", { threadId }),
+    shareThread: (threadId) => call("share_thread", { threadId }),
+    joinTeamThread: (link) => call("join_team_thread", { link }),
+    stopTeamThread: (id) => call("stop_team_thread", { id }),
+    removeTeamThread: (id) => call("remove_team_thread", { id }),
+    teamDoc: (id) => call("team_doc", { id }),
+    saveTeamDoc: (id, ydoc, title) => call("save_team_doc", { id, ydoc, title }),
     aiSettings: () => call("ai_settings"),
     setAiPrefs: (prefs) => call("set_ai_prefs", { prefs }),
     setAiKey: (provider, key) => call("set_ai_key", { provider, key }),
@@ -655,7 +675,7 @@ function createGatewayClient(): CoreClient {
   // One event stream for the whole page; handlers subscribe by name.
   const handlers = new Map<string, Set<(payload?: unknown) => void>>()
   const stream = new EventSource("/api/events", { withCredentials: true })
-  const names: (CoreEvent | "open-url")[] = ["mail:changed", "outbox:changed", "accounts:changed", "pim:changed", "notes:changed", "compose:changed", "reminder", "open-url"]
+  const names: (CoreEvent | "open-url")[] = ["mail:changed", "outbox:changed", "accounts:changed", "pim:changed", "notes:changed", "compose:changed", "team:changed", "reminder", "open-url"]
   for (const name of names) {
     stream.addEventListener(name, (e) => {
       const data = (e as MessageEvent<string>).data

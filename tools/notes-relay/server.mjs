@@ -5,7 +5,8 @@
 // kept as Yjs state files in NOTES_RELAY_DATA, so a device that was offline
 // catches up later. One token per relay; every device uses the same one.
 //
-// Shared notes (ADR-0056): a note shared by link lives in its own document,
+// Shared notes (ADR-0056), and conversations shared with teammates (ADR-0060,
+// same kind of link): a note shared by link lives in its own document,
 // "mailbird/shared/<id>". Whoever holds the link gets a share token for
 // that one document: an HMAC of its id under the relay token, so the relay
 // keeps no list of tokens. The owner's devices keep the list of shares (and
@@ -80,7 +81,7 @@ const server = new Server({
     const id = SHARED.exec(documentName)?.[1]
     if (!id || !same(given ?? "", shareToken(token, id))) throw new Error("wrong token")
     const share = (await shares(instance)).get(id)
-    if (!share || share.revoked) throw new Error("this note isn't shared any more")
+    if (!share || share.revoked) throw new Error("this isn't shared any more")
     if (share.mode !== "edit") connectionConfig.readOnly = true
     return { share: id }
   },
@@ -119,10 +120,10 @@ const server = new Server({
 })
 
 const SHARE_PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>A shared note</title>
+<title>Shared with you in Mailbird</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1.5rem;color:#1a1c1f}@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}</style>
-<h1>Someone shared a note with you</h1>
-<p>It opens in Mailbird. In Notes, choose <b>Open a shared note…</b> and paste this page's address. If the link came in a message in Mailbird, open it from there.</p>`
+<h1>Someone shared something with you</h1>
+<p>It opens in Mailbird. A note: in Notes, choose <b>Open a shared note…</b> and paste this page's address. A conversation: in Mail, open <b>Team</b> and choose <b>Open a link…</b>. If the link came in a message in Mailbird, open it from there.</p>`
 
 await server.listen()
 console.log(`Notes relay on ws://${address}:${port} · data in ${data}`)

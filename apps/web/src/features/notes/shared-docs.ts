@@ -35,7 +35,7 @@ export const useLiveShareModes = create<Record<string, ShareMode>>(() => ({}))
  * (the link turned view-only, or was stopped) while the socket stays up:
  * rejoining is how a guest becomes a reader, or learns the link is gone.
  */
-function rejoining(socket: HocuspocusProviderWebsocket, name: string, doc: Y.Doc, token: string, on: { synced?: () => void; denied: () => void }) {
+export function rejoining(socket: HocuspocusProviderWebsocket, name: string, doc: Y.Doc, token: string, on: { synced?: () => void; denied: () => void }) {
   let p: HocuspocusProvider
   let gone = false
   const join = () => {

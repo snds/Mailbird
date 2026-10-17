@@ -20,6 +20,7 @@ pub mod oauth_commands;
 pub mod pim_commands;
 pub mod push;
 pub mod secrets;
+pub mod team_commands;
 pub mod workers;
 
 use std::{
@@ -98,4 +99,6 @@ pub mod events {
     pub const NOTES_CHANGED: &str = "notes:changed";
     /// Templates or signatures changed.
     pub const COMPOSE_CHANGED: &str = "compose:changed";
+    /// Shared conversations changed: shared, joined, stopped, or a document saved.
+    pub const TEAM_CHANGED: &str = "team:changed";
 }

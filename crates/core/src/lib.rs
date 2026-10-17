@@ -49,6 +49,8 @@ mod notes_store;
 mod note_folders;
 mod notes_lock;
 mod note_shares;
+mod team_threads;
+pub use team_threads::{TeamLink, TeamThread};
 mod note_files;
 mod sketch;
 pub use note_files::{MAX_NOTE_FILE, NOTE_FILE_SCHEME, NoteFile, NoteFileData, mime_ext, note_file_ids};
