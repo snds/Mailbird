@@ -1,10 +1,11 @@
 {
-  "dsaVersion": "0.1.0",
-  "updatedAt": "2026-10-17T04:15:49.410Z",
+  "dsaVersion": "0.2.0",
+  "updatedAt": "2026-10-17T04:56:02.355Z",
   "counts": {
-    "classNameOverrides": 235,
+    "classNameOverrides": 228,
     "styleOverrides": 2,
     "spreadProps": 0,
-    "lookAlikes": 0
+    "lookAlikes": 0,
+    "rawElements": 19
   }
 }

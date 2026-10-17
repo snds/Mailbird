@@ -51,13 +51,18 @@ export function TasksPanel({ onOpen }: { onOpen: (eventId: string, start: number
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate">{t.text}</span>
             {t.planned ? (
-              <button type="button" className="flex items-center gap-1 text-left text-xs text-vertical-calendar hover:underline" onClick={() => onOpen(t.planned!.eventId, t.planned!.start)}>
-                <Icon name="event_available" className="size-3.5" /> {when(t.planned.start)}
-              </button>
+              <span className="text-xs">
+                {/* In the calendar's hue: it's on the calendar now. */}
+                <Button variant="link" size="inline" className="text-vertical-calendar" onClick={() => onOpen(t.planned!.eventId, t.planned!.start)}>
+                  <Icon name="event_available" /> {when(t.planned.start)}
+                </Button>
+              </span>
             ) : (
-              <button type="button" className="truncate text-left text-xs text-muted-foreground hover:underline" onClick={() => useUi.getState().jumpTo({ kind: "note", id: t.noteId })}>
-                {t.noteTitle || "Untitled note"}
-              </button>
+              <span className="truncate text-xs">
+                <Button variant="link" size="inline" className="text-muted-foreground" onClick={() => useUi.getState().jumpTo({ kind: "note", id: t.noteId })}>
+                  {t.noteTitle || "Untitled note"}
+                </Button>
+              </span>
             )}
           </div>
           <Button size="icon-sm" variant="ghost" aria-label={`${t.planned ? "Plan again" : "Plan"}: ${t.text}`} onClick={() => setPlanning(t)}>

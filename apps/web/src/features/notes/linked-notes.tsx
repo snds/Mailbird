@@ -1,5 +1,5 @@
 import { useUi } from "@/app/ui-store"
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, Item, ItemActions, ItemContent, ItemMedia } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLinkedNotes } from "@/core/queries"
 import type { NoteTarget } from "@/core/types"
@@ -41,12 +41,18 @@ export function LinkedNotes({ target, title }: { target: NoteTarget; title: stri
       ) : (
         <ul className="flex flex-col">
           {notes.map((n) => (
-            <li key={n.id} className="border-b last:border-0">
-              <button type="button" className="flex w-full items-center gap-2 py-2 text-left text-sm hover:text-foreground" onClick={() => jumpTo({ kind: "note", id: n.id })}>
-                <Icon name="stylus_note" className="size-4 text-vertical-notes" />
-                <span className="min-w-0 flex-1 truncate">{n.title || "New note"}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{shortTime(n.updated)}</span>
-              </button>
+            <li key={n.id}>
+              <Item size="xs" render={<button type="button" onClick={() => jumpTo({ kind: "note", id: n.id })} />}>
+                <ItemMedia>
+                  <Icon name="stylus_note" className="text-vertical-notes" />
+                </ItemMedia>
+                <ItemContent>
+                  <span className="truncate">{n.title || "New note"}</span>
+                </ItemContent>
+                <ItemActions>
+                  <span className="text-xs text-muted-foreground">{shortTime(n.updated)}</span>
+                </ItemActions>
+              </Item>
             </li>
           ))}
         </ul>

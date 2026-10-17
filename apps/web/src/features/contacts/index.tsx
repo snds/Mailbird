@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useState } from "react"
 
 import { pendingJump, useUi } from "@/app/ui-store"
 
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
 import { ListRow, SearchField } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { useAccounts, useCollections, useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
@@ -105,21 +105,22 @@ export function ContactsView() {
       list={
         <div role="list" aria-label="Contacts">
           {dupes.length > 0 && !query && !active && !activeGroup && (
-            <button
-              type="button"
-              onClick={() => setSelected({ kind: "duplicates" })}
-              data-selected={selected?.kind === "duplicates"}
-              className="mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-xl bg-muted/70 px-3 py-2.5 text-left text-sm hover:bg-muted data-[selected=true]:bg-surface-selected"
-            >
-              <Icon name="group" className="size-5 text-vertical-contacts" />
-              <span className="flex-1">
-                <span className="font-medium">
-                  {dupes.length} possible duplicate{dupes.length === 1 ? "" : "s"}
-                </span>
-                <span className="block text-xs text-muted-foreground">Review and merge</span>
-              </span>
-              <Icon name="chevron_right" tone="muted" className="size-4" />
-            </button>
+            <div className="px-3 pb-2">
+              <Item variant="muted" render={<button type="button" data-selected={selected?.kind === "duplicates"} onClick={() => setSelected({ kind: "duplicates" })} />}>
+                <ItemMedia>
+                  <Icon name="group" className="text-vertical-contacts" />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>
+                    {dupes.length} possible duplicate{dupes.length === 1 ? "" : "s"}
+                  </ItemTitle>
+                  <ItemDescription>Review and merge</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <Icon name="chevron_right" tone="muted" />
+                </ItemActions>
+              </Item>
+            </div>
           )}
           {!isPending && contacts.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">
@@ -150,17 +151,18 @@ export function ContactsView() {
             </section>
           ))}
           {gone.length > 0 && !query && !active && !activeGroup && (
-            <button
-              type="button"
-              onClick={() => setSelected({ kind: "deleted" })}
-              data-selected={selected?.kind === "deleted"}
-              className="mx-3 my-3 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted data-[selected=true]:bg-surface-selected"
-            >
-              <Icon name="delete" className="size-5" />
-              <span className="flex-1">Recently deleted</span>
-              <span className="tabular-nums">{gone.length}</span>
-              <Icon name="chevron_right" className="size-4" />
-            </button>
+            <div className="p-3 text-muted-foreground">
+              <Item render={<button type="button" data-selected={selected?.kind === "deleted"} onClick={() => setSelected({ kind: "deleted" })} />}>
+                <ItemMedia>
+                  <Icon name="delete" />
+                </ItemMedia>
+                <ItemContent>Recently deleted</ItemContent>
+                <ItemActions>
+                  <span className="tabular-nums">{gone.length}</span>
+                  <Icon name="chevron_right" />
+                </ItemActions>
+              </Item>
+            </div>
           )}
         </div>
       }

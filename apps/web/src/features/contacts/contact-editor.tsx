@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { useUi, type ContactEditorState } from "@/app/ui-store"
 import { EditorFrame, EditorHeader } from "@/components/editor-frame"
-import { Icon, Button, NativeSelect, NativeSelectOption, IconButton } from "@unicron/ui"
+import { Icon, Button, NativeSelect, NativeSelectOption, Chip, ChipRemove } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContactLabels, usePimAction } from "@/core/queries"
 import type { ContactField, ContactInput } from "@/core/types"
@@ -80,10 +80,10 @@ function LabelField({ values, onChange }: { values: string[]; onChange: (v: stri
     <div className="flex min-h-12 flex-wrap items-center gap-1.5 border-b px-4 py-2" role="group" aria-label="Labels">
       <span className="w-24 shrink-0 text-sm text-muted-foreground">Labels</span>
       {values.map((l) => (
-        <span key={l} className="inline-flex h-7 items-center gap-0.5 rounded-full bg-muted pr-0.5 pl-2.5 text-xs font-medium">
+        <Chip key={l}>
           {l}
-          <IconButton label={`Remove label ${l}`} icon="close" render={<Button variant="ghost-muted" size="icon-xs" shape="pill" />} onClick={() => onChange(values.filter((v) => v !== l))} />
-        </span>
+          <ChipRemove label={`Remove label ${l}`} onClick={() => onChange(values.filter((v) => v !== l))} />
+        </Chip>
       ))}
       <input
         className="h-8 min-w-24 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"

@@ -278,7 +278,7 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
         {(n.tags.length > 0 || n.links.length > 0 || n.remindAt) && (
           <span className="flex flex-wrap items-center gap-1 pt-0.5 text-xs text-foreground/70">
             {n.remindAt && (
-              <span data-slot="note-reminder" className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-foreground/8 px-2 py-0.5", due && "font-medium text-foreground")}>
+              <span data-role="note-reminder" className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-foreground/8 px-2 py-0.5", due && "font-medium text-foreground")}>
                 <Icon name={due ? "notifications_active" : "schedule"} fill={due} className="size-3.5" />
                 {due ? `Due · ${reminderLabel(n.remindAt)}` : reminderLabel(n.remindAt)}
               </span>

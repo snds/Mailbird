@@ -63,7 +63,7 @@ Primitives and core tokens come from [unicron](https://github.com/snds/unicron),
 
 Components come from shadcn/ui through unicron's Material Symbols transform (`pnpm regen` in unicron; see its `tools/shadcn-material/README.md`).
 
-Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratchet` (CI fails if misuse of unicron components grows past `.dsa/baseline.json`). `pnpm ds:raw-buttons` does the same for plain `<button>`s, which bypass the system and so never show up in the scan: CI fails when a file gains one, and `.dsa/raw-buttons.json` says why each one left is there ([ADR-0057](docs/decisions/0057-raw-button-sweep.md)).
+Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratchet` (CI fails if misuse of unicron components grows past `.dsa/baseline.json`). The ratchet also counts plain `<button>`s, which bypass the system (dsa's `rawElements`, [ADR-0058](docs/decisions/0058-ds-additions-adopted.md)). The ones left are whole surfaces, like calendar cells and cards, and the ADR says why each stays.
 
 ## Roadmap
 

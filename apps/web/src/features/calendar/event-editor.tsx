@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { useUi, type EventEditorState } from "@/app/ui-store"
 import { EditorFrame, EditorHeader } from "@/components/editor-frame"
-import { Icon, Button, NativeSelect, NativeSelectOption, Switch, IconButton } from "@unicron/ui"
+import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove } from "@unicron/ui"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
 import type { EventInput, Repeat } from "@/core/types"
 import { meetingInfo, meetingLink } from "@/lib/meeting-info"
@@ -280,10 +280,10 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
           <span className={label}>Remind me</span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
             {reminders.map((m) => (
-              <span key={m} className="flex h-7 items-center gap-0.5 rounded-full bg-muted pr-0.5 pl-2.5 text-xs">
+              <Chip key={m}>
                 {reminderLabel(m, allDay)}
-                <IconButton label={`Remove reminder ${reminderLabel(m, allDay)}`} icon="close" render={<Button variant="ghost-muted" size="icon-xs" shape="pill" />} onClick={() => setReminders(reminders.filter((x) => x !== m))} />
-              </span>
+                <ChipRemove label={`Remove reminder ${reminderLabel(m, allDay)}`} onClick={() => setReminders(reminders.filter((x) => x !== m))} />
+              </Chip>
             ))}
             <NativeSelect
               size="sm"
