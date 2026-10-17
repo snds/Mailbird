@@ -36,7 +36,7 @@ pub const ARCHIVE: &str = "Archive";
 /// `sync_state` key for an account's JMAP state (account-wide, not per mailbox).
 const JMAP_STATE: &str = "*jmap";
 
-const SCHEMA_VERSION: i64 = 22;
+const SCHEMA_VERSION: i64 = 23;
 
 /// Version 1: the Phase 1 schema.
 const SCHEMA_V1: &str = r#"
@@ -270,6 +270,9 @@ impl Store {
         }
         if version < 22 {
             tx.execute_batch(crate::inbox_team::MIGRATE_V22)?;
+        }
+        if version < 23 {
+            tx.execute_batch(crate::note_files::MIGRATE_V23)?;
         }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;

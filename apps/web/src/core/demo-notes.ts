@@ -552,6 +552,11 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     noteFile: async (id: string) => later(await fileOf(id)),
     noteFiles: async (noteId: string) => later(files.of(noteId)),
     noteFileRecords: async () => later(files.records()),
+    noteFilesGone: async () => later(files.gone()),
+    forgetNoteFiles: async (ids: string[]) => {
+      if (files.forget(ids)) changed()
+      return later(undefined)
+    },
     noteFileRaw: async (id: string) => later(files.raw(id)),
     putNoteFile: async (f: NoteFile, raw: string) => {
       const kept = files.apply(f, raw)
