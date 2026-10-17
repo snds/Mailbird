@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use mailbird_gateway::{Config, Gateway, SealedFile, router};
+use mailbird_gateway::{Config, Gateway, Members, SealedFile, router};
 
 fn env(k: &str) -> Option<String> {
     std::env::var(k).ok().filter(|v| !v.trim().is_empty())
@@ -52,7 +52,9 @@ async fn main() {
     }
     let secrets = SealedFile::open(data.join("secrets.json"), &key).unwrap_or_else(|e| fail(e));
     pim_app::secrets::install(Box::new(secrets));
-    let gw = Gateway::new(state, Config { password, web_dir, secure_cookies, public_url });
+    // The owner's team, if they add one (ADR-0063).
+    let members = Members::open(data.join("members.json")).unwrap_or_else(|e| fail(e));
+    let gw = Gateway::new(state, Config { password, members, web_dir, secure_cookies, public_url });
 
     eprintln!("gateway {} on {address}, data in {}", env!("CARGO_PKG_VERSION"), data.display());
     let listener = tokio::net::TcpListener::bind(&address).await.unwrap_or_else(|e| fail(format!("can't listen on {address}: {e}")));

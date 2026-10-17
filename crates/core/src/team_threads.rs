@@ -215,7 +215,7 @@ mod tests {
         let raw = b"From: Ana <ana@example.org>\r\nTo: sam@example.com\r\nSubject: Offsite venue\r\nMessage-ID: <v1@x>\r\nDate: Tue, 13 Oct 2026 10:00:00 +0000\r\n\r\nCan we book it?\r\n".to_vec();
         let batch = SyncBatch { mailbox: "INBOX".into(), uid_validity: 1, new_messages: vec![FetchedMessage { uid: 1, seen: false, flagged: false, raw }], server_uids: vec![1], ..Default::default() };
         s.apply_sync(&a.id, &batch).unwrap();
-        let q = MessageQuery { lane: crate::Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false };
+        let q = MessageQuery { lane: crate::Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false, assigned_to: None };
         let tid = s.messages(&q).unwrap()[0].thread_id.clone();
         (s, tid)
     }

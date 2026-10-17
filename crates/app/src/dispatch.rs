@@ -165,6 +165,12 @@ pub const COMMANDS: &[&str] = &[
     "mail_prefs",
     "set_mail_prefs",
     "team_threads",
+    "thread_team",
+    "thread_assignments",
+    "assign_thread",
+    "add_thread_comment",
+    "remove_thread_comment",
+    "unassign_member",
     "thread_share",
     "share_thread",
     "join_team_thread",
@@ -641,6 +647,27 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         }
         // Conversations shared with teammates (ADR-0060).
         "team_threads" => Output::json(crate::team_commands::team_threads(state)?),
+        "thread_team" => {
+            args!(args, thread_id: String);
+            Output::json(crate::team_commands::thread_team(state, thread_id)?)
+        }
+        "thread_assignments" => Output::json(crate::team_commands::thread_assignments(state)?),
+        "assign_thread" => {
+            args!(args, thread_id: String, to: Option<pim_core::Teammate>, by: pim_core::Teammate);
+            Output::json(crate::team_commands::assign_thread(app.clone(), state, thread_id, to, by)?)
+        }
+        "add_thread_comment" => {
+            args!(args, thread_id: String, text: String, by: pim_core::Teammate);
+            Output::json(crate::team_commands::add_thread_comment(app.clone(), state, thread_id, text, by)?)
+        }
+        "remove_thread_comment" => {
+            args!(args, id: String, by: pim_core::Teammate, owner: bool);
+            Output::json(crate::team_commands::remove_thread_comment(app.clone(), state, id, by, owner)?)
+        }
+        "unassign_member" => {
+            args!(args, member_id: String);
+            Output::json(crate::team_commands::unassign_member(app.clone(), state, member_id)?)
+        }
         "thread_share" => {
             args!(args, thread_id: String);
             Output::json(crate::team_commands::thread_share(state, thread_id)?)

@@ -138,7 +138,7 @@ async fn sync(store: &Store, account: &str) -> pim_core::RemoteBatch {
 }
 
 fn inbox(store: &Store) -> Vec<pim_core::MessageSummary> {
-    store.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap()
+    store.messages(&MessageQuery { lane: Lane::Inbox, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false, assigned_to: None }).unwrap()
 }
 
 #[tokio::test]
@@ -180,7 +180,7 @@ async fn jmap_round_trip() {
     assert_eq!(third_boxes[&archive], true, "archive moves it to the Archive mailbox");
     assert!(third_boxes.get(&inbox_id).is_none());
     assert!(pushed.moved.contains(&(third.clone(), pim_core::store::ARCHIVE.to_owned())), "the move comes back as a move, not a re-download");
-    let archived = store.messages(&MessageQuery { lane: Lane::Archive, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false }).unwrap();
+    let archived = store.messages(&MessageQuery { lane: Lane::Archive, account_id: None, search: None, limit: None, offset: None, category: None, split: None, bundle: false, assigned_to: None }).unwrap();
     assert_eq!((archived.len(), archived[0].mailbox.as_str()), (1, pim_core::store::ARCHIVE));
 
     // Unarchive moves it back on the server.

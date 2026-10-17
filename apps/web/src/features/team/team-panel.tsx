@@ -59,16 +59,49 @@ export function TeamPanel({
 
 function Comments({ doc, comments, readOnly }: { doc: Y.Doc; comments: TeamComment[]; readOnly: boolean }) {
   const me = useMyName()
+  return (
+    <CommentList
+      // Names are what each person calls themselves, so this only offers to take back your own.
+      comments={comments.map((c) => ({ ...c, mine: c.author === me }))}
+      readOnly={readOnly}
+      empty={readOnly ? "No comments." : "Comments stay with the team: they never go to anyone on the conversation."}
+      onAdd={(text) => addComment(doc, me, text)}
+      onRemove={(id) => removeComment(doc, id)}
+    />
+  )
+}
+
+/**
+ * Comments for the team, and a box to add one: for a shared conversation's
+ * document (above), and for a shared inbox's notes (ADR-0063).
+ */
+export function CommentList({
+  comments,
+  readOnly = false,
+  empty,
+  placeholder = "Comment for the team…",
+  label = "Comment",
+  onAdd,
+  onRemove,
+}: {
+  comments: { id: string; author: string; text: string; at: number; mine: boolean }[]
+  readOnly?: boolean
+  empty: string
+  placeholder?: string
+  label?: string
+  onAdd: (text: string) => void | Promise<unknown>
+  onRemove: (id: string) => void
+}) {
   const [text, setText] = useState("")
   const post = () => {
     if (!text.trim()) return
-    addComment(doc, me, text)
+    void onAdd(text)
     setText("")
   }
   return (
     <div className="flex flex-col gap-3">
       {comments.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{readOnly ? "No comments." : "Comments stay with the team: they never go to anyone on the conversation."}</p>
+        <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (
         <ol aria-label="Comments" className="flex flex-col gap-3">
           {comments.map((c) => (
@@ -83,10 +116,9 @@ function Comments({ doc, comments, readOnly }: { doc: Y.Doc; comments: TeamComme
                 </p>
                 <p className="text-sm break-words whitespace-pre-wrap">{c.text}</p>
               </div>
-              {/* Names are what each person calls themselves, so this only offers to take back your own. */}
-              {!readOnly && c.author === me && (
+              {!readOnly && c.mine && (
                 <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  <IconButton icon="delete" label="Delete comment" size="icon-sm" variant="ghost-muted" onClick={() => removeComment(doc, c.id)} />
+                  <IconButton icon="delete" label={`Delete ${label.toLowerCase()}`} size="icon-sm" variant="ghost-muted" onClick={() => onRemove(c.id)} />
                 </span>
               )}
             </li>
@@ -102,8 +134,8 @@ function Comments({ doc, comments, readOnly }: { doc: Y.Doc; comments: TeamComme
           }}
         >
           <Textarea
-            aria-label="Comment"
-            placeholder="Comment for the team…"
+            aria-label={label}
+            placeholder={placeholder}
             rows={2}
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -116,7 +148,7 @@ function Comments({ doc, comments, readOnly }: { doc: Y.Doc; comments: TeamComme
           />
           <div className="flex justify-end">
             <Button type="submit" size="sm" variant="outline" disabled={!text.trim()}>
-              Comment
+              {label}
             </Button>
           </div>
         </form>

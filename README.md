@@ -123,6 +123,7 @@ Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratche
 | **46 · Write replies with your team** ✅ | Share a conversation by link: teammates see it in their own Mailbird (Mail → Team), comment beside it, and write the reply with you live; you send it from your account. It goes through your notes relay, works for people without one, and when you stop, they keep a read-only copy ([ADR-0060](docs/decisions/0060-team-conversations.md)) |
 | **47 · Who's here, and files with shares** ✅ | Shared notes and conversations show who else has them open, live ("Ana is here"); a shared note's images reach the people it's shared with, and a shared conversation's owner chooses which attachments teammates can download, up to 10 MB each ([ADR-0061](docs/decisions/0061-presence-and-shared-files.md)) |
 | **48 · End-to-end encrypted sync** ✅ | Turn it on in Sync between devices: your notes, their images, and everything you share sync encrypted, so the relay keeps them but can't read them. Copy the key to your other devices; share links carry their own key ([ADR-0062](docs/decisions/0062-end-to-end-encrypted-sync.md)) |
+| **49 · A shared inbox on the gateway** ✅ | Add people to your gateway's team: each signs in with their own password and works its mail with you. Assign a conversation to someone, leave each other notes that never go to the customer, and see who else has it open. Your accounts, settings, calendars, contacts, and notes stay yours ([ADR-0063](docs/decisions/0063-shared-inbox.md)) |
 
 ## License
 

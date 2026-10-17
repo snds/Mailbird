@@ -5,7 +5,12 @@ import { cn } from "@/lib/utils"
 
 import { useUi } from "./ui-store"
 
+import { isMember } from "@/core/client"
+
 import { VERTICALS, type Vertical, type VerticalId } from "./verticals"
+
+/** A team member on a gateway works the mail; the rest is the owner's (ADR-0063). */
+const shown = () => (isMember() ? VERTICALS.filter((v) => v.id === "mail") : VERTICALS)
 
 interface ShellProps {
   active: VerticalId
@@ -106,7 +111,7 @@ function NavRail({
         </TooltipTrigger>
         <TooltipContent side="right">{current.create.label}</TooltipContent>
       </Tooltip>
-      {VERTICALS.map((v) => (
+      {shown().map((v) => (
         <NavItem key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" />
       ))}
       <div className="mt-auto flex flex-col items-center gap-1">
@@ -132,7 +137,7 @@ function TabBar({ active, onNavigate }: { active: VerticalId; onNavigate: (id: V
       aria-label="Apps"
       className="fixed inset-x-0 bottom-0 z-20 flex h-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] border-t bg-surface-chrome/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
     >
-      {VERTICALS.map((v) => (
+      {shown().map((v) => (
         <NavItem key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="tab" />
       ))}
     </nav>

@@ -4,7 +4,8 @@ import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
 import { Icon, type IconName, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption } from "@unicron/ui"
-import { getCoreClient, signOutOfGateway } from "@/core/client"
+import { gatewayMe, getCoreClient, isMember, signOutOfGateway } from "@/core/client"
+import { TeamMembersView } from "@/features/team-members"
 import { useAccounts, useCore } from "@/core/queries"
 import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
@@ -76,20 +77,28 @@ const PRESETS: Preset[] = [
 ]
 
 export function AccountsDialog() {
-  const open = useUi((s) => s.accountsOpen)
-  const setOpen = useUi((s) => s.setAccountsOpen)
+  const accountsOpen = useUi((s) => s.accountsOpen)
+  const setAccountsOpen = useUi((s) => s.setAccountsOpen)
+  // The gateway's team (ADR-0063) is a page of settings, in the same dialog.
+  const membersOpen = useUi((s) => s.membersOpen)
+  const open = accountsOpen || membersOpen
+  const setOpen = (o: boolean) => (setAccountsOpen(o), !o && useUi.getState().setMembersOpen(false))
   const [preset, setPreset] = useState<Preset | null>(null)
   const [connecting, setConnecting] = useState<Account | null>(null)
 
   return (
     <Dialog open={open} onOpenChange={(o) => (setOpen(o), !o && setPreset(null))}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-        {preset?.oauth ? (
+        {membersOpen ? (
+          <TeamMembersView />
+        ) : preset?.oauth ? (
           <OAuthSignIn issuer={preset.oauth} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
         ) : preset ? (
           <AddAccountForm preset={preset} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
         ) : connecting ? (
           <ConnectDavForm account={connecting} onDone={() => setConnecting(null)} />
+        ) : isMember() ? (
+          <MemberSettings />
         ) : (
           <AccountList onAdd={setPreset} onConnect={setConnecting} />
         )}
@@ -213,6 +222,8 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         <SettingsRow icon="wand_stars" title="AI summaries and replies" hint="Off unless you turn it on: a model on this computer, or Claude or another service with your own key." open={() => useUi.getState().setAiSettingsOpen(true)} />
       )}
 
+      {core?.remote && <SettingsRow icon="group" title="Team members" hint="People who work this gateway's mail with you: a shared inbox." open={() => useUi.getState().setMembersOpen(true)} />}
+
       <MeetingSettingsSection />
 
       {/* The menu bar is the desktop's; the demo stands in for it. */}
@@ -228,6 +239,24 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
           </Button>
         </div>
       )}
+    </>
+  )
+}
+
+/** A team member's settings (ADR-0063): the accounts and the rest are the owner's. */
+function MemberSettings() {
+  const me = gatewayMe()
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Settings</DialogTitle>
+        <DialogDescription>You're signed in as {me?.name} on a shared inbox. Its accounts and settings belong to the gateway's owner.</DialogDescription>
+      </DialogHeader>
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => void signOutOfGateway().then(() => location.reload())}>
+          <Icon name="logout" data-icon="inline-start" /> Sign out
+        </Button>
+      </div>
     </>
   )
 }

@@ -246,6 +246,9 @@ pub struct MessageQuery {
     /// Inbox only: fold newsletters into one bundle row when there are two or more.
     #[serde(default)]
     pub bundle: bool,
+    /// Only conversations assigned to this team member (ADR-0063).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_to: Option<String>,
 }
 
 /// Your own inbox tab: mail matching a rule (Superhuman's split inbox).

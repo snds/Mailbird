@@ -3,8 +3,10 @@ import { useEffect } from "react"
 
 import { fromBase64 } from "@/lib/base64"
 
-import { getCoreClient, type CoreClient } from "./client"
-import type { AiPrefs, AiProvider, CollectionKind, KeyBindings, MailPrefs, MessageQuery, NoteQuery, NoteTarget, SwipeActions } from "./types"
+import { create } from "zustand"
+
+import { gatewayMe, getCoreClient, isMember, teamMembers, type CoreClient } from "./client"
+import type { AiPrefs, AiProvider, CollectionKind, KeyBindings, MailPrefs, MessageQuery, NoteQuery, NoteTarget, SwipeActions, Teammate } from "./types"
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -103,9 +105,19 @@ export function useCoreEvents() {
       ),
       core.on("compose:changed", () => void qc.invalidateQueries({ queryKey: ["compose"] })),
       core.on("team:changed", () => void qc.invalidateQueries({ queryKey: ["team"] })),
+      // A shared inbox (ADR-0063): an assignment or a note changed, and who's where.
+      core.on("inbox-team:changed", () => {
+        void qc.invalidateQueries({ queryKey: ["inbox-team"] })
+        void qc.invalidateQueries({ queryKey: ["messages"] })
+      }),
+      core.on("inbox:here", (p) => {
+        const threads = (p as { threads?: Record<string, { id: string; name: string }[]> } | undefined)?.threads ?? {}
+        const mine = gatewayMe()?.id
+        useInboxHere.setState(() => Object.fromEntries(Object.entries(threads).map(([t, people]) => [t, people.filter((x) => x.id !== mine)])), true)
+      }),
     ]
-    // All-day events sit on the device clock; tell the core which one that is.
-    void core.setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone).then(() => qc.invalidateQueries({ queryKey: ["pim"] }))
+    // All-day events sit on the device clock; tell the core which one that is. (A team member's calendar isn't theirs to set.)
+    if (!isMember()) void core.setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone).then(() => qc.invalidateQueries({ queryKey: ["pim"] }))
     return () => offs.forEach((off) => off())
   }, [core, qc])
 }
@@ -252,6 +264,32 @@ export function useMyName() {
   return a ? a.displayName || a.address : "Me"
 }
 
+// ── A shared inbox on the gateway (ADR-0063) ────────────────────────────────
+
+/** Who else has each conversation open, by thread (from the gateway). */
+export const useInboxHere = create<Record<string, { id: string; name: string }[]>>(() => ({}))
+
+/** Everyone on the gateway, owner first; empty off a gateway. */
+export function useTeamMembers() {
+  return useQuery({ queryKey: ["inbox-team", "members"], queryFn: teamMembers, staleTime: 60_000 })
+}
+
+/** A shared inbox is one with more than one person on it. */
+export function useSharedInbox() {
+  const { data: members = [] } = useTeamMembers()
+  return members.filter((m) => !m.pending).length > 1
+}
+
+/** You, as the team knows you: the gateway's session, or your own name elsewhere. */
+export function useMe(): Teammate {
+  const name = useMyName()
+  return gatewayMe() ?? { id: "owner", name }
+}
+
+export function useThreadTeam(threadId: string | null) {
+  return useQuery({ queryKey: ["inbox-team", "thread", threadId], enabled: !!threadId, queryFn: () => call((c) => c.threadTeam(threadId!)) })
+}
+
 /** Conversations shared with teammates (ADR-0060). */
 export function useTeamThreads() {
   return useQuery({ queryKey: ["team", "list"], queryFn: () => call((c) => c.teamThreads()) })
@@ -259,7 +297,8 @@ export function useTeamThreads() {
 
 /** Your share of this conversation, if it's shared now. */
 export function useThreadShare(threadId: string | null) {
-  return useQuery({ queryKey: ["team", "thread", threadId], queryFn: () => call((c) => c.threadShare(threadId!)), enabled: !!threadId })
+  // A team member doesn't share by link (ADR-0063): that's the owner's relay.
+  return useQuery({ queryKey: ["team", "thread", threadId], queryFn: () => call((c) => c.threadShare(threadId!)), enabled: !!threadId && !isMember() })
 }
 
 /** Opt-in AI's settings (ADR-0059). */
@@ -352,7 +391,7 @@ export function useDeletedContacts() {
 }
 
 export function useContactSuggestion(messageId: string | null) {
-  return useQuery({ queryKey: keys.contactSuggestion(messageId ?? ""), queryFn: () => call((c) => c.contactSuggestion(messageId!)), enabled: messageId !== null })
+  return useQuery({ queryKey: keys.contactSuggestion(messageId ?? ""), queryFn: () => call((c) => c.contactSuggestion(messageId!)), enabled: messageId !== null && !isMember() })
 }
 
 export function useContact(id: string | null) {
@@ -477,7 +516,8 @@ export function useLinkedNotes(target: NoteTarget | null) {
   return useQuery({
     queryKey: keys.notes({ linked: target }),
     queryFn: () => call((c) => c.listNotes({ linked: target })),
-    enabled: target !== null,
+    // Notes are the gateway owner's; a team member has none (ADR-0063).
+    enabled: target !== null && !isMember(),
   })
 }
 

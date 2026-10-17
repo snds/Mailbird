@@ -1,10 +1,12 @@
 import type { Category, Lane } from "@/core/types"
 
 /** A lane of conversations, the outbox's scheduled messages, or conversations shared with teammates. */
-export type MailTab = Lane | "scheduled" | "team"
+export type MailTab = Lane | "scheduled" | "team" | "mine"
 
 export const LANES: { id: MailTab; label: string; empty: string }[] = [
   { id: "inbox", label: "Inbox", empty: "You're all caught up." },
+  // A shared inbox (ADR-0063): only with a team on the gateway.
+  { id: "mine", label: "Assigned to me", empty: "Nothing's assigned to you. Conversations you take, or someone gives you, show up here." },
   { id: "screener", label: "Screener", empty: "No new senders waiting. Mail from people writing for the first time shows up here." },
   { id: "unread", label: "Unread", empty: "Nothing unread." },
   { id: "starred", label: "Starred", empty: "Star messages to keep them close." },

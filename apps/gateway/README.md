@@ -7,7 +7,7 @@ Without a gateway, the web app runs as a demo with sample mail.
 ## How it works
 
 - **The same code as the desktop app.** The gateway and the desktop app share one command layer (`crates/app`). A command in the browser runs exactly what a click in the desktop app runs.
-- **One password.** You sign in with `GATEWAY_PASSWORD`. The browser gets a session cookie that scripts can't read (`HttpOnly`) and that other sites can't send (`SameSite=Strict`).
+- **Your password, and your team's.** You sign in with `GATEWAY_PASSWORD`. People you add to the team sign in with their email and their own password (see below). The browser gets a session cookie that scripts can't read (`HttpOnly`) and that other sites can't send (`SameSite=Strict`).
 - **Live updates.** New mail, sync status, and changes from other devices reach the page through an event stream (`/api/events`).
 - **Passwords are sealed.** Account passwords and sign-in tokens are encrypted with `GATEWAY_KEY` (AES-256-GCM) in `secrets.json`. Only the gateway's user can read that file or the mail database.
 
@@ -64,6 +64,17 @@ Open the gateway's address, sign in, then go to **Accounts**.
 - **iCloud, Fastmail, other IMAP, and other JMAP** work from anywhere. Use app-specific passwords, which you can revoke on their own.
 - **Gmail and Outlook** sign in on Google's or Microsoft's page, which then returns to `127.0.0.1` on the computer running Mailbird. Behind a gateway, that's the server. So these only work in a browser on the gateway's own machine. Elsewhere, the buttons say so. A public return address is planned once Mailbird has its own verified Google and Microsoft apps ([ADR-0013](../../docs/decisions/0013-google.md), [ADR-0014](../../docs/decisions/0014-microsoft.md)).
 
+## A shared inbox
+
+Add people to the gateway's team so they work its mail with you ([ADR-0063](../../docs/decisions/0063-shared-inbox.md)): a support or sales inbox, say.
+
+- **Adding someone:** **Settings → Team members**, then their name and email. You get a link to send them yourself. It works once, for 7 days, and lets them choose a password (12+ characters). **New link** sends another, for someone who lost theirs or forgot their password.
+- **What they can do:** read and reply from the gateway's accounts, archive, snooze, star, and the rest of Mail. Each conversation can be **assigned** to one person (**Assigned to me** lists yours), and the team leaves each other **notes** on it, which never go to anyone on the conversation. Everyone sees who else has a conversation open.
+- **What stays yours:** adding or removing accounts, settings, calendars, contacts, notes, and links you share. The gateway refuses those commands for team members, and their pages don't hear those events.
+- **Who they are comes from the gateway,** never the page: an assignment or a note says who made it from the session.
+- **Taking someone off** signs them out at once, and what was assigned to them goes back to nobody.
+- **The team lives in `members.json`** beside the mail database, mode 0600. Passwords are PBKDF2-SHA256 hashes (600,000 rounds), and invitations are stored only as hashes of their codes.
+
 ## Security
 
 - **Sign-in is rate-limited:** after 10 wrong passwords in 5 minutes, the gateway answers 429 until the window passes. Each wrong guess also waits half a second.
@@ -74,7 +85,7 @@ Open the gateway's address, sign in, then go to **Accounts**.
 
 ## Limits
 
-- **One person per gateway.** There are no user accounts, only the one password.
+- **One owner per gateway.** Team members share the owner's accounts; they don't bring their own.
 - **No desktop notifications** from the gateway yet. Mail arrives live while the page is open.
 - **Attachments download** to the browser instead of opening in another app.
 
@@ -84,8 +95,13 @@ The browser calls these; you don't need them to use the app.
 
 | Call | What it does |
 |---|---|
-| `GET /api/session` | `{"gateway":true,"signedIn":…}`. No session needed. |
-| `POST /api/session` | Signs in with `{"password":…}`. Needs `X-Mailbird: 1`. |
+| `GET /api/session` | `{"gateway":true,"signedIn":…}`, and `me` (`id`, `name`, `role`) when signed in. No session needed. |
+| `POST /api/session` | Signs in with `{"password":…}`, or a team member's `{"email":…,"password":…}`. Needs `X-Mailbird: 1`. |
+| `GET /api/members` | The team, owner first. The owner also sees emails and who hasn't joined. |
+| `POST /api/members` | The owner adds `{"name":…,"email":…}` and gets an invitation code. |
+| `POST /api/members/{id}/invite` · `DELETE /api/members/{id}` | The owner sends a new invitation, or takes someone off. |
+| `POST /api/join` | Opens an invitation: `{"code":…,"password":…}`, and signs in. |
+| `POST /api/here` | Says which conversation you have open (`{"threadId":…}` or `null`); everyone hears `inbox:here`. |
 | `DELETE /api/session` | Signs out. |
 | `POST /api/core/{command}` | Runs one app command with its JSON arguments. Needs a session and `X-Mailbird: 1`. Unknown commands are 404, bad arguments 400. |
 | `GET /api/events` | The event stream (Server-Sent Events). |

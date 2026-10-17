@@ -101,4 +101,6 @@ pub mod events {
     pub const COMPOSE_CHANGED: &str = "compose:changed";
     /// Shared conversations changed: shared, joined, stopped, or a document saved.
     pub const TEAM_CHANGED: &str = "team:changed";
+    /// A conversation's assignee or team notes changed on a shared inbox (ADR-0063). Payload: `{ threadId }`.
+    pub const INBOX_TEAM_CHANGED: &str = "inbox-team:changed";
 }

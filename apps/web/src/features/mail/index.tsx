@@ -5,7 +5,8 @@ import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescript
 import { ListRow } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { VirtualList } from "@/components/virtual-list"
-import { useAccounts, useCore, useInboxOverview, useMailAction, useMailPrefs, useMessagePages, useContactPhotos, useScreener, useSwipeActions, useThread } from "@/core/queries"
+import { isMember } from "@/core/client"
+import { useAccounts, useCore, useInboxOverview, useMailAction, useMailPrefs, useMe, useMessagePages, useContactPhotos, useScreener, useSharedInbox, useSwipeActions, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -27,7 +28,10 @@ export function MailView() {
   // In the UI store, so the command menu can switch it.
   const tab = useUi((s) => s.mailTab)
   const setTab = useUi((s) => s.setMailTab)
-  const lane: Lane = tab === "scheduled" || tab === "team" ? "inbox" : tab
+  const lane: Lane = tab === "scheduled" || tab === "team" || tab === "mine" ? "inbox" : tab
+  // A shared inbox (ADR-0063): "Assigned to me", and no link sharing for a team member.
+  const sharedInbox = useSharedInbox()
+  const me = useMe()
   // Mail → Team (ADR-0060): shared conversations open in their own view.
   const teamOpen = useUi((s) => s.teamOpen)
   const setTeamOpen = useUi((s) => s.setTeamOpen)
@@ -60,6 +64,7 @@ export function MailView() {
     category: tab === "inbox" ? category : null,
     split: tab === "inbox" ? split : null,
     bundle: bundling,
+    assignedTo: tab === "mine" ? me.id : null,
   })
   const { data: thread } = useThread(selectedId)
   const { data: overview } = useInboxOverview(accountId)
@@ -96,7 +101,7 @@ export function MailView() {
   const multiAccount = accounts.length > 1
   const laneInfo = LANES.find((l) => l.id === tab)!
   // The Screener tab only exists while it's on (or still holds mail).
-  const tabs = LANES.filter((l) => l.id !== "screener" || screener?.enabled || tab === "screener")
+  const tabs = LANES.filter((l) => (l.id !== "screener" || screener?.enabled || tab === "screener") && (l.id !== "mine" || sharedInbox) && (l.id !== "team" || !isMember()))
   const emptyText = tab === "inbox" && category ? CATEGORIES.find((c) => c.id === category)!.empty : laneInfo.empty
 
   useMailShortcuts({

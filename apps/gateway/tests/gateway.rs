@@ -29,7 +29,7 @@ async fn gateway_end_to_end() {
     let secrets = SealedFile::open(dir.join("secrets.json"), &key()).unwrap();
     pim_app::secrets::install(Box::new(secrets));
     let state = pim_app::AppState::open(&dir.join("data")).unwrap();
-    let gw = Gateway::new(state, Config { password: PASSWORD.into(), web_dir: web.clone(), secure_cookies: false, public_url: Some("https://cal.example".into()) });
+    let gw = Gateway::new(state, Config { password: PASSWORD.into(), members: mailbird_gateway::Members::open(dir.join("members.json")).unwrap(), web_dir: web.clone(), secure_cookies: false, public_url: Some("https://cal.example".into()) });
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", l.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(l, router(gw)).await.unwrap() });
