@@ -2,7 +2,7 @@
 //! the web layer runs the Yjs sync with the relay itself (ADR-0012), and
 //! uses the record commands to keep the shared index in step.
 
-use pim_core::{ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteSummary, NoteTarget, TagCount};
+use pim_core::{ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteSummary, NoteTarget, ShareMode, TagCount};
 use serde::{Deserialize, Serialize};
 use crate::host::AppHandle;
 
@@ -43,6 +43,19 @@ pub fn save_note_body(app: AppHandle, state: &Shared, id: String, markdown: Stri
 
 pub fn set_note_meta(app: AppHandle, state: &Shared, id: String, meta: NoteMeta) -> Res<NoteSummary> {
     let n = with_store(state, |s| s.set_note_meta(&id, &meta))?;
+    changed(&app);
+    Ok(n)
+}
+
+/// Shares a note by link, or changes what its link allows (ADR-0056).
+pub fn share_note(app: AppHandle, state: &Shared, id: String, mode: ShareMode) -> Res<NoteSummary> {
+    let n = with_store(state, |s| s.share_note(&id, mode))?;
+    changed(&app);
+    Ok(n)
+}
+
+pub fn unshare_note(app: AppHandle, state: &Shared, id: String) -> Res<NoteSummary> {
+    let n = with_store(state, |s| s.unshare_note(&id))?;
     changed(&app);
     Ok(n)
 }

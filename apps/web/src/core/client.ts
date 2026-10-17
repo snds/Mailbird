@@ -60,6 +60,7 @@ import type {
   NoteInput,
   NoteLink,
   NoteMeta,
+  ShareMode,
   NoteQuery,
   NoteRecord,
   NoteSummary,
@@ -279,6 +280,10 @@ export interface CoreClient {
   /** Markdown plus the editor's Yjs state. `touch: false` stores another device's text without marking it edited. */
   saveNoteBody(id: string, markdown: string, ydoc: string | null, touch: boolean): Promise<void>
   setNoteMeta(id: string, meta: NoteMeta): Promise<NoteSummary>
+  /** Shares a note by link, or changes what its link allows (ADR-0056). */
+  shareNote(id: string, mode: ShareMode): Promise<NoteSummary>
+  /** Stops sharing: the owner's link stops working; a guest keeps their copy. */
+  unshareNote(id: string): Promise<NoteSummary>
   deleteNote(id: string): Promise<void>
   restoreNote(id: string): Promise<void>
   noteTags(): Promise<TagCount[]>
@@ -471,6 +476,8 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     createNote: (input) => call("create_note", { input }),
     saveNoteBody: (id, markdown, ydoc, touch) => call("save_note_body", { id, markdown, ydoc, touch }),
     setNoteMeta: (id, meta) => call("set_note_meta", { id, meta }),
+    shareNote: (id, mode) => call("share_note", { id, mode }),
+    unshareNote: (id) => call("unshare_note", { id }),
     deleteNote: (id) => call("delete_note", { id }),
     restoreNote: (id) => call("restore_note", { id }),
     noteTags: () => call("note_tags"),

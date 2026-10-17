@@ -8,7 +8,7 @@ import { downloadNotes } from "@/lib/download"
 import type { CoreEvent } from "./client"
 import { createDemoFiles, type Media, mediaOf, mimeExt, NOTE_FILE, noteFileIds, sampleSwatches, takeImages } from "./demo-note-files"
 import { NOTE_COLORS } from "./types"
-import type { ImportFile, ImportReport, NoteDetail, NoteFile, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteGraph, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, TagCount } from "./types"
+import type { ImportFile, ImportReport, NoteDetail, NoteFile, NotesLockInfo, NotesLockSetting, NoteFolder, NoteFolderInput, NoteGraph, NoteInput, NoteLink, NoteMeta, NoteQuery, NoteRecord, NoteColor, NoteShare, NoteSummary, NoteTarget, NoteTask, NotesPrefs, PlannedTask, RelayConfig, ShareMode, TagCount } from "./types"
 
 interface DemoNote extends NoteRecord {
   markdown: string
@@ -120,6 +120,14 @@ function cleanColor(c: string | null | undefined): NoteColor | null {
 /** Keep's Takeout names: two blues fold into ours, DEFAULT is none. */
 const keepColor = (c: unknown) => (c === "CERULEAN" ? "blue" : typeof c === "string" ? cleanColor(c) : null)
 
+/** A share from someone's link, checked like guest_share in note_shares.rs. */
+function guestShare(s: NoteShare): NoteShare {
+  const relay = s.relay?.trim()
+  const token = s.token?.trim()
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(s.id) || !relay || !/^wss?:\/\//.test(relay) || !token) throw new Error("that share link isn't complete")
+  return { id: s.id, role: "guest", mode: s.mode === "view" ? "view" : "edit", revoked: false, relay, token, from: s.from?.trim() || null }
+}
+
 export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void, later: <T>(v: T) => Promise<T>, links: DemoLinks) {
   const t = now()
   const DAY = 86_400
@@ -174,13 +182,13 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
     // A locked note shows its title only (ADR-0043).
     if (x.locked) {
       return {
-        id: x.id, title: x.title ?? "", snippet: "", pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, locked: true, tags: [...x.tags],
+        id: x.id, title: x.title ?? "", snippet: "", pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, locked: true, share: x.share ?? null, tags: [...x.tags],
         links: x.links.map((l) => ({ ...l, target: links.resolve(l) })), created: x.created, updated: x.updated,
       }
     }
     return {
       id: x.id, title, snippet, pinned: x.pinned, archived: x.archived, color: x.color ?? null, remindAt: x.remindAt ?? null, locked: false,
-      cover: /\(note-file:([A-Za-z0-9-]+)/.exec(x.markdown)?.[1] ?? null, tags: [...x.tags],
+      cover: /\(note-file:([A-Za-z0-9-]+)/.exec(x.markdown)?.[1] ?? null, share: x.share ? { ...x.share } : null, tags: [...x.tags],
       links: x.links.map((l) => ({ ...l, target: links.resolve(l) })), created: x.created, updated: x.updated,
     }
   }
@@ -348,8 +356,9 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       return downloadNotes(out)
     },
     createNote: async (input: NoteInput) => {
+      const share = input.share ? guestShare(input.share) : null
       // Random ids, like the core's UUIDs: two devices never mint the same one.
-      const x = note(input.markdown, 0, { id: crypto.randomUUID(), pinned: !!input.pinned, tags: cleanTags(input.tags ?? []), links: cleanLinks(input.links ?? []), created: now(), updated: now() })
+      const x = note(input.markdown, 0, { id: crypto.randomUUID(), pinned: !!input.pinned, tags: cleanTags(input.tags ?? []), links: cleanLinks(input.links ?? []), share, created: now(), updated: now() })
       notes.push(x)
       changed()
       return later(detail(x))
@@ -371,6 +380,25 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       if (meta.remindAt !== undefined) x.remindAt = meta.remindAt > 0 ? meta.remindAt : null
       if (meta.tags) x.tags = cleanTags(meta.tags)
       if (meta.links) x.links = cleanLinks(meta.links)
+      bump(x)
+      changed()
+      return later(summary(x))
+    },
+    // Shared notes (ADR-0056), as note_shares.rs does them.
+    shareNote: async (id: string, mode: ShareMode) => {
+      const x = find(id)
+      if (x.locked) throw new Error("a locked note can't be shared; remove its lock first")
+      if (x.share?.role === "guest") throw new Error("only the person who shared this note can change its link")
+      x.share = x.share && !x.share.revoked ? { ...x.share, mode } : { id: crypto.randomUUID().replaceAll("-", ""), role: "owner", mode, revoked: false, relay: null, token: null, from: null }
+      bump(x)
+      changed()
+      return later(summary(x))
+    },
+    unshareNote: async (id: string) => {
+      const x = find(id)
+      if (x.share?.role === "owner" && !x.share.revoked) x.share = { ...x.share, revoked: true }
+      else if (x.share?.role === "guest") x.share = null
+      else return later(summary(x))
       bump(x)
       changed()
       return later(summary(x))
@@ -455,6 +483,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       requireKey()
       const x = find(id)
       if (x.locked) return later(undefined)
+      if (x.share && !x.share.revoked) throw new Error("a shared note can't be locked; stop sharing it first")
       lockedText.set(id, x.markdown)
       Object.assign(x, { locked: true, title: titleAndSnippet(x.markdown)[0], sealed: fakeSeal(x.markdown), markdown: "", ydoc: null })
       files.reseal(id, true)
@@ -564,7 +593,7 @@ export function createDemoNotes(emit: (e: CoreEvent, payload?: unknown) => void,
       const ids: string[] = []
       for (const r of records) {
         const x = notes.find((k) => k.id === r.id)
-        const clean = { ...structuredClone(r), color: cleanColor(r.color), remindAt: r.remindAt && r.remindAt > 0 ? r.remindAt : null, tags: cleanTags(r.tags), links: cleanLinks(r.links) }
+        const clean = { ...structuredClone(r), color: cleanColor(r.color), remindAt: r.remindAt && r.remindAt > 0 ? r.remindAt : null, tags: cleanTags(r.tags), links: cleanLinks(r.links), share: r.share ?? null }
         if (!x) notes.push({ ...clean, markdown: "", ydoc: null, source: null })
         else if (x.updated < r.updated) Object.assign(x, clean)
         else continue

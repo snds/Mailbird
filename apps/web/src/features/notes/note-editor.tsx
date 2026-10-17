@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import type * as Y from "yjs"
 
+import { Icon } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { queryClient, useNotesPrefs } from "@/core/queries"
 import type { NoteDetail, NotesPrefs } from "@/core/types"
@@ -22,6 +23,7 @@ import { NOTE_FILE } from "./note-src"
 import { ScanSheet } from "./scan-sheet"
 import { SketchSheet } from "./sketch-sheet"
 import { useSketchSheet } from "./sketch-store"
+import { guestShares, useLiveShareModes } from "./shared-docs"
 import { notesSync, useSyncStatus } from "./sync"
 import { type Choice, openWikiLink, pickChoice, useWikiChoices, wikiQueryAt } from "./wiki-links"
 import { WikiSuggest } from "./wiki-suggest"
@@ -44,12 +46,16 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
   // One document per open note; the parent keys this component by note id.
   const [doc] = useState(() => {
     const d = loadDoc(note.ydoc)
-    if (isEmpty(d)) seed(d, note.markdown, note.id)
+    if (isEmpty(d) && note.share?.role !== "guest") seed(d, note.markdown, note.id)
     return d
   })
   // A note opened for the first time has new Yjs state to save right away.
   // A locked one has none to keep: only its sealed text is saved (ADR-0043).
-  const [seeded] = useState(() => !locked && note.ydoc === null && note.markdown.trim() !== "")
+  // A note shared with you takes its text from the owner's document, never a seed (ADR-0056).
+  const guest = note.share?.role === "guest" ? note.share : null
+  const liveMode = useLiveShareModes((m) => m[note.id])
+  const readOnly = !!guest && (liveMode ?? guest.mode) === "view"
+  const [seeded] = useState(() => !locked && !guest && note.ydoc === null && note.markdown.trim() !== "")
 
   const savedRef = useRef(onSaved)
   useEffect(() => {
@@ -76,7 +82,8 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
         Placeholder.configure({ placeholder: ({ pos }) => (pos === 0 ? "Title" : "Write something…") }),
       ],
       immediatelyRender: true,
-      autofocus: autoFocus ? "end" : false,
+      editable: !readOnly,
+      autofocus: autoFocus && !readOnly ? "end" : false,
       // `[[Title]]` still in plain text (older notes, other devices) becomes a link.
       onCreate: ({ editor: e }) => {
         const tr = linkPlainWikiText(e.state)
@@ -128,6 +135,10 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
     },
     [doc],
   )
+  // A link turned view-only (or back) while the note is open.
+  useEffect(() => {
+    if (editor.isEditable === readOnly) editor.setEditable(!readOnly)
+  }, [editor, readOnly])
   const editorRef = useRef(editor)
   useEffect(() => {
     editorRef.current = editor
@@ -137,16 +148,32 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
 
   // Live edits from other devices while this note is open.
   const syncing = useSyncStatus((s) => s.status !== "off")
+  // A note shared with you is live on the owner's relay, yours or not.
+  const guestRef = useRef(guest)
+  useEffect(() => {
+    guestRef.current = guest
+  })
+  const guestId = guest && !guest.revoked ? guest.id : null
+  useEffect(() => {
+    if (!guestId || !guestRef.current) return
+    return guestShares()?.attach(note.id, guestRef.current, doc)
+  }, [guestId, note.id, doc])
+  const shareId = note.share?.revoked ? null : (note.share?.id ?? null)
+  const shareRef = useRef(note.share)
+  useEffect(() => {
+    shareRef.current = note.share
+  })
   useEffect(() => {
     // A locked note never joins its shared document.
-    if (!syncing || locked) return
+    if (!syncing || locked || guestId) return
     try {
-      return notesSync()?.attach(note.id, doc)
+      return notesSync()?.attach(note.id, doc, shareRef.current)
     } catch {
       // Live sync for this note failed to start; it still saves locally and syncs when closed.
       return undefined
     }
-  }, [syncing, note.id, doc, locked])
+    // Sharing (or stopping) moves the note to another document.
+  }, [syncing, note.id, doc, locked, guestId, shareId])
 
   // What's typed after [[, and the choices for it.
   const q = useEditorState({ editor, selector: ({ editor: e }) => wikiQueryAt(e), equalityFn: (a, b) => a?.from === b?.from && a?.query === b?.query })
@@ -176,7 +203,14 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
       <EditorContent editor={editor} className="min-h-0 flex-1 overflow-y-auto [&>div]:min-h-full" />
       {live && <WikiSuggest editor={editor} q={live} choices={choices} active={active} onPick={choose} />}
       <div className="sticky bottom-0 bg-(--note-surface,var(--background)) transition-colors">
+        {readOnly ? (
+          <p className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground md:px-8 [&_svg]:size-4" role="status">
+            <Icon name="visibility" />
+            {guest?.from ? `${guest.from} shared this note for reading` : "Shared with you for reading"}. Their changes show up here.
+          </p>
+        ) : (
         <FormatBar editor={editor} notes onAddImage={() => picker.current?.click()} onScan={() => setScanning(true)} onSketch={() => useSketchSheet.getState().show(null, null)} />
+        )}
         <SketchSheet onDone={(s, pos) => void saveSketch(editor, note.id, s, pos)} />
         <ScanSheet open={scanning} onOpenChange={setScanning} onScanned={(f) => void addImages(editor, note.id, [f], undefined, "Scanned document")} />
         <input

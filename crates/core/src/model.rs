@@ -1073,6 +1073,49 @@ pub struct NoteLink {
     pub target: Option<String>,
 }
 
+/// Who a shared note belongs to (ADR-0056).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShareRole {
+    /// You shared it: its text syncs through your relay, under its share id.
+    Owner,
+    /// Someone shared it with you: its text syncs through their relay.
+    Guest,
+}
+
+/// What a share link lets the other person do.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShareMode {
+    #[default]
+    Edit,
+    View,
+}
+
+/// A note shared by link (ADR-0056). Its text is its own Yjs document on the
+/// owner's relay, `mailbird/shared/<id>`, which the link's token opens.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteShare {
+    /// 16 to 64 letters, digits, `-`, or `_`.
+    pub id: String,
+    pub role: ShareRole,
+    #[serde(default)]
+    pub mode: ShareMode,
+    /// The owner stopped sharing. An owner's stays, so the relay keeps
+    /// refusing the old link; a guest's note becomes their own copy.
+    #[serde(default)]
+    pub revoked: bool,
+    /// A guest's: the owner's relay and the link's token.
+    #[serde(default)]
+    pub relay: Option<String>,
+    #[serde(default)]
+    pub token: Option<String>,
+    /// A guest's: who shared it, as the link names them.
+    #[serde(default)]
+    pub from: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteSummary {
@@ -1095,6 +1138,9 @@ pub struct NoteSummary {
     /// The first image the text shows, for a card's thumbnail (ADR-0044).
     #[serde(default)]
     pub cover: Option<String>,
+    /// Shared by link, or shared with you (ADR-0056).
+    #[serde(default)]
+    pub share: Option<NoteShare>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,
@@ -1123,6 +1169,9 @@ pub struct NoteInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub links: Vec<NoteLink>,
+    /// A note someone shared with you, added from their link (ADR-0056).
+    #[serde(default)]
+    pub share: Option<NoteShare>,
 }
 
 /// Everything about a note except its text. `None` leaves a field as it is.
@@ -1221,6 +1270,9 @@ pub struct NoteRecord {
     pub sealed: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
+    /// Devices from before shared notes (ADR-0056) leave it out.
+    #[serde(default)]
+    pub share: Option<NoteShare>,
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
     pub created: i64,

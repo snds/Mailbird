@@ -15,7 +15,7 @@ use rusqlite::{OptionalExtension, Row, params, params_from_iter, types::Value};
 
 use crate::store::{Store, fts_query, from_json, json};
 use crate::{
-    Error, ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteLinkKind, NoteMeta, NoteQuery, NoteRecord, NoteSummary, NoteTarget, Result,
+    Error, ImportFile, ImportReport, NoteDetail, NoteInput, NoteLink, NoteLinkKind, NoteMeta, NoteQuery, NoteRecord, NoteShare, NoteSummary, NoteTarget, Result,
     TagCount, notes_import, now,
 };
 
@@ -88,9 +88,9 @@ const SNIPPET_CHARS: usize = 140;
 /// The last column is the cover: the first `(note-file:` id in the text. Image
 /// ids are UUIDs, so 36 characters; a locked note's text is empty, so it has none.
 const NOTE_COLS: &str = "n.id, n.title, n.snippet, n.pinned, n.archived, n.tags, n.links, n.created, n.updated, n.color, n.remind_at, n.locked,
-  CASE WHEN instr(n.body, '(note-file:') > 0 THEN substr(n.body, instr(n.body, '(note-file:') + 11, 36) END";
+  CASE WHEN instr(n.body, '(note-file:') > 0 THEN substr(n.body, instr(n.body, '(note-file:') + 11, 36) END, n.share";
 /// The first column a query selects after [`NOTE_COLS`].
-const AFTER_COLS: usize = 13;
+const AFTER_COLS: usize = 14;
 
 fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
     Ok(NoteSummary {
@@ -103,6 +103,7 @@ fn summary_row(r: &Row) -> rusqlite::Result<NoteSummary> {
         remind_at: r.get(10)?,
         locked: r.get(11)?,
         cover: r.get(12)?,
+        share: r.get::<_, Option<String>>(13)?.and_then(from_json::<Option<NoteShare>>),
         tags: from_json(r.get(5)?),
         links: from_json(r.get(6)?),
         created: r.get(7)?,
@@ -378,7 +379,11 @@ impl Store {
     pub fn create_note(&self, input: &NoteInput) -> Result<NoteDetail> {
         let id = uuid::Uuid::new_v4().to_string();
         let t = now();
+        let share = input.share.as_ref().map(crate::note_shares::guest_share).transpose()?;
         self.insert_note(&id, &input.markdown, input.pinned, false, None, &clean_tags(&input.tags), &clean_links(&input.links), None, t, t)?;
+        if let Some(share) = share {
+            self.db.execute("UPDATE notes SET share = ?2 WHERE id = ?1", params![id, json(&share)])?;
+        }
         self.note(&id)
     }
 
@@ -515,7 +520,7 @@ impl Store {
 
     /// Every note's record, tombstones included, for the sync index.
     pub fn note_records(&self) -> Result<Vec<NoteRecord>> {
-        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated, color, remind_at, locked, sealed, title FROM notes")?;
+        let mut st = self.db.prepare("SELECT id, pinned, archived, deleted, tags, links, created, updated, color, remind_at, locked, sealed, title, share FROM notes")?;
         Ok(st
             .query_map([], |r| {
                 Ok(NoteRecord {
@@ -533,6 +538,7 @@ impl Store {
                     sealed: r.get(11)?,
                     // Only a locked note needs its title carried: others have it in their text.
                     title: if r.get::<_, bool>(10)? { Some(r.get(12)?) } else { None },
+                    share: r.get::<_, Option<String>>(13)?.and_then(from_json::<Option<NoteShare>>),
                 })
             })?
             .collect::<rusqlite::Result<_>>()?)
@@ -553,6 +559,7 @@ impl Store {
                 if let Some(t) = clean_remind(rec.remind_at) {
                     self.db.execute("UPDATE notes SET remind_at = ?2 WHERE id = ?1", params![rec.id, t])?;
                 }
+                self.apply_share(rec)?;
                 self.apply_lock(rec)?;
                 Ok(true)
             }
@@ -561,6 +568,7 @@ impl Store {
                     "UPDATE notes SET pinned = ?2, archived = ?3, deleted = ?4, tags = ?5, links = ?6, updated = ?7, color = ?8, remind_at = ?9 WHERE id = ?1",
                     params![rec.id, rec.pinned, rec.archived, rec.deleted, json(&clean_tags(&rec.tags)), json(&links), rec.updated, clean_color(rec.color.as_deref()), clean_remind(rec.remind_at)],
                 )?;
+                self.apply_share(rec)?;
                 self.apply_lock(rec)?;
                 Ok(true)
             }
@@ -893,6 +901,7 @@ mod tests {
             locked: false,
             sealed: None,
             title: None,
+            share: None,
             tags: vec![],
             links: vec![NoteLink { kind: NoteLinkKind::Contact, key: "nobody".into(), label: "Ada".into(), target: Some("bogus".into()) }],
             created: 1,

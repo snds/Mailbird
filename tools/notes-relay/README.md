@@ -1,12 +1,13 @@
 # Notes relay
 
-A small server that lets your devices sync Mailbird notes. It's a plain [Hocuspocus](https://tiptap.dev/docs/hocuspocus) (MIT) server. Any Hocuspocus-compatible relay works, and this one is about 70 lines you can read.
+A small server that lets your devices sync Mailbird notes. It's a plain [Hocuspocus](https://tiptap.dev/docs/hocuspocus) (MIT) server. Any Hocuspocus-compatible relay works, and this one is about 130 lines you can read.
 
 ## How it works
 
 - **Live merging.** Each note is a Yjs document. Devices connect over WebSocket and merge edits as they happen. Two people typing in one note both keep their words.
 - **Catching up.** The relay saves each document to a file. A device that was offline catches up when it reconnects.
 - **What syncs here.** Only notes. Mail, calendars, and contacts sync with your accounts.
+- **Shared notes** ([ADR-0056](../../docs/decisions/0056-shared-notes.md)). A note you share by link gets its own document here. The link carries a token for that one note, derived from the relay's token, so the relay stores no extra secrets. Your devices tell the relay which links still work, and whether each can edit; it refuses stopped links, connects view-only links read-only, and drops guests the moment you stop sharing. A link opened in a browser lands on a short page here (`/share`) that explains how to open it in Mailbird.
 
 ## Run it
 
@@ -31,4 +32,5 @@ NOTES_RELAY_TOKEN=$(openssl rand -base64 24) pnpm --filter notes-relay start
 ## Limits
 
 - **The relay can read your notes.** They're encrypted on the way, but not end to end. Run it yourself, or use one you trust.
+- **People you share with connect here.** To share notes with others, the relay has to be reachable from their devices, not only yours.
 - **One token per relay,** shared by all your devices. To lock out a lost device, change the token, then re-enter it on the devices you keep.

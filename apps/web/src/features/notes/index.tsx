@@ -19,6 +19,7 @@ import { NoteFolderChips } from "./note-folders"
 import { NoteGraphView } from "./note-graph"
 import { NoteCover } from "./note-image"
 import { RelayDialog } from "./relay-dialog"
+import { OpenSharedDialog } from "./share-dialog"
 import { useSyncStatus } from "./sync"
 
 const SYNC_LABEL = { off: "Sync is off", connecting: "Connecting to the relay…", synced: "Synced with the relay", error: "Sync problem" } as const
@@ -37,6 +38,7 @@ export function NotesView() {
   const [archived, setArchived] = useState(false)
   const [importing, setImporting] = useState(false)
   const [relayOpen, setRelayOpen] = useState(false)
+  const [openingShared, setOpeningShared] = useState(false)
   const query = useDeferredValue(search.trim())
   const noteQuery = { search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
   const { data: notes = [], isPending } = useNotes(noteQuery)
@@ -81,7 +83,7 @@ export function NotesView() {
         title={
           <span className="flex items-center gap-1.5">
             {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes" label="Pinned" />}
-            {n.locked && <Icon name="lock" tone="muted" className="size-4" />}
+            {(n.locked || isShared(n)) && <Icon name={n.locked ? "lock" : "group"} tone="muted" className="size-4" />}
             {n.color && (
               <span
                 aria-hidden
@@ -94,6 +96,7 @@ export function NotesView() {
             {/* After the title, so a row is read by its name first. */}
             {n.color && <span className="sr-only">, {NOTE_COLOR_LABEL[n.color]}</span>}
             {n.locked && <span className="sr-only">, locked</span>}
+            {isShared(n) && <span className="sr-only">, {sharedLabel(n)}</span>}
           </span>
         }
         meta={shortTime(n.updated)}
@@ -155,6 +158,9 @@ export function NotesView() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => (setArchived(!archived), setSelected(null))}>
                     <Icon name={archived ? "stylus_note" : "archive"} /> {archived ? "Back to notes" : "Archived notes"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setOpeningShared(true)}>
+                    <Icon name="group_add" /> Open a shared note…
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setImporting(true)}>
                     <Icon name="upload_file" /> Import notes…
@@ -224,9 +230,13 @@ export function NotesView() {
       />
       <ImportDialog open={importing} onOpenChange={setImporting} />
       <RelayDialog open={relayOpen} onOpenChange={setRelayOpen} />
+      <OpenSharedDialog open={openingShared} onOpenChange={setOpeningShared} />
     </>
   )
 }
+
+const isShared = (n: NoteSummary) => !!n.share && !n.share.revoked
+const sharedLabel = (n: NoteSummary) => (n.share?.role === "guest" ? `shared by ${n.share.from ?? "someone"}` : "shared")
 
 /** A list of rows, or Keep's cards: columns at least a card wide, as many as
  * the pane holds: Keep's width across a window, and a narrower card where
@@ -257,7 +267,7 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
         {n.cover && !n.locked && <NoteCover id={n.cover} className="-mx-3 -mt-3 mb-1 w-[calc(100%+1.5rem)] max-w-none rounded-t-[calc(var(--c-note-card-radius)-1px)]" />}
         <span className="flex items-start gap-1.5">
           <span className={cn("min-w-0 flex-1 font-semibold break-words", !n.title && "text-muted-foreground")}>{n.title || "New note"}</span>
-          {n.locked && <Icon name="lock" className="size-4 text-foreground/60" label="Locked" />}
+          {(n.locked || isShared(n)) && <Icon name={n.locked ? "lock" : "group"} className="size-4 text-foreground/60" label={n.locked ? "Locked" : sharedLabel(n)} />}
           {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes" label="Pinned" />}
         </span>
         {n.locked ? (

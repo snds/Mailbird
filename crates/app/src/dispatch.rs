@@ -154,6 +154,8 @@ pub const COMMANDS: &[&str] = &[
     "create_note",
     "save_note_body",
     "set_note_meta",
+    "share_note",
+    "unshare_note",
     "delete_note",
     "restore_note",
     "note_tags",
@@ -599,6 +601,14 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
         "set_note_meta" => {
             args!(args, id: String, meta: NoteMeta);
             Output::json(notes_commands::set_note_meta(app.clone(), state, id, meta)?)
+        }
+        "share_note" => {
+            args!(args, id: String, mode: ShareMode);
+            Output::json(notes_commands::share_note(app.clone(), state, id, mode)?)
+        }
+        "unshare_note" => {
+            args!(args, id: String);
+            Output::json(notes_commands::unshare_note(app.clone(), state, id)?)
         }
         "delete_note" => {
             args!(args, id: String);
