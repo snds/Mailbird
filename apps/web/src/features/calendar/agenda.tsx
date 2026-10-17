@@ -1,5 +1,6 @@
 import { useState } from "react"
 
+import { Button } from "@unicron/ui"
 import type { Collection, Occurrence } from "@/core/types"
 import { cn } from "@/lib/utils"
 
@@ -84,10 +85,11 @@ export function Agenda({
           ))}
         </section>
       ))}
-      <div className="px-4 py-4">
-        <button type="button" onClick={onMore} className="text-sm font-medium text-primary hover:underline">
+      {/* The button's own padding plus this one line the text up with the rows' 16px inset. */}
+      <div className="px-1.5 py-3">
+        <Button variant="link" onClick={onMore}>
           Show the next {days} days
-        </button>
+        </Button>
       </div>
     </div>
   )

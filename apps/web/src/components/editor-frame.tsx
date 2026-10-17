@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 
-import { Dialog, DialogContent, DialogTitle, Sheet, SheetContent, SheetTitle } from "@unicron/ui"
+import { Button, Dialog, DialogContent, DialogTitle, Sheet, SheetContent, SheetTitle } from "@unicron/ui"
 import { useIsTabletUp } from "@/hooks/use-media-query"
 
 /** The field marked `data-editor-focus` gets focus once the frame is open. */
@@ -36,9 +36,9 @@ export function EditorFrame({ open, onClose, title, children }: { open: boolean;
 export function EditorHeader({ title, onCancel, action }: { title: string; onCancel: () => void; action: ReactNode }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2">
-      <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3 text-sm font-medium hover:bg-muted">
+      <Button type="button" variant="ghost" onClick={onCancel}>
         Cancel
-      </button>
+      </Button>
       <h2 className="flex-1 truncate text-center text-sm font-semibold">{title}</h2>
       {action}
     </header>
