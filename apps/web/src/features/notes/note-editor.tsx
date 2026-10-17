@@ -220,7 +220,7 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
         <FormatBar editor={editor} notes onAddImage={() => picker.current?.click()} onScan={() => setScanning(true)} onSketch={() => useSketchSheet.getState().show(null, null)} />
         )}
         <SketchSheet onDone={(s, pos) => void saveSketch(editor, note.id, s, pos)} />
-        <ScanSheet open={scanning} onOpenChange={setScanning} onScanned={(f) => void addImages(editor, note.id, [f], undefined, "Scanned document")} />
+        <ScanSheet open={scanning} onOpenChange={setScanning} onScanned={(pages) => void addScans(editor, note.id, pages)} />
         <input
           ref={picker}
           type="file"
@@ -246,6 +246,11 @@ const imagesIn = (data: DataTransfer | null) => [...(data?.files ?? [])].filter(
  * Shrinks each image, stores it with the note, and puts it in the text at
  * `at` (or the cursor). A failed one says why; the rest still go in.
  */
+/** Scanned pages go in order, each described with its place in the document (ADR-0068). */
+async function addScans(editor: Editor, noteId: string, pages: File[]) {
+  for (const [i, page] of pages.entries()) await addImages(editor, noteId, [page], undefined, pages.length > 1 ? `Scanned document, page ${i + 1} of ${pages.length}` : "Scanned document")
+}
+
 async function addImages(editor: Editor, noteId: string, files: File[], at?: number, alt = "") {
   const core = await getCoreClient()
   for (const f of files) {

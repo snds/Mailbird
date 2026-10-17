@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, Button, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
+import { Icon, Button, IconButton, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
 import { findPage, FULL, loadPhoto, type Pt, type Quad, type ScanLook, straighten, toJpeg } from "@/lib/scan"
 import { IMAGE_SIDE } from "@/lib/image"
 
@@ -10,11 +10,12 @@ const PREVIEW_SIDE = 1200
 const clamp = (v: number) => Math.min(1, Math.max(0, v))
 
 /**
- * Scan a page into a note (ADR-0045): take a photo (or pick one), set the
- * page's corners, choose how it looks, and add it. The text in it is read
- * on this device afterwards, like any image's.
+ * Scan pages into a note (ADR-0045, ADR-0068): take a photo (or pick one),
+ * set the page's corners, choose how it looks, and add it, or scan the next
+ * page first. The text in them is read on this device afterwards, like any
+ * image's.
  */
-export function ScanSheet({ open, onOpenChange, onScanned }: { open: boolean; onOpenChange: (o: boolean) => void; onScanned: (scan: File) => void }) {
+export function ScanSheet({ open, onOpenChange, onScanned }: { open: boolean; onOpenChange: (o: boolean) => void; onScanned: (pages: File[]) => void }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <AdaptiveSheetContent wide className="flex flex-col gap-3 px-5 pb-5 sm:pt-5">
@@ -24,7 +25,15 @@ export function ScanSheet({ open, onOpenChange, onScanned }: { open: boolean; on
   )
 }
 
-function Scanner({ onDone }: { onDone: (f: File) => void }) {
+/** A page scanned and waiting to be added, with a thumbnail to show it. */
+interface Page {
+  file: File
+  thumb: string
+}
+
+function Scanner({ onDone }: { onDone: (pages: File[]) => void }) {
+  // Pages already scanned, in order; the one being worked on isn't here yet.
+  const [pages, setPages] = useState<Page[]>([])
   const [photo, setPhoto] = useState<HTMLCanvasElement | null>(null)
   const [quad, setQuad] = useState<Quad>(FULL)
   const [step, setStep] = useState<"pick" | "corners" | "look">("pick")
@@ -42,29 +51,58 @@ function Scanner({ onDone }: { onDone: (f: File) => void }) {
       toast.error(e instanceof Error ? e.message : String(e))
     }
   }
+  /** The page being worked on, finished. */
+  const finish = async (): Promise<Page | null> => {
+    if (!photo) return null
+    const page = straighten(photo, quad, IMAGE_SIDE, look)
+    const blob = await toJpeg(page)
+    return { file: new File([blob], `Scan ${pages.length + 1}.jpg`, { type: "image/jpeg" }), thumb: page.toDataURL("image/jpeg", 0.5) }
+  }
   const add = async () => {
-    if (!photo) return
     setBusy(true)
     try {
-      const blob = await toJpeg(straighten(photo, quad, IMAGE_SIDE, look))
-      onDone(new File([blob], "Scan.jpg", { type: "image/jpeg" }))
+      const last = await finish()
+      onDone([...pages, ...(last ? [last] : [])].map((p) => p.file))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
       setBusy(false)
     }
   }
+  /** Keep this page and scan the next one, with the same look. */
+  const next = async () => {
+    setBusy(true)
+    try {
+      const last = await finish()
+      if (last) setPages((ps) => [...ps, last])
+      setPhoto(null)
+      setStep("pick")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+    setBusy(false)
+  }
+  const total = pages.length + (photo && step !== "pick" ? 1 : 0)
 
   return (
     <>
       <div className="flex flex-col gap-1">
-        <SheetTitle>Scan a document</SheetTitle>
+        <SheetTitle>{pages.length ? `Scan a document · page ${pages.length + 1}` : "Scan a document"}</SheetTitle>
         <SheetDescription>
-          {step === "pick" && "Take a photo of a page, or choose one. The text in it becomes searchable, read on this device."}
+          {step === "pick" &&
+            (pages.length ? "Take a photo of the next page, or add what you have." : "Take a photo of a page, or choose one. The text in it becomes searchable, read on this device.")}
           {step === "corners" && "Drag the corners to the page's edges."}
           {step === "look" && "Choose how the page looks."}
         </SheetDescription>
       </div>
+      {pages.length > 0 && <PageStrip pages={pages} onRemove={(i) => setPages((ps) => ps.filter((_, k) => k !== i))} />}
       {step === "pick" && <PickPhoto onPick={(f) => void pick(f)} />}
+      {step === "pick" && pages.length > 0 && (
+        <div className="mt-auto flex justify-end pt-1 max-sm:pr-14">
+          <Button type="button" disabled={busy} onClick={() => void add()}>
+            <Icon name="add_photo_alternate" data-icon="inline-start" /> Add {pages.length === 1 ? "1 page" : `${pages.length} pages`} to note
+          </Button>
+        </div>
+      )}
       {step === "corners" && photo && <Corners photo={photo} quad={quad} onChange={setQuad} />}
       {step === "look" && photo && <Preview photo={photo} quad={quad} look={look} onLook={setLook} />}
       {step !== "pick" && (
@@ -82,13 +120,34 @@ function Scanner({ onDone }: { onDone: (f: File) => void }) {
               </Button>
             </>
           ) : (
-            <Button type="button" className="ml-auto" disabled={busy} onClick={() => void add()}>
-              <Icon name="add_photo_alternate" data-icon="inline-start" /> Add to note
-            </Button>
+            <>
+              <Button type="button" variant="outline" className="ml-auto" disabled={busy} onClick={() => void next()}>
+                <Icon name="add" data-icon="inline-start" /> Next page
+              </Button>
+              <Button type="button" disabled={busy} onClick={() => void add()}>
+                <Icon name="add_photo_alternate" data-icon="inline-start" /> {total > 1 ? `Add ${total} pages to note` : "Add to note"}
+              </Button>
+            </>
           )}
         </div>
       )}
     </>
+  )
+}
+
+/** The pages scanned so far, in order, each with a way to take it out. */
+function PageStrip({ pages, onRemove }: { pages: Page[]; onRemove: (i: number) => void }) {
+  return (
+    <ol aria-label="Scanned pages" className="flex gap-2 overflow-x-auto pb-1">
+      {pages.map((p, i) => (
+        <li key={p.thumb} className="relative shrink-0">
+          <img src={p.thumb} alt={`Page ${i + 1}`} className="block h-20 w-auto rounded-md border" />
+          <span className="absolute -top-2 -right-2">
+            <IconButton icon="close" label={`Remove page ${i + 1}`} size="icon-xs" variant="secondary" onClick={() => onRemove(i)} />
+          </span>
+        </li>
+      ))}
+    </ol>
   )
 }
 
