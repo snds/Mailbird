@@ -147,3 +147,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0066](decisions/0066-unused-note-images.md) | `sweep_note_files` (every 6 h): unreferenced images in live, unlocked notes marked `orphaned_at`, dropped after 30 days; `note_files_gone` (v23) blocks resurrection; index `filesGone` map spreads drops to every device |
 | [0067](decisions/0067-note-image-viewer.md) | `ImageViewer` (`image-viewer.tsx`, store in `image-viewer-store.ts`): a fullscreen `SheetContent` over a note's images in order; fit / actual size, arrows / swipe, Save (web) |
 | [0068](decisions/0068-multi-page-scans.md) | `ScanSheet` pages: Next page keeps a page in a strip (Remove each), Add N pages adds them in order; `addScans` describes each "Scanned document, page i of n" |
+| [0069](decisions/0069-unicron-0-9.md) | `@unicron/ui` 0.9.0 / `@unicron/tokens` 0.7.0; `--destructive` `red.700` / `red.200`, light `--warning` `amber.450`; no code change, ratchet flat |
