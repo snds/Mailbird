@@ -31,4 +31,4 @@ ADR-0062 showed the sync key in a password-style field with Show and Copy. The k
 
 ## Consequences
 
-- **On the desktop and phone,** the copy still goes through the web clipboard. A copy by reference through the core (`copyRef`), which keeps the bytes out of the web layer, is for when the core gains clipboard access.
+- **On the desktop and phone,** the copy still goes through the web clipboard. A copy by reference through the core (`copyRef`), which keeps the bytes out of the web layer, is for when the core gains clipboard access. It did in [ADR-0070](0070-core-clipboard-and-image-save.md).

@@ -214,6 +214,10 @@ pub const COMMANDS: &[&str] = &[
     "note_file_records",
     "note_files_gone",
     "forget_note_files",
+    "save_note_file",
+    "copy_relay_key",
+    "clipboard_holds",
+    "clear_clipboard",
     "note_file_raw",
     "put_note_file",
     "set_note_file_text",
@@ -806,6 +810,16 @@ pub async fn dispatch(app: &AppHandle, state: &Shared, name: &str, args: Value) 
             args!(args, ids: Vec<String>);
             Output::json(notes_commands::forget_note_files(app.clone(), state, ids)?)
         }
+        "save_note_file" => {
+            args!(args, id: String, name: String);
+            Output::json(notes_commands::save_note_file(app.clone(), state, id, name)?)
+        }
+        "copy_relay_key" => Output::json(notes_commands::copy_relay_key(app.clone())?),
+        "clipboard_holds" => {
+            args!(args, hash: String);
+            Output::json(crate::clipboard::clipboard_holds(app, hash)?)
+        }
+        "clear_clipboard" => Output::json(crate::clipboard::clear_clipboard(app)?),
         "note_file_raw" => {
             args!(args, id: String);
             Output::json(notes_commands::note_file_raw(state, id)?)

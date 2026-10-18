@@ -356,6 +356,31 @@ pub fn note_file(state: &Shared, id: String) -> Res<pim_core::NoteFileData> {
     with_store(state, |s| s.note_file(&id, k.as_ref()))
 }
 
+/// Copies the relay's encryption key inside the core (ADR-0070): the UI gets
+/// a digest to ask about later, never the key.
+pub fn copy_relay_key(app: AppHandle) -> Res<crate::clipboard::CopyRef> {
+    let key = secrets::find(RELAY_KEY_SECRET)?.filter(|k| !k.is_empty()).ok_or("this relay has no encryption key")?;
+    crate::clipboard::copy_secret(&app, &key)
+}
+
+/// Saves a note's image to Downloads (ADR-0070). Returns where it went.
+pub fn save_note_file(app: AppHandle, state: &Shared, id: String, name: String) -> Res<String> {
+    let k = key(state).ok();
+    let f = with_store(state, |s| s.note_file(&id, k.as_ref()))?;
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &f.data_base64).map_err(|_| "that image is damaged".to_string())?;
+    let ext = match f.mime.as_str() {
+        "image/jpeg" => "jpg",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        "image/svg+xml" => "svg",
+        _ => "png",
+    };
+    let stem: String = crate::commands::safe_filename(&name).chars().take(60).collect();
+    let path = crate::commands::unique_path(&app.download_dir()?, &format!("{}.{ext}", stem.trim()));
+    std::fs::write(&path, bytes).map_err(|e| format!("couldn't save the image: {e}"))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 pub fn note_files(state: &Shared, note_id: String) -> Res<Vec<pim_core::NoteFile>> {
     with_store(state, |s| s.note_files(&note_id))
 }

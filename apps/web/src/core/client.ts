@@ -364,6 +364,17 @@ export interface CoreClient {
   noteFilesGone(): Promise<{ id: string; at: number }[]>
   /** Another device dropped these images. */
   forgetNoteFiles(ids: string[]): Promise<void>
+  /** Saves a note's image to Downloads from the core; returns where (ADR-0070). Desktop and phone only. */
+  saveNoteFile(id: string, name: string): Promise<string>
+  /**
+   * Copy by reference (ADR-0070): the core puts the relay's key on the
+   * clipboard itself, and the page gets only a digest. Desktop and phone only.
+   */
+  copyRelayKey(): Promise<{ hash: string }>
+  /** Whether the clipboard still holds the core's copy. */
+  clipboardHolds(hash: string): Promise<boolean>
+  /** Clears the core's copy, unless something else was copied since. */
+  clearClipboard(): Promise<boolean>
   noteFileRaw(id: string): Promise<string>
   putNoteFile(file: NoteFile, rawBase64: string): Promise<boolean>
   /** Text in images (ADR-0045): keep what was read; list the ones not read yet. */
@@ -571,6 +582,10 @@ function commands(call: Call): Omit<CoreClient, "kind" | "remote" | "on"> {
     noteFileRecords: () => call("note_file_records"),
     noteFilesGone: () => call("note_files_gone"),
     forgetNoteFiles: (ids) => call("forget_note_files", { ids }),
+    saveNoteFile: (id, name) => call("save_note_file", { id, name }),
+    copyRelayKey: () => call("copy_relay_key"),
+    clipboardHolds: (hash) => call("clipboard_holds", { hash }),
+    clearClipboard: () => call("clear_clipboard"),
     noteFileRaw: (id) => call("note_file_raw", { id }),
     putNoteFile: (file, rawBase64) => call("put_note_file", { file, rawBase64 }),
     setNoteFileText: (id, text) => call("set_note_file_text", { id, text }),

@@ -24,7 +24,19 @@ pub trait Host: Send + Sync + 'static {
     fn show_app(&self, _jump: Option<serde_json::Value>) -> Result<(), String> {
         Err("there's only one window here".into())
     }
+    /// Puts text on the system clipboard, inside the core's process, so a
+    /// secret copied this way never crosses to the UI (ADR-0070).
+    fn clipboard_write(&self, _text: &str) -> Result<(), String> {
+        Err(NO_CLIPBOARD.into())
+    }
+    /// What's on the system clipboard now, as text (empty when it isn't text).
+    fn clipboard_read(&self) -> Result<String, String> {
+        Err(NO_CLIPBOARD.into())
+    }
 }
+
+/// The gateway has no clipboard of its own: copies go through the browser there.
+pub const NO_CLIPBOARD: &str = "the clipboard is the browser's here";
 
 /// A cheap, cloneable handle to the host.
 #[derive(Clone)]
@@ -62,5 +74,13 @@ impl AppHandle {
 
     pub fn show_app(&self, jump: Option<serde_json::Value>) -> Result<(), String> {
         self.0.show_app(jump)
+    }
+
+    pub fn clipboard_write(&self, text: &str) -> Result<(), String> {
+        self.0.clipboard_write(text)
+    }
+
+    pub fn clipboard_read(&self) -> Result<String, String> {
+        self.0.clipboard_read()
     }
 }
