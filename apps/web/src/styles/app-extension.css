@@ -66,6 +66,8 @@
 :root {
   /* App shell */
   --c-shell-rail-width: 4.5rem;
+  /* The rail with labels beside its icons (ADR-0073). */
+  --c-shell-rail-width-expanded: 13rem;
   --c-shell-tabbar-height: 4rem;
   --c-shell-list-width: 22rem;
   --c-shell-active-indicator: var(--accent);

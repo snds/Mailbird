@@ -36,11 +36,32 @@ function ocrFiles(): Plugin {
   }
 }
 
+/**
+ * Vale's Icon (src/lib/unicron-icon.tsx) in place of unicron's own icon
+ * module, for the app and for the system's components that import it
+ * (ADR-0073). It draws symbols by character, which WebKit renders in SVG text;
+ * unicron's draws them by ligature, which WebKit doesn't.
+ */
+const ICON = path.resolve(__dirname, "src/lib/unicron-icon.tsx")
+function unicronIcon(): Plugin {
+  return {
+    name: "vale-unicron-icon",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (!importer?.includes("@unicron/ui") || !/(^|\/)icon(\.js)?$/.test(source)) return null
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true })
+      return resolved && /@unicron\/ui\/dist\/components\/icon\.js$/.test(resolved.id) ? ICON : resolved
+    },
+  }
+}
+
 // Tauri expects a fixed port and must not clear its own console output.
 const host = process.env.TAURI_DEV_HOST
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), ocrFiles()],
+  plugins: [unicronIcon(), react(), tailwindcss(), ocrFiles()],
+  // The dev server pre-bundles @unicron/ui; swap the icon there too.
+  optimizeDeps: { rolldownOptions: { plugins: [unicronIcon()] } },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
     // One instance each across the app and @unicron/ui, or hooks and Base UI's

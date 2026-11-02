@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useState, type ComponentProps, type ReactElement, type ReactNode } from "react"
 
 import { Icon, Button, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
 import { cn } from "@/lib/utils"
@@ -21,24 +21,63 @@ interface ShellProps {
   children: ReactNode
 }
 
+/** The rail's open state: labels beside the icons, or a column of icons. Kept per device. */
+const RAIL_KEY = "vale.nav.expanded"
+function useRailExpanded() {
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem(RAIL_KEY)
+      if (saved !== null) return saved === "1"
+    } catch {
+      // Storage can be off; fall back to the window's width.
+    }
+    return window.matchMedia("(min-width: 64rem)").matches
+  })
+  const toggle = () =>
+    setExpanded((was) => {
+      try {
+        localStorage.setItem(RAIL_KEY, was ? "0" : "1")
+      } catch {
+        // Not remembered this time; the rail still toggles.
+      }
+      return !was
+    })
+  return [expanded, toggle] as const
+}
+
 /**
  * Adaptive frame. One component tree, three postures:
  *   phone   (< md)  bottom tab bar + single stacked pane
  *   tablet  (md)    nav rail + list/detail split
  *   desktop (lg+)   nav rail + wider list + reading pane
+ * The rail opens to labels beside its icons, or closes to a column of icons
+ * (ADR-0073). "New" is a floating button at the content's bottom right that
+ * makes whatever the open area makes.
  */
 export function AppShell({ active, onNavigate, onCreate, onSettings, children }: ShellProps) {
   const current = VERTICALS.find((v) => v.id === active)!
+  const [expanded, toggleRail] = useRailExpanded()
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-canvas">
-      <NavRail active={active} onNavigate={onNavigate} onCreate={onCreate} onSettings={onSettings} current={current} />
-      <main className="flex min-w-0 flex-1 flex-col pb-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0">
+      <NavRail active={active} onNavigate={onNavigate} onSettings={onSettings} expanded={expanded} onToggle={toggleRail} />
+      <main className="relative flex min-w-0 flex-1 flex-col pb-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0">
         {DEMO_APP && <DemoBar />}
         {children}
+        <Fab vertical={current} onClick={onCreate} />
       </main>
-      <Fab vertical={current} onClick={onCreate} />
       <TabBar active={active} onNavigate={onNavigate} />
     </div>
+  )
+}
+
+/** A rail row: a tooltip names it only while the rail shows icons alone. */
+function RailTip({ label, expanded, children }: { label: ReactNode; expanded: boolean; children: ReactElement }) {
+  if (expanded) return children
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -47,40 +86,47 @@ function NavItem({
   active,
   onClick,
   orientation,
+  expanded = false,
+  ...props
 }: {
   vertical: Vertical
   active: boolean
   onClick: () => void
   orientation: "rail" | "tab"
-}) {
+  expanded?: boolean
+} & ComponentProps<"button">) {
+  const rail = orientation === "rail"
   return (
     <button
       type="button"
+      {...props}
       onClick={onClick}
       data-active={active}
       aria-current={active ? "page" : undefined}
+      aria-label={rail && !expanded ? vertical.label : undefined}
       className={cn(
-        "group/nav flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground outline-none transition-colors",
-        "focus-visible:ring-3 focus-visible:ring-ring/50 rounded-xl",
+        "group/nav flex text-xs font-medium text-muted-foreground outline-none transition-colors",
+        "focus-visible:ring-3 focus-visible:ring-ring/50 rounded-full",
         // Tier-3 tokens drive the icon axes; @property makes them animate.
         "[--c-icon-fill:var(--c-nav-icon-fill-rest)] [--c-icon-wght:var(--c-nav-icon-wght-rest)]",
         "data-[active=true]:text-foreground data-[active=true]:[--c-icon-fill:var(--c-nav-icon-fill-active)] data-[active=true]:[--c-icon-wght:var(--c-nav-icon-wght-active)]",
-        orientation === "rail" ? "w-full flex-none py-1.5" : "h-full"
+        rail
+          ? cn(
+              "h-12 flex-none items-center gap-3 text-sm hover:bg-accent/60 data-[active=true]:bg-accent",
+              expanded ? "w-full px-4" : "w-12 justify-center"
+            )
+          : "h-full flex-1 flex-col items-center justify-center gap-1 rounded-xl"
       )}
     >
       <span
         className={cn(
-          "flex h-8 w-14 items-center justify-center rounded-full transition-colors",
-          "group-hover/nav:bg-accent/60 group-data-[active=true]/nav:bg-accent"
+          "flex items-center justify-center",
+          !rail && "h-8 w-14 rounded-full transition-colors group-hover/nav:bg-accent/60 group-data-[active=true]/nav:bg-accent"
         )}
       >
-        <Icon
-          name={vertical.icon}
-          className={cn("size-6", active && vertical.accent)}
-          opticalSize={24}
-        />
+        <Icon name={vertical.icon} className={cn("size-6", active && vertical.accent)} opticalSize={24} />
       </span>
-      {vertical.label}
+      {(!rail || expanded) && <span className="truncate">{vertical.label}</span>}
     </button>
   )
 }
@@ -88,46 +134,67 @@ function NavItem({
 function NavRail({
   active,
   onNavigate,
-  onCreate,
   onSettings,
-  current,
+  expanded,
+  onToggle,
 }: {
   active: VerticalId
   onNavigate: (id: VerticalId) => void
-  onCreate: () => void
   onSettings: () => void
-  current: Vertical
+  expanded: boolean
+  onToggle: () => void
 }) {
+  const shortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K"
+  const row = cn("h-12 justify-start gap-3 rounded-full text-sm font-medium text-muted-foreground [&_svg]:size-6!", expanded ? "w-full px-4" : "w-12 justify-center px-0")
   return (
     <nav
       aria-label="Apps"
-      className="hidden w-(--c-shell-rail-width) shrink-0 flex-col items-center gap-2 border-r bg-surface-chrome py-3 md:flex"
+      data-expanded={expanded}
+      className={cn(
+        "hidden shrink-0 flex-col gap-1 border-r bg-surface-chrome px-3 py-3 transition-[width] duration-(--g-duration-base) ease-(--g-ease-standard) md:flex",
+        expanded ? "w-(--c-shell-rail-width-expanded)" : "w-(--c-shell-rail-width) items-center"
+      )}
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button size="icon-lg" className="mb-3 size-12 rounded-2xl" onClick={onCreate} aria-label={current.create.label} />
+      <RailTip label="Show labels" expanded={expanded}>
+        <Button
+          variant="ghost"
+          className={cn(row, "mb-2")}
+          aria-label={expanded ? "Hide labels" : "Show labels"}
+          aria-expanded={expanded}
+          onClick={onToggle}
+        >
+          <Icon name={expanded ? "left_panel_close" : "left_panel_open"} opticalSize={24} />
+        </Button>
+      </RailTip>
+      {shown().map((v) => (
+        <RailTip key={v.id} label={v.label} expanded={expanded}>
+          <NavItem vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" expanded={expanded} />
+        </RailTip>
+      ))}
+      <div className="mt-auto flex flex-col gap-1">
+        <RailTip
+          expanded={expanded}
+          label={
+            <>
+              Command menu <kbd className="ml-1 font-mono text-[11px] opacity-70">{shortcut}</kbd>
+            </>
           }
         >
-          <Icon name={current.create.icon} className="size-6" opticalSize={24} />
-        </TooltipTrigger>
-        <TooltipContent side="right">{current.create.label}</TooltipContent>
-      </Tooltip>
-      {shown().map((v) => (
-        <NavItem key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" />
-      ))}
-      <div className="mt-auto flex flex-col items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-lg" aria-label="Command menu" onClick={() => useUi.getState().setPaletteOpen(true)} />}>
-            <Icon name="keyboard_command_key" className="size-6" opticalSize={24} />
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            Command menu <kbd className="ml-1 font-mono text-[11px] opacity-70">{/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K"}</kbd>
-          </TooltipContent>
-        </Tooltip>
-        <Button variant="ghost" size="icon-lg" aria-label="Accounts and settings" onClick={onSettings}>
-          <Icon name="settings" className="size-6" opticalSize={24} />
-        </Button>
+          <Button variant="ghost" className={row} aria-label="Command menu" onClick={() => useUi.getState().setPaletteOpen(true)}>
+            <Icon name="keyboard_command_key" opticalSize={24} />
+            {expanded && (
+              <>
+                Commands <kbd className="ml-auto font-mono text-[11px] opacity-70">{shortcut}</kbd>
+              </>
+            )}
+          </Button>
+        </RailTip>
+        <RailTip label="Accounts and settings" expanded={expanded}>
+          <Button variant="ghost" className={row} aria-label="Accounts and settings" onClick={onSettings}>
+            <Icon name="settings" opticalSize={24} />
+            {expanded && "Settings"}
+          </Button>
+        </RailTip>
       </div>
     </nav>
   )
@@ -146,15 +213,24 @@ function TabBar({ active, onNavigate }: { active: VerticalId; onNavigate: (id: V
   )
 }
 
-/** Phone-only primary action, placed in the thumb zone above the tab bar. */
+/**
+ * The open area's "new" action, floating at the content's bottom right: in
+ * the thumb zone above the tab bar on a phone, and with its label beside the
+ * icon from a tablet up, so it says what it makes.
+ */
 function Fab({ vertical, onClick }: { vertical: Vertical; onClick: () => void }) {
   return (
     <Button
       onClick={onClick}
       aria-label={vertical.create.label}
-      className="fixed right-4 bottom-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom)+1rem)] z-20 size-14 rounded-2xl shadow-lg md:hidden"
+      className={cn(
+        "z-20 size-14 rounded-2xl shadow-lg [&_svg]:size-6!",
+        "fixed right-4 bottom-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom)+1rem)]",
+        "md:absolute md:right-6 md:bottom-6 md:size-auto md:h-14 md:gap-3 md:px-5 md:text-base"
+      )}
     >
-      <Icon name={vertical.create.icon} className="size-6" opticalSize={24} />
+      <Icon name={vertical.create.icon} opticalSize={24} />
+      <span className="hidden md:inline">{vertical.create.label}</span>
     </Button>
   )
 }

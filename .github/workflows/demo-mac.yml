@@ -17,6 +17,7 @@ on:
     paths:
       - "apps/web/src-tauri/**"
       - "apps/web/package.json"
+      - "apps/web/vite.config.ts"
       - ".github/workflows/demo-mac.yml"
   workflow_dispatch:
 

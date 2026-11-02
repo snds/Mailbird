@@ -1,0 +1,36 @@
+# ADR-0073 · Icons by code point, a rail that opens to labels, and a floating "new"
+
+- **Status:** Accepted
+- **Date:** 2026-11-02
+- **Builds on:** [ADR-0052](0052-unicron-packages.md) (unicron), [ADR-0072](0072-demo-app-for-mac.md) (the demo app for Mac)
+
+Sean opened the Mac demo and the icons were blank. He also asked for the left nav to show labels beside its icons, to close down to a column of icons, and for "new" to become a floating button for whatever area is open.
+
+## Decisions
+
+### Icons draw by code point
+
+- **Why they were blank:** unicron's `Icon` puts the symbol's name ("inbox") as text inside a small `<svg>`, and the Material Symbols font turns that word into the glyph through a ligature. WebKit, the engine in the Mac app (and Safari), doesn't apply ligatures to SVG text. So the word never became a glyph. Chrome does apply them, which is why the browser suites passed.
+- **The fix:** draw each symbol by its own character (the private-use code point the ligature points to), which needs no ligature. The `<svg>` wrapper, the props, and the live font axes (fill, weight, grade, optical size) stay as they were.
+- **The map comes from the font itself.** `apps/web/scripts/icon-codepoints.py` reads the installed `material-symbols` font's ligature table and writes `src/lib/material-symbols-codepoints.json` (4,301 names, about 31 KB gzipped). Re-run it after bumping `material-symbols`. A name missing from the map falls back to the ligature, as before.
+- **Where it lives, for now:** in Vale (`src/lib/unicron-icon.tsx`). A small Vite plugin swaps it in for unicron's own icon module, so unicron's components (dialogs, menus, checkboxes) get it too, not just Vale's screens. The plugin runs in the build and in the dev server's pre-bundle.
+- **It belongs in unicron.** When unicron's `Icon` draws by code point, drop the plugin, the file, and the map here. Until then the ratchet carries one look-alike (`Icon` declared in Vale), accepted in this review.
+
+### The rail opens to labels and closes to icons
+
+- **Open:** each area is a row with its icon and its label to the right, 13rem wide (`--c-shell-rail-width-expanded`). The command menu and settings at the bottom get labels too.
+- **Closed:** a column of icons at the old 4.5rem width, each named by a tooltip and an accessible label.
+- **A toggle at the top** opens and closes it. The choice is kept on the device (`vale.nav.expanded`). With no choice saved yet, it opens on a wide window (64rem and up) and starts closed on a tablet.
+- **The phone keeps its bottom tab bar,** labels under icons; that's a different control from the rail.
+
+### "New" floats at the content's bottom right
+
+- **One button, and what it makes depends on the open area:** Compose in Mail, New event in Calendar, New contact in Contacts, New note in Notes. It's the same action the rail's top button used to run, now out of the rail.
+- **On a tablet and up** it sits at the bottom right of the content area, with its label beside the icon, so it says what it makes. **On a phone** it stays an icon-only button above the tab bar.
+- **Trade-off:** it floats over content. Long lists and the calendar grid run under it, as with any floating action button. Lists keep scrolling past it, and nothing at the very bottom right is reachable only there.
+
+## Verification
+
+- `tsc -b`, `oxlint`, `vite build` and `pnpm build:demo` are clean. The ratchet's className overrides go down by one (211 → 210); look-alikes go up by one (the stand-in `Icon`, above).
+- **In Chromium:** labels sit to the right of their icons; the rail measures 208px open and 72px closed; closing it is remembered after a reload; the floating button reads "New event" in Calendar and opens the event editor; the icon text is the code point, not the word; the console is clean. The browser regression passes.
+- **On the Mac:** this PR's Mac workflow builds a dmg; the WebKit check is opening it and seeing the icons.
