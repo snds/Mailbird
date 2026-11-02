@@ -1,7 +1,6 @@
 import { toast } from "sonner"
 
-import { useUi } from "@/app/ui-store"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
+import { NativeSelect, NativeSelectOption, Switch, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
 import { useMailPrefs, useSetMailPrefs } from "@/core/queries"
 import type { MailPrefs } from "@/core/types"
 
@@ -20,23 +19,7 @@ const MARK_READ: { value: MailPrefs["markRead"]; label: string; hint: string }[]
 const CHECK = [2, 5, 15, 30, 60]
 
 /** Mail's power settings (ADR-0055): the choices most people never change, in one place. */
-export function AdvancedMailDialog() {
-  const open = useUi((s) => s.advancedMailOpen)
-  const setOpen = useUi((s) => s.setAdvancedMailOpen)
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>Advanced mail settings</DialogTitle>
-          <DialogDescription>The defaults keep your reading private. Change them here if you want more control.</DialogDescription>
-        </DialogHeader>
-        {open && <AdvancedMail />}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function AdvancedMail() {
+export function AdvancedMail() {
   const { data: prefs } = useMailPrefs()
   const set = useSetMailPrefs()
   if (!prefs) return null

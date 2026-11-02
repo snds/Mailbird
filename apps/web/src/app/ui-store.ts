@@ -35,6 +35,9 @@ export interface Jump {
   row?: MessageSummary
 }
 
+/** The settings page's sections (ADR-0075). */
+export type SettingsSection = "accounts" | "writing" | "mail" | "shortcuts" | "ai" | "calendar" | "phone" | "team"
+
 const VERTICAL_OF: Record<Jump["kind"], VerticalId> = { thread: "mail", event: "calendar", contact: "contacts", note: "notes" }
 
 /** Something a note can link to, with the name to show for it. */
@@ -65,22 +68,17 @@ interface UiState {
   contactEditor: ContactEditorState | null
   openContactEditor: (state?: ContactEditorState) => void
   closeContactEditor: () => void
-  accountsOpen: boolean
-  setAccountsOpen: (open: boolean) => void
-  /** Signatures and templates. */
-  writingOpen: boolean
-  setWritingOpen: (open: boolean) => void
-  /** Shortcuts and gestures: the key list and your swipes. */
-  grammarOpen: boolean
-  /** Mail's power settings (ADR-0055). */
-  advancedMailOpen: boolean
-  aiSettingsOpen: boolean
-  setAiSettingsOpen: (open: boolean) => void
-  /** The gateway's team (ADR-0063), for its owner. */
-  membersOpen: boolean
-  setMembersOpen: (open: boolean) => void
-  setAdvancedMailOpen: (open: boolean) => void
-  setGrammarOpen: (open: boolean) => void
+  /**
+   * The settings page (ADR-0075), in place of the open area: the section
+   * shown, "index" for the list of sections alone (a phone), or null.
+   */
+  settings: SettingsSection | "index" | null
+  /** Open settings, at a section; with none, the first one (or the list, on a phone). */
+  openSettings: (section?: SettingsSection) => void
+  closeSettings: () => void
+  /** The keyboard shortcuts list (?), read-only; keys change in settings. */
+  shortcutsOpen: boolean
+  setShortcutsOpen: (open: boolean) => void
   /** The ⌘K command menu. */
   paletteOpen: boolean
   setPaletteOpen: (open: boolean) => void
@@ -124,12 +122,12 @@ export type ComposerDraft = Partial<Draft> & {
 
 export const useUi = create<UiState>((set, get) => ({
   vertical: "mail",
-  setVertical: (vertical) => set({ vertical, jump: null, openNote: null, mailTab: "inbox", mailSearch: "", mailCategory: null, mailSplit: null }),
+  setVertical: (vertical) => set({ vertical, settings: null, jump: null, openNote: null, mailTab: "inbox", mailSearch: "", mailCategory: null, mailSplit: null }),
   jump: null,
   jumpTo: (jump) =>
     jump.kind === "note"
-      ? set({ vertical: "notes", jump: null, openNote: { id: jump.id, fresh: !!jump.fresh } })
-      : set({ vertical: VERTICAL_OF[jump.kind], jump, openNote: null }),
+      ? set({ vertical: "notes", settings: null, jump: null, openNote: { id: jump.id, fresh: !!jump.fresh } })
+      : set({ vertical: VERTICAL_OF[jump.kind], settings: null, jump, openNote: null }),
   openNote: null,
   setOpenNote: (openNote) => set({ openNote }),
   takeJump: (kind) => {
@@ -147,18 +145,11 @@ export const useUi = create<UiState>((set, get) => ({
   contactEditor: null,
   openContactEditor: (state = { initial: {} }) => set({ contactEditor: state }),
   closeContactEditor: () => set({ contactEditor: null }),
-  accountsOpen: false,
-  setAccountsOpen: (accountsOpen) => set({ accountsOpen }),
-  writingOpen: false,
-  setWritingOpen: (writingOpen) => set({ writingOpen }),
-  grammarOpen: false,
-  advancedMailOpen: false,
-  aiSettingsOpen: false,
-  setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
-  membersOpen: false,
-  setMembersOpen: (membersOpen) => set({ membersOpen }),
-  setAdvancedMailOpen: (advancedMailOpen) => set({ advancedMailOpen }),
-  setGrammarOpen: (grammarOpen) => set({ grammarOpen }),
+  settings: null,
+  openSettings: (section) => set({ settings: section ?? (window.matchMedia("(min-width: 48rem)").matches ? "accounts" : "index"), paletteOpen: false }),
+  closeSettings: () => set({ settings: null }),
+  shortcutsOpen: false,
+  setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen, paletteOpen: false }),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   quickContext: null,
@@ -169,9 +160,9 @@ export const useUi = create<UiState>((set, get) => ({
   mailTab: "inbox",
   teamOpen: null,
   setTeamOpen: (teamOpen) => set({ teamOpen }),
-  showTeam: (teamOpen) => set({ vertical: "mail", mailTab: "team", teamOpen, mailSearch: "", mailCategory: null, mailSplit: null, jump: null, openNote: null }),
+  showTeam: (teamOpen) => set({ vertical: "mail", settings: null, mailTab: "team", teamOpen, mailSearch: "", mailCategory: null, mailSplit: null, jump: null, openNote: null }),
   setMailTab: (mailTab) => set({ mailTab }),
-  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
+  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", settings: null, mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
   mailCategory: null,
   setMailCategory: (mailCategory) => set({ mailCategory, mailSplit: null }),
   mailSplit: null,

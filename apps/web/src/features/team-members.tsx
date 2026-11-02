@@ -2,8 +2,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Button, Icon, DialogDescription, DialogHeader, DialogTitle, Field, FieldLabel, IconButton, Input, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@unicron/ui"
-import { useUi } from "@/app/ui-store"
+import { Button, Icon, Field, FieldLabel, IconButton, Input, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@unicron/ui"
 import { type Invitation, addTeamMember, invitationUrl, reinviteTeamMember, removeTeamMember } from "@/core/client"
 import { useTeamMembers } from "@/core/queries"
 
@@ -12,22 +11,7 @@ import { useTeamMembers } from "@/core/queries"
  * their invitation link, send a new one, or take them off. Members work the
  * mail with you: assign conversations and leave each other notes.
  */
-export function TeamMembersView() {
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>
-          <IconButton icon="arrow_back" label="Back to settings" variant="ghost" size="icon-sm" onClick={() => (useUi.getState().setMembersOpen(false), useUi.getState().setAccountsOpen(true))} />
-          Team members
-        </DialogTitle>
-        <DialogDescription>People you add work this gateway's mail with you: they read and reply from its accounts, assign conversations, and leave each other notes. Your accounts, settings, calendars, contacts, and notes stay yours.</DialogDescription>
-      </DialogHeader>
-      <Members />
-    </>
-  )
-}
-
-function Members() {
+export function Members() {
   const { data: members = [] } = useTeamMembers()
   const qc = useQueryClient()
   const [name, setName] = useState("")

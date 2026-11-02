@@ -1,8 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { useUi } from "@/app/ui-store"
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Field, FieldLabel, Input } from "@unicron/ui"
+import { Icon, Button, Field, FieldLabel, Input } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useSignatures, useTemplates } from "@/core/queries"
 import type { Account, Template } from "@/core/types"
@@ -14,23 +13,7 @@ import { useRichEditor } from "@/features/mail/use-rich-editor"
  * Signatures (one per account, added to new messages and replies) and
  * templates (inserted from the composer). Both live in the core (ADR-0017).
  */
-export function WritingDialog() {
-  const open = useUi((s) => s.writingOpen)
-  const setOpen = useUi((s) => s.setWritingOpen)
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>Signatures and templates</DialogTitle>
-          <DialogDescription>Signatures go on new messages and replies. Templates are text you reuse, inserted from the composer.</DialogDescription>
-        </DialogHeader>
-        {open && <WritingSettings />}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function WritingSettings() {
+export function WritingSettings() {
   const { data: accounts = [] } = useAccounts()
   const { data: signatures } = useSignatures()
   const { data: templates = [] } = useTemplates()

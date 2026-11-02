@@ -191,7 +191,7 @@ export function CalendarView() {
       }
       const command = commandFor(keys, "calendar", e.key)
       if (command) run[command]?.()
-      else if (e.key === "?") useUi.getState().setGrammarOpen(true)
+      else if (e.key === "?") useUi.getState().setShortcutsOpen(true)
       else return
       e.preventDefault()
     }

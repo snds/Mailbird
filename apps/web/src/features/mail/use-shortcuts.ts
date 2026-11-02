@@ -33,7 +33,7 @@ export function useMailShortcuts(opts: {
     const t = e.target as HTMLElement
     if (t.closest("input, textarea, select, [contenteditable=true], [role=dialog], [role=menu]")) return
     const ui = useUi.getState()
-    if (ui.composer || ui.accountsOpen || ui.writingOpen || ui.paletteOpen || ui.grammarOpen) return
+    if (ui.composer || ui.settings || ui.paletteOpen || ui.shortcutsOpen) return
 
     const { list, selectedId, selected, select, triage } = opts
     const index = list.findIndex((m) => m.threadId === selectedId)
@@ -59,7 +59,7 @@ export function useMailShortcuts(opts: {
       "mail.newsletters": swipe("newsletters"),
     }
     // Esc and ? never change, so the way out and the way to this list stay put.
-    const fixed: Record<string, () => void> = { Escape: () => select(null), "?": () => ui.setGrammarOpen(true) }
+    const fixed: Record<string, () => void> = { Escape: () => select(null), "?": () => ui.setShortcutsOpen(true) }
     const command = commandFor(keys, "mail", e.key)
     const run = (command && handlers[command]) || fixed[e.key]
     if (run) {

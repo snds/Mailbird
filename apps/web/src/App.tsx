@@ -9,11 +9,9 @@ import { Toaster, TooltipProvider } from "@unicron/ui"
 import { type AppJump, getCoreClient, isMember } from "@/core/client"
 import { queryClient, useCoreEvents } from "@/core/queries"
 import { APP_JUMP_KEY } from "@/lib/app-jump"
-import { AccountsDialog } from "@/features/accounts"
 import { CommandPalette } from "@/features/command-palette"
-import { WritingDialog } from "@/features/writing-settings"
-import { AdvancedMailDialog } from "@/features/advanced-mail"
-import { AiSettingsDialog } from "@/features/ai-settings"
+import { KeyboardShortcuts } from "@/features/keyboard-shortcuts"
+import { SettingsView } from "@/features/settings"
 import { GatewayGate } from "@/features/gateway-sign-in"
 import { BookingPage, ManageBookingPage } from "@/features/booking/page"
 import { CalendarView } from "@/features/calendar"
@@ -22,7 +20,6 @@ import { EventEditor } from "@/features/calendar/event-editor"
 import { MiniCalendar } from "@/features/calendar/mini-calendar"
 import { ReminderWatcher } from "@/features/calendar/reminder-watcher"
 import { ContactEditor } from "@/features/contacts/contact-editor"
-import { GrammarDialog } from "@/features/grammar"
 import { QuickNote } from "@/features/notes/quick-note"
 import { SplitEditor } from "@/features/mail/splits"
 import { MailView } from "@/features/mail"
@@ -48,7 +45,8 @@ function Root() {
   const openComposer = useUi((s) => s.openComposer)
   const openEventEditor = useUi((s) => s.openEventEditor)
   const openContactEditor = useUi((s) => s.openContactEditor)
-  const setAccountsOpen = useUi((s) => s.setAccountsOpen)
+  const settings = useUi((s) => s.settings)
+  const openSettings = useUi((s) => s.openSettings)
   useCoreEvents()
   useAppJumps()
   const View = VIEWS[active]
@@ -58,7 +56,8 @@ function Root() {
       <AppShell
         active={active}
         onNavigate={setActive}
-        onSettings={() => setAccountsOpen(true)}
+        settingsOpen={!!settings}
+        onSettings={() => openSettings()}
         onCreate={() => {
           if (active === "mail") openComposer()
           else if (active === "calendar") openEventEditor()
@@ -67,19 +66,15 @@ function Root() {
         }}
       >
         {/* key resets each vertical's selection when switching apps */}
-        <View key={active} />
+        {settings ? <SettingsView /> : <View key={active} />}
       </AppShell>
       <Composer />
       <EventEditor />
       <ContactEditor />
       <SplitEditor />
-      <GrammarDialog />
+      <KeyboardShortcuts />
       <QuickNote />
       <ImageViewer />
-      <AccountsDialog />
-      <WritingDialog />
-      <AdvancedMailDialog />
-      <AiSettingsDialog />
       <CommandPalette
         onCreate={{
           mail: () => (setActive("mail"), openComposer()),
