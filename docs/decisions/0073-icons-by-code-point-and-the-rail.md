@@ -1,10 +1,18 @@
 # ADR-0073 · Icons by code point, a rail that opens to labels, and a floating "new"
 
-- **Status:** Accepted
+- **Status:** Accepted; the icon part is superseded by [ADR-0074](0074-unicron-0-16.md) (unicron 0.16; see "Amended 2026-11-02" below). The rail and the floating "new" stand.
 - **Date:** 2026-11-02
 - **Builds on:** [ADR-0052](0052-unicron-packages.md) (unicron), [ADR-0072](0072-demo-app-for-mac.md) (the demo app for Mac)
 
 Sean opened the Mac demo and the icons were blank. He also asked for the left nav to show labels beside its icons, to close down to a column of icons, and for "new" to become a floating button for whatever area is open.
+
+## Amended 2026-11-02: the icons come from unicron again
+
+- **The cause was misread above.** WebKit does join the letters into the icon. What it gets wrong is the centring: it centres SVG text by the width of the separate letters ("home" is four glyphs, 96 units wide) before the font joins them into one icon, so a centred icon lands far to the left, outside its box. unicron found and fixed this in 0.13.1 ([snds/unicron#49](https://github.com/snds/unicron/pull/49), from Synapse's Mac app): the glyph is anchored at the left edge, and every Material Symbol is exactly 1em wide. Vale was still on unicron 0.9.
+- **Drawing by code point worked for the same reason:** one character has no separate letters to mis-measure.
+- **So Vale moves to unicron 0.16** and drops its stand-in ([ADR-0074](0074-unicron-0-16.md)).
+
+The original decision, kept for the record:
 
 ## Decisions
 
