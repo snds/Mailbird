@@ -60,15 +60,11 @@ jobs:
         with:
           name: Vale-Demo-mac
           path: Vale-Demo-mac.dmg
-      - name: Publish the demo-mac pre-release
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # Runs on pull requests too, so the Mac shell checks the notes before merge.
+      - name: Write the release notes
         run: |
-          set -euo pipefail
-          gh release delete demo-mac --yes --cleanup-tag || true
-          gh release create demo-mac Vale-Demo-mac.dmg --prerelease --target "$GITHUB_SHA" \
-            --title "Vale Demo for Mac" --notes "$(cat <<'NOTES'
+          # A file, not $(cat <<...): macOS bash 3.2 misreads apostrophes there.
+          cat > notes.md <<'NOTES'
           The Vale desktop app on sample mail, calendar, contacts and notes. No accounts, no sign-in. A bar on every screen says it's the demo; **Reset demo data** starts it fresh.
 
           **Install:** open the dmg and drag **Vale Demo** to Applications.
@@ -78,6 +74,16 @@ jobs:
           - macOS 14 or earlier: Control-click the app, choose **Open**, then **Open**.
           - Or in Terminal: `xattr -dr com.apple.quarantine "/Applications/Vale Demo.app"`
 
-          It runs on its own (`design.snds.vale.demo`), apart from a real install's data and keychain. Built from ${{ github.sha }}.
+          It runs on its own (`design.snds.vale.demo`), apart from a real install's data and keychain.
           NOTES
-          )"
+          echo "Built from $GITHUB_SHA." >> notes.md
+          cat notes.md
+      - name: Publish the demo-mac pre-release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete demo-mac --yes --cleanup-tag || true
+          gh release create demo-mac Vale-Demo-mac.dmg --prerelease --target "$GITHUB_SHA" \
+            --title "Vale Demo for Mac" --notes-file notes.md
