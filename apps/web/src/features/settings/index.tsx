@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 
 import { useUi, type SettingsSection } from "@/app/ui-store"
-import { Button, Icon, type IconName, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
+import { Button, Icon, type IconName, Item, ItemContent, ItemMedia, ItemTitle } from "@unicron/ui"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { isMember, signOutOfGateway } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
@@ -22,14 +22,12 @@ interface Section {
   id: SettingsSection
   icon: IconName
   title: string
-  /** One line in the list: what's in the section. */
-  hint: string
   body: () => ReactNode
 }
 
 /**
  * Settings as a page (ADR-0075): the sections down the left like a mailbox's
- * list, the one you pick beside them. Replaces the accounts dialog and the
+ * list, by name alone, and the one you pick beside them under its header. Replaces the accounts dialog and the
  * dialogs it opened. Sections that need an account show once there is one.
  */
 export function SettingsView() {
@@ -60,7 +58,6 @@ export function SettingsView() {
               </ItemMedia>
               <ItemContent>
                 <ItemTitle>{s.title}</ItemTitle>
-                <ItemDescription className="line-clamp-1">{s.hint}</ItemDescription>
               </ItemContent>
             </Item>
           ))}
@@ -94,7 +91,6 @@ function useSections(): Section[] {
       id: "accounts",
       icon: "manage_accounts",
       title: "Accounts",
-      hint: "Your mail, calendar, and contacts accounts",
       when: true,
       body: () => <AccountsSection />,
     },
@@ -102,7 +98,6 @@ function useSections(): Section[] {
       id: "writing",
       icon: "edit_note",
       title: "Signatures and templates",
-      hint: "What goes at the end of your messages, and text you reuse",
       when: hasAccount && !member,
       body: () => (
         <>
@@ -115,7 +110,6 @@ function useSections(): Section[] {
       id: "mail",
       icon: "mail",
       title: "Mail",
-      hint: "Remote images, marking read, replies, receipts, the Screener",
       when: hasAccount && !member,
       body: () => (
         <>
@@ -129,7 +123,6 @@ function useSections(): Section[] {
       id: "calendar",
       icon: "calendar_month",
       title: "Calendar",
-      hint: remote ? "Meeting links" : "Meeting links and the menu bar",
       when: !member,
       body: () => (
         <>
@@ -144,7 +137,6 @@ function useSections(): Section[] {
       id: "shortcuts",
       icon: "keyboard",
       title: "Shortcuts and gestures",
-      hint: "Change your keys and what swipes do",
       when: true,
       body: () => (
         <>
@@ -160,7 +152,6 @@ function useSections(): Section[] {
       id: "ai",
       icon: "wand_stars",
       title: "AI summaries and replies",
-      hint: "Off unless you turn it on",
       when: hasAccount && !member,
       body: () => (
         <>
@@ -173,15 +164,18 @@ function useSections(): Section[] {
       id: "phone",
       icon: "mobile",
       title: "New mail on your phone",
-      hint: "Alerts through a relay you choose",
       when: hasAccount && !remote && !member,
-      body: () => <PushSettingsSection />,
+      body: () => (
+        <>
+          <SectionHeader title="New mail on your phone" description="How mail reaches your phone while the app is closed. The desktop app keeps its own connection open while it runs." />
+          <PushSettingsSection />
+        </>
+      ),
     },
     {
       id: "team",
       icon: "group",
       title: "Team members",
-      hint: "People who work this gateway's mail with you",
       when: remote && !member,
       body: () => (
         <>

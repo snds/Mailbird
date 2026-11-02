@@ -49,12 +49,10 @@ export function PushSettingsSection() {
   if (!data) return null
   return (
     <section className="flex flex-col gap-3" aria-labelledby="push-heading">
-      <div className="flex flex-col gap-0.5">
-        <h3 id="push-heading" className="text-sm font-medium">
-          New mail on this phone
-        </h3>
-        <p className="text-xs text-muted-foreground">How mail arrives while the app is closed. The desktop app keeps its own connection open while it runs.</p>
-      </div>
+      {/* The settings page heads this section; the heading stays to name the choices. */}
+      <h3 id="push-heading" className="sr-only">
+        New mail on this phone
+      </h3>
       <div role="radiogroup" aria-labelledby="push-heading" className="grid gap-2 sm:grid-cols-2">
         {CHOICES.map((c) => (
           <label
