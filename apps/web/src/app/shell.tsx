@@ -180,13 +180,15 @@ function NavRail({
             </>
           }
         >
-          <Button variant="ghost" className={row} aria-label="Command menu" onClick={() => useUi.getState().setPaletteOpen(true)}>
+          <Button
+            variant="ghost"
+            className={row}
+            aria-label="Command menu"
+            aria-keyshortcuts={shortcut === "⌘K" ? "Meta+K" : "Control+K"}
+            onClick={() => useUi.getState().setPaletteOpen(true)}
+          >
             <Icon name="keyboard_command_key" opticalSize={24} />
-            {expanded && (
-              <>
-                Commands <kbd className="ml-auto font-mono text-[11px] opacity-70">{shortcut}</kbd>
-              </>
-            )}
+            {expanded && "Commands"}
           </Button>
         </RailTip>
         <RailTip label="Accounts and settings" expanded={expanded}>

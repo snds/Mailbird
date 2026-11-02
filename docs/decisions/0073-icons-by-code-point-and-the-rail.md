@@ -18,7 +18,7 @@ Sean opened the Mac demo and the icons were blank. He also asked for the left na
 
 ### The rail opens to labels and closes to icons
 
-- **Open:** each area is a row with its icon and its label to the right, 13rem wide (`--c-shell-rail-width-expanded`). The command menu and settings at the bottom get labels too.
+- **Open:** each area is a row with its icon and its label to the right, 11rem wide (`--c-shell-rail-width-expanded`). At that width a 1440px window still fits the list, the conversation, and its sender panel; at 13rem the sender panel dropped out. The command menu and settings at the bottom get labels too; the ⌘K hint stays in the closed rail's tooltip (and in `aria-keyshortcuts`), since it didn't fit beside "Commands".
 - **Closed:** a column of icons at the old 4.5rem width, each named by a tooltip and an accessible label.
 - **A toggle at the top** opens and closes it. The choice is kept on the device (`vale.nav.expanded`). With no choice saved yet, it opens on a wide window (64rem and up) and starts closed on a tablet.
 - **The phone keeps its bottom tab bar,** labels under icons; that's a different control from the rail.
@@ -32,5 +32,5 @@ Sean opened the Mac demo and the icons were blank. He also asked for the left na
 ## Verification
 
 - `tsc -b`, `oxlint`, `vite build` and `pnpm build:demo` are clean. The ratchet's className overrides go down by one (211 → 210); look-alikes go up by one (the stand-in `Icon`, above).
-- **In Chromium:** labels sit to the right of their icons; the rail measures 208px open and 72px closed; closing it is remembered after a reload; the floating button reads "New event" in Calendar and opens the event editor; the icon text is the code point, not the word; the console is clean. The browser regression passes.
+- **In Chromium:** labels sit to the right of their icons; the rail measures 176px open and 72px closed; closing it is remembered after a reload; the floating button reads "New event" in Calendar and opens the event editor; the icon text is the code point, not the word; the console is clean. The browser regression passes.
 - **On the Mac:** this PR's Mac workflow builds a dmg; the WebKit check is opening it and seeing the icons.
