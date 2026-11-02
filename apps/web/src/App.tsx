@@ -47,6 +47,7 @@ function Root() {
   const openContactEditor = useUi((s) => s.openContactEditor)
   const settings = useUi((s) => s.settings)
   const openSettings = useUi((s) => s.openSettings)
+  const closeSettings = useUi((s) => s.closeSettings)
   useCoreEvents()
   useAppJumps()
   const View = VIEWS[active]
@@ -55,7 +56,8 @@ function Root() {
     <>
       <AppShell
         active={active}
-        onNavigate={setActive}
+        // The open area's own button, from settings, returns to it as it was.
+        onNavigate={(id) => (settings && id === active ? closeSettings() : setActive(id))}
         settingsOpen={!!settings}
         onSettings={() => openSettings()}
         onCreate={() => {
@@ -65,8 +67,13 @@ function Root() {
           else newNote()
         }}
       >
-        {/* key resets each vertical's selection when switching apps */}
-        {settings ? <SettingsView /> : <View key={active} />}
+        {settings && <SettingsView />}
+        {/* key resets each vertical's selection when switching apps. Settings
+            hides the area instead of unmounting it, so coming back finds it as
+            you left it (ADR-0075). */}
+        <div className={settings ? "hidden" : "contents"}>
+          <View key={active} />
+        </div>
       </AppShell>
       <Composer />
       <EventEditor />

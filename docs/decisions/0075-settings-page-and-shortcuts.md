@@ -10,7 +10,8 @@ Sean found settings overwrought: one long Accounts dialog that opened four more 
 
 ### Settings is a page, laid out like Mail
 
-- **Settings takes the place of the open area,** the way Mail shows its list beside a conversation: the sections down the left (`MasterDetail`'s list pane), the one you pick beside them. The rail's Settings button shows as the current place; picking Mail, Calendar, Contacts or Notes leaves settings.
+- **Settings takes the place of the open area,** the way Mail shows its list beside a conversation: the sections down the left by name alone (`MasterDetail`'s list pane), the one you pick beside them. What a section is for is said once, in the description under its header. The rail's Settings button shows as the current place.
+- **Coming back finds the area as you left it.** Settings hides the area instead of unmounting it, and that area's own button (rail or tab bar) closes settings without resetting it: the open conversation, event or note is still there. Its keys wait while settings covers it.
 - **The sections:**
   - **Accounts:** the list and adding one. Adding an account and connecting calendars are steps inside the section, each with Back.
   - **Signatures and templates**, **Mail** (what was "Advanced mail settings", plus the Screener), and **AI summaries and replies**.
@@ -38,4 +39,4 @@ Sean found settings overwrought: one long Accounts dialog that opened four more 
 
 ## Consequences
 
-- **Settings is one click further from a conversation** (it replaces the area instead of floating over it). The rail and the tab bar bring you back in one step.
+- **Settings is one click further from a conversation** (it replaces the area instead of floating over it). The area's button in the rail or the tab bar brings you back to exactly where you were.
