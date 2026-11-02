@@ -2,19 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Icon, type IconName, Badge, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption } from "@unicron/ui"
 import { gatewayMe, getCoreClient, isMember, signOutOfGateway } from "@/core/client"
-import { TeamMembersView } from "@/features/team-members"
 import { useAccounts, useCore } from "@/core/queries"
 import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
 
 import { OAuthSignIn } from "./oauth-sign-in"
-import { PushSettingsSection } from "./push-settings"
-import { MeetingSettingsSection } from "./meeting-settings"
-import { MenuBarSettingsSection } from "./menu-bar-settings"
-import { ScreenerSettingsSection } from "./screener-settings"
+import { SectionActions, SectionHeader } from "./settings/section-header"
 
 interface Preset {
   id: string
@@ -76,35 +71,19 @@ const PRESETS: Preset[] = [
   { id: "microsoft", label: "Outlook / Microsoft 365", icon: "mail", provider: "microsoft", passwordLabel: "", oauth: "microsoft" },
 ]
 
-export function AccountsDialog() {
-  const accountsOpen = useUi((s) => s.accountsOpen)
-  const setAccountsOpen = useUi((s) => s.setAccountsOpen)
-  // The gateway's team (ADR-0063) is a page of settings, in the same dialog.
-  const membersOpen = useUi((s) => s.membersOpen)
-  const open = accountsOpen || membersOpen
-  const setOpen = (o: boolean) => (setAccountsOpen(o), !o && useUi.getState().setMembersOpen(false))
+/**
+ * Settings → Accounts (ADR-0075): the accounts on this device or gateway,
+ * and adding one. Adding and connecting calendars are steps in the section,
+ * each with a way back to the list.
+ */
+export function AccountsSection() {
   const [preset, setPreset] = useState<Preset | null>(null)
   const [connecting, setConnecting] = useState<Account | null>(null)
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => (setOpen(o), !o && setPreset(null))}>
-      <DialogContent size="lg">
-        {membersOpen ? (
-          <TeamMembersView />
-        ) : preset?.oauth ? (
-          <OAuthSignIn issuer={preset.oauth} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
-        ) : preset ? (
-          <AddAccountForm preset={preset} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
-        ) : connecting ? (
-          <ConnectDavForm account={connecting} onDone={() => setConnecting(null)} />
-        ) : isMember() ? (
-          <MemberSettings />
-        ) : (
-          <AccountList onAdd={setPreset} onConnect={setConnecting} />
-        )}
-      </DialogContent>
-    </Dialog>
-  )
+  if (isMember()) return <MemberSettings />
+  if (preset?.oauth) return <OAuthSignIn issuer={preset.oauth} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
+  if (preset) return <AddAccountForm preset={preset} onBack={() => setPreset(null)} onDone={() => setPreset(null)} />
+  if (connecting) return <ConnectDavForm account={connecting} onDone={() => setConnecting(null)} />
+  return <AccountList onAdd={setPreset} onConnect={setConnecting} />
 }
 
 function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConnect: (a: Account) => void }) {
@@ -128,12 +107,10 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>Accounts</DialogTitle>
-        <DialogDescription>
-          {core?.remote ? "Mail is kept on your gateway. Passwords are sealed there with its key." : "Mail stays on this device. Passwords are kept in your system keychain."}
-        </DialogDescription>
-      </DialogHeader>
+      <SectionHeader
+        title="Accounts"
+        description={core?.remote ? "Mail is kept on your gateway. Passwords are sealed there with its key." : "Mail stays on this device. Passwords are kept in your system keychain."}
+      />
 
       {core?.kind === "demo" && (
         <p className="flex gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
@@ -208,30 +185,6 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         </div>
       </div>
 
-      {accounts.length > 0 && (
-        <SettingsRow icon="edit_note" title="Signatures and templates" hint="What goes at the end of your messages, and text you reuse." open={() => useUi.getState().setWritingOpen(true)} />
-      )}
-
-      <SettingsRow icon="swipe" title="Shortcuts and gestures" hint="What your swipes do, and the keys for everything." open={() => useUi.getState().setGrammarOpen(true)} />
-
-      {accounts.length > 0 && (
-        <SettingsRow icon="tune" title="Advanced mail settings" hint="Remote images, marking read, how replies quote, read receipts, and how often to check." open={() => useUi.getState().setAdvancedMailOpen(true)} />
-      )}
-
-      {accounts.length > 0 && (
-        <SettingsRow icon="wand_stars" title="AI summaries and replies" hint="Off unless you turn it on: a model on this computer, or Claude or another service with your own key." open={() => useUi.getState().setAiSettingsOpen(true)} />
-      )}
-
-      {core?.remote && <SettingsRow icon="group" title="Team members" hint="People who work this gateway's mail with you: a shared inbox." open={() => useUi.getState().setMembersOpen(true)} />}
-
-      <MeetingSettingsSection />
-
-      {/* The menu bar is the desktop's; the demo stands in for it. */}
-      {!core?.remote && <MenuBarSettingsSection />}
-
-      {accounts.length > 0 && <ScreenerSettingsSection />}
-
-      {accounts.length > 0 && !core?.remote && <PushSettingsSection />}
       {core?.remote && (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={() => void signOutOfGateway().then(() => location.reload())}>
@@ -248,10 +201,7 @@ function MemberSettings() {
   const me = gatewayMe()
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>Settings</DialogTitle>
-        <DialogDescription>You're signed in as {me?.name} on a shared inbox. Its accounts and settings belong to the gateway's owner.</DialogDescription>
-      </DialogHeader>
+      <SectionHeader title="Accounts" description={`You're signed in as ${me?.name} on a shared inbox. Its accounts and settings belong to the gateway's owner.`} />
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={() => void signOutOfGateway().then(() => location.reload())}>
           <Icon name="logout" data-icon="inline-start" /> Sign out
@@ -331,14 +281,7 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
 
   return (
     <form onSubmit={(e) => (e.preventDefault(), add.mutate())} className="flex flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back">
-            <Icon name="arrow_back" />
-          </Button>
-          Add {preset.label}
-        </DialogTitle>
-      </DialogHeader>
+      <SectionHeader title={`Add ${preset.label}`} onBack={onBack} />
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="acct-address">Email address</FieldLabel>
@@ -406,14 +349,14 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
           <Icon name="error" className="mt-0.5 size-4" /> {add.error.message}
         </p>
       )}
-      <DialogFooter>
+      <SectionActions>
         <Badge variant="outline" className="mr-auto self-center">
           <Icon name="lock" className="size-3" /> Checked before saving
         </Badge>
         <Button type="submit" disabled={add.isPending}>
           {add.isPending ? "Connecting…" : "Add account"}
         </Button>
-      </DialogFooter>
+      </SectionActions>
     </form>
   )
 }
@@ -470,15 +413,7 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
   })
   return (
     <form onSubmit={(e) => (e.preventDefault(), connect.mutate())} className="flex flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={onDone} aria-label="Back">
-            <Icon name="arrow_back" />
-          </Button>
-          Calendars and contacts
-        </DialogTitle>
-        <DialogDescription>{account.address}</DialogDescription>
-      </DialogHeader>
+      <SectionHeader title="Calendars and contacts" description={account.address} onBack={onDone} />
       <FieldGroup>
         {!fixed && <DavUrlFields calendarUrl={calendarUrl} setCalendarUrl={setCalendarUrl} contactsUrl={contactsUrl} setContactsUrl={setContactsUrl} />}
         <Field>
@@ -494,29 +429,11 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
           <Icon name="error" className="mt-0.5 size-4" /> {connect.error.message}
         </p>
       )}
-      <DialogFooter>
+      <SectionActions>
         <Button type="submit" disabled={connect.isPending}>
           {connect.isPending ? "Connecting…" : "Connect"}
         </Button>
-      </DialogFooter>
+      </SectionActions>
     </form>
-  )
-}
-
-/** A row that opens a settings dialog of its own, closing this one. */
-function SettingsRow({ icon, title, hint, open }: { icon: IconName; title: string; hint: string; open: () => void }) {
-  return (
-    <Item variant="outline" render={<button type="button" onClick={() => (useUi.getState().setAccountsOpen(false), open())} />}>
-      <ItemMedia>
-        <Icon name={icon} tone="muted" />
-      </ItemMedia>
-      <ItemContent>
-        <ItemTitle>{title}</ItemTitle>
-        <ItemDescription>{hint}</ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        <Icon name="chevron_right" tone="muted" />
-      </ItemActions>
-    </Item>
   )
 }

@@ -1,8 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { useUi } from "@/app/ui-store"
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Kbd, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Button, Kbd, NativeSelect, NativeSelectOption } from "@unicron/ui"
 import { useKeyBindings, useSetKeyBindings, useSetSwipeActions, useSwipeActions } from "@/core/queries"
 import type { SwipeActionId, SwipeActions } from "@/core/types"
 import { DEFAULT_KEYS, FIXED_KEYS, KEY_COMMANDS, type KeyArea, type KeyBindings, keyLabel, keyProblem, rebind } from "@/lib/keys"
@@ -29,28 +28,8 @@ const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn", 
  * in. Swipes and keys live in the core, so they follow you across browsers
  * and devices.
  */
-export function GrammarDialog() {
-  const open = useUi((s) => s.grammarOpen)
-  const setOpen = useUi((s) => s.setGrammarOpen)
-  // While a key is being captured, Esc cancels that, not the dialog.
+export function ShortcutSettings() {
   const [capturing, setCapturing] = useState<string | null>(null)
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o, details) => {
-        if (!o && capturing && details.reason === "escape-key") return details.cancel()
-        setOpen(o)
-        setCapturing(null)
-      }}
-    >
-      <DialogContent size="lg">
-        {open && <Grammar capturing={capturing} setCapturing={setCapturing} />}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function Grammar({ capturing, setCapturing }: { capturing: string | null; setCapturing: (id: string | null) => void }) {
   const { data: swipes } = useSwipeActions()
   const save = useSetSwipeActions()
   const { data: keys } = useKeyBindings()
@@ -82,10 +61,6 @@ function Grammar({ capturing, setCapturing }: { capturing: string | null; setCap
 
   return (
     <div className="flex flex-col gap-5">
-      <DialogHeader>
-        <DialogTitle>Shortcuts and gestures</DialogTitle>
-        <DialogDescription>The same actions three ways: a key, a swipe on a phone, or ⌘K. Every swipe can also have a key, so nothing is gesture-only. Change any key below.</DialogDescription>
-      </DialogHeader>
       <section aria-label="Swipes" className="flex flex-col gap-2">
         <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Swipes in the mail list</h3>
         {SLOTS.map((slot) => (

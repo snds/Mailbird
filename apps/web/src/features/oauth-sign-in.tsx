@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { Icon, type IconName, Button, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, Spinner, DialogAction, DialogActions } from "@unicron/ui"
+import { Icon, type IconName, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input, Spinner, DialogAction, DialogActions } from "@unicron/ui"
+import { SectionHeader } from "./settings/section-header"
 import { getCoreClient } from "@/core/client"
 import type { OAuthClientInfo, OAuthIssuer } from "@/core/types"
 
@@ -102,17 +103,11 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
 
   return (
     <div className="flex flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={() => (signIn.isPending && cancel(), onBack())} aria-label="Back">
-            <Icon name="arrow_back" />
-          </Button>
-          {copy.title}
-        </DialogTitle>
-        <DialogDescription>
-          You'll sign in on {copy.company}'s page in your browser. This app never sees your {copy.company} password.
-        </DialogDescription>
-      </DialogHeader>
+      <SectionHeader
+        title={copy.title}
+        description={`You'll sign in on ${copy.company}'s page in your browser. This app never sees your ${copy.company} password.`}
+        onBack={() => (signIn.isPending && cancel(), onBack())}
+      />
 
       {signIn.isPending ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border bg-muted/40 px-4 py-6 text-center" role="status" aria-live="polite">
@@ -152,14 +147,14 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
             <Icon name="info" className="mt-0.5 size-4" />
             {client?.builtIn ? copy.builtInWarning : copy.ownWarning}
           </p>
-          <DialogFooter className="items-center sm:justify-between">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
             <Button type="button" variant="link" size="sm" className="px-0" onClick={() => setEditing(true)}>
               {client?.builtIn ? `Use your own ${copy.clientNoun}` : `Change ${copy.clientNoun}`}
             </Button>
             <Button onClick={() => signIn.mutate()}>
               <Icon name="open_in_new" data-icon="inline-start" /> Continue in browser
             </Button>
-          </DialogFooter>
+          </div>
         </>
       )}
     </div>

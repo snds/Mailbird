@@ -69,7 +69,7 @@ export function MailView() {
   const { data: thread } = useThread(selectedId)
   const { data: overview } = useInboxOverview(accountId)
   const openComposer = useUi((s) => s.openComposer)
-  const setAccountsOpen = useUi((s) => s.setAccountsOpen)
+  const openSettings = useUi((s) => s.openSettings)
   const sync = useMailAction<void>((c) => c.syncNow())
   const triage = useTriage(() => setSelected(null))
   const verb = useMailVerbs(triage, senderActions)
@@ -124,7 +124,7 @@ export function MailView() {
         <>
           <PaneHeader title={accountId ? (accounts.find((a) => a.id === accountId)?.displayName ?? "Inbox") : "All inboxes"}>
             {/* Phones have no nav rail, so accounts live here. */}
-            <Button variant="ghost" size="icon" aria-label="Accounts and settings" className="md:hidden" onClick={() => setAccountsOpen(true)}>
+            <Button variant="ghost" size="icon" aria-label="Accounts and settings" className="md:hidden" onClick={() => openSettings()}>
               <Icon name="manage_accounts" />
             </Button>
             {multiAccount && (
@@ -226,7 +226,7 @@ export function MailView() {
               <EmptyTitle>Add your first account</EmptyTitle>
               <EmptyDescription>Gmail, Outlook, iCloud, Fastmail, or any IMAP account.</EmptyDescription>
             </EmptyHeader>
-            <Button onClick={() => setAccountsOpen(true)}>
+            <Button onClick={() => openSettings("accounts")}>
               <Icon name="add" data-icon="inline-start" /> Add account
             </Button>
           </Empty>

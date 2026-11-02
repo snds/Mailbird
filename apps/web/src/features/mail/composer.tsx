@@ -128,7 +128,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
   const { data: signatures } = useSignatures()
   const { data: templates = [] } = useTemplates()
   const openComposer = useUi((s) => s.openComposer)
-  const setWritingOpen = useUi((s) => s.setWritingOpen)
+  const openSettings = useUi((s) => s.openSettings)
   const [chosenAccount, setAccountId] = useState(initial.accountId ?? "")
   // Default to the first account without an effect (accounts may load after open).
   const accountId = chosenAccount || accounts[0]?.id || ""
@@ -439,7 +439,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
               <Icon name="save" />
               Save as template…
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setWritingOpen(true)}>
+            <DropdownMenuItem onClick={() => openSettings("writing")}>
               <Icon name="edit_note" />
               Signatures and templates…
             </DropdownMenuItem>

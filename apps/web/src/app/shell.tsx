@@ -4,7 +4,6 @@ import { Icon, Button, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/
 import { cn } from "@/lib/utils"
 
 import { DemoBar } from "./demo-bar"
-import { useUi } from "./ui-store"
 
 import { DEMO_APP, isMember } from "@/core/client"
 
@@ -18,6 +17,8 @@ interface ShellProps {
   onNavigate: (id: VerticalId) => void
   onCreate: () => void
   onSettings: () => void
+  /** Settings is open in place of the area (ADR-0075). */
+  settingsOpen: boolean
   children: ReactNode
 }
 
@@ -52,20 +53,21 @@ function useRailExpanded() {
  *   desktop (lg+)   nav rail + wider list + reading pane
  * The rail opens to labels beside its icons, or closes to a column of icons
  * (ADR-0073). "New" is a floating button at the content's bottom right that
- * makes whatever the open area makes.
+ * makes whatever the open area makes. Settings opens as a page in place of
+ * the open area (ADR-0075).
  */
-export function AppShell({ active, onNavigate, onCreate, onSettings, children }: ShellProps) {
+export function AppShell({ active, onNavigate, onCreate, onSettings, settingsOpen, children }: ShellProps) {
   const current = VERTICALS.find((v) => v.id === active)!
   const [expanded, toggleRail] = useRailExpanded()
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-canvas">
-      <NavRail active={active} onNavigate={onNavigate} onSettings={onSettings} expanded={expanded} onToggle={toggleRail} />
+      <NavRail active={settingsOpen ? null : active} onNavigate={onNavigate} onSettings={onSettings} settingsOpen={settingsOpen} expanded={expanded} onToggle={toggleRail} />
       <main className="relative flex min-w-0 flex-1 flex-col pb-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0">
         {DEMO_APP && <DemoBar />}
         {children}
-        <Fab vertical={current} onClick={onCreate} />
+        {!settingsOpen && <Fab vertical={current} onClick={onCreate} />}
       </main>
-      <TabBar active={active} onNavigate={onNavigate} />
+      <TabBar active={settingsOpen ? null : active} onNavigate={onNavigate} />
     </div>
   )
 }
@@ -135,16 +137,18 @@ function NavRail({
   active,
   onNavigate,
   onSettings,
+  settingsOpen,
   expanded,
   onToggle,
 }: {
-  active: VerticalId
+  /** The open area, or null while settings is open. */
+  active: VerticalId | null
   onNavigate: (id: VerticalId) => void
   onSettings: () => void
+  settingsOpen: boolean
   expanded: boolean
   onToggle: () => void
 }) {
-  const shortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K"
   const row = cn("h-12 justify-start gap-3 rounded-full text-sm font-medium text-muted-foreground [&_svg]:size-6!", expanded ? "w-full px-4" : "w-12 justify-center px-0")
   return (
     <nav
@@ -172,27 +176,15 @@ function NavRail({
         </RailTip>
       ))}
       <div className="mt-auto flex flex-col gap-1">
-        <RailTip
-          expanded={expanded}
-          label={
-            <>
-              Command menu <kbd className="ml-1 font-mono text-[11px] opacity-70">{shortcut}</kbd>
-            </>
-          }
-        >
+        <RailTip label="Accounts and settings" expanded={expanded}>
           <Button
             variant="ghost"
-            className={row}
-            aria-label="Command menu"
-            aria-keyshortcuts={shortcut === "⌘K" ? "Meta+K" : "Control+K"}
-            onClick={() => useUi.getState().setPaletteOpen(true)}
+            className={cn(row, "data-[active=true]:bg-accent data-[active=true]:text-foreground")}
+            aria-label="Accounts and settings"
+            data-active={settingsOpen}
+            aria-current={settingsOpen ? "page" : undefined}
+            onClick={onSettings}
           >
-            <Icon name="keyboard_command_key" opticalSize={24} />
-            {expanded && "Commands"}
-          </Button>
-        </RailTip>
-        <RailTip label="Accounts and settings" expanded={expanded}>
-          <Button variant="ghost" className={row} aria-label="Accounts and settings" onClick={onSettings}>
             <Icon name="settings" opticalSize={24} />
             {expanded && "Settings"}
           </Button>
@@ -202,7 +194,7 @@ function NavRail({
   )
 }
 
-function TabBar({ active, onNavigate }: { active: VerticalId; onNavigate: (id: VerticalId) => void }) {
+function TabBar({ active, onNavigate }: { active: VerticalId | null; onNavigate: (id: VerticalId) => void }) {
   return (
     <nav
       aria-label="Apps"

@@ -103,18 +103,26 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
           </CommandGroup>
           <CommandSeparator />
           <CommandGroup heading="Settings">
-            <CommandItem onSelect={run(() => ui().setAccountsOpen(true))} keywords={["settings", "add account", "sign in"]}>
+            <CommandItem onSelect={run(() => ui().openSettings())} keywords={["preferences", "options"]}>
+              <Icon name="settings" />
+              Settings
+            </CommandItem>
+            <CommandItem onSelect={run(() => ui().openSettings("accounts"))} keywords={["settings", "add account", "sign in"]}>
               <Icon name="manage_accounts" />
               Accounts
             </CommandItem>
-            <CommandItem onSelect={run(() => ui().setWritingOpen(true))} keywords={["signature", "template", "snippet"]}>
+            <CommandItem onSelect={run(() => ui().openSettings("writing"))} keywords={["signature", "template", "snippet"]}>
               <Icon name="edit_note" />
               Signatures and templates
             </CommandItem>
-            <CommandItem onSelect={run(() => ui().setGrammarOpen(true))} keywords={["keyboard", "shortcuts", "swipe", "gestures", "keys"]}>
+            <CommandItem onSelect={run(() => ui().setShortcutsOpen(true))} keywords={["keyboard", "shortcuts", "keys", "hotkeys"]}>
               <Icon name="keyboard" />
-              Shortcuts and gestures
+              Keyboard shortcuts
               <CommandShortcut>?</CommandShortcut>
+            </CommandItem>
+            <CommandItem onSelect={run(() => ui().openSettings("shortcuts"))} keywords={["keyboard", "swipe", "gestures", "change keys"]}>
+              <Icon name="swipe" />
+              Change keys and swipes
             </CommandItem>
             <CommandItem onSelect={run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark"))} keywords={["theme", "dark mode", "light mode", "appearance"]}>
               <Icon name={resolvedTheme === "dark" ? "light_mode" : "dark_mode"} />
@@ -133,7 +141,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
         </CommandList>
       </Command>
       <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-        <kbd className="font-mono">{mod}K</kbd> opens this menu anywhere.
+        <kbd className="font-mono">{mod}K</kbd> opens this menu anywhere. <kbd className="font-mono">?</kbd> lists every key.
       </p>
     </CommandDialog>
   )

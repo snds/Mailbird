@@ -180,6 +180,8 @@ export function CalendarView() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
       if (e.metaKey || e.ctrlKey || e.altKey || t.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return
+      // Settings covers the calendar (ADR-0075); its keys wait.
+      if (useUi.getState().settings) return
       const run: Record<string, () => void> = {
         "calendar.today": goToday,
         "calendar.day": () => setView("day"),
@@ -191,7 +193,7 @@ export function CalendarView() {
       }
       const command = commandFor(keys, "calendar", e.key)
       if (command) run[command]?.()
-      else if (e.key === "?") useUi.getState().setGrammarOpen(true)
+      else if (e.key === "?") useUi.getState().setShortcutsOpen(true)
       else return
       e.preventDefault()
     }

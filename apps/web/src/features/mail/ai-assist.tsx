@@ -20,7 +20,7 @@ function Placeholder({ widths, label, pill }: { widths: string[]; label: string;
 }
 
 /** Opens AI settings, where a failed answer can be fixed. */
-const openSettings = () => useUi.getState().setAiSettingsOpen(true)
+const openSettings = () => useUi.getState().openSettings("ai")
 
 function Failed({ message, retry }: { message: string; retry: () => void }) {
   return (

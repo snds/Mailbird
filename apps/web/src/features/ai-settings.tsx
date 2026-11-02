@@ -1,8 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { useUi } from "@/app/ui-store"
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, Icon, type IconName, Input, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption, Spinner } from "@unicron/ui"
+import { Button, Field, FieldDescription, FieldLabel, Icon, type IconName, Input, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption, Spinner } from "@unicron/ui"
 import { useAiModels, useAiSettings, useCore, useSetAiKey, useSetAiPrefs } from "@/core/queries"
 import type { AiEndpoint, AiPrefs, AiProvider, AiSettings } from "@/core/types"
 
@@ -19,23 +18,7 @@ function choices(remote: boolean): { value: AiProvider; icon: IconName; title: s
 }
 
 /** Opt-in AI's settings (ADR-0059): where the model runs, which model, and its key. */
-export function AiSettingsDialog() {
-  const open = useUi((s) => s.aiSettingsOpen)
-  const setOpen = useUi((s) => s.setAiSettingsOpen)
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>AI summaries and replies</DialogTitle>
-          <DialogDescription>Off unless you turn it on. A conversation goes to the model only when you ask for its summary or replies.</DialogDescription>
-        </DialogHeader>
-        {open && <AiSettingsForm />}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function AiSettingsForm() {
+export function AiSettingsForm() {
   const { data: settings } = useAiSettings()
   const { data: core } = useCore()
   const set = useSetAiPrefs()
