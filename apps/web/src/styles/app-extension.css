@@ -66,6 +66,9 @@
 :root {
   /* App shell */
   --c-shell-rail-width: 4.5rem;
+  /* The rail with labels beside its icons (ADR-0073). At 11rem a 1440px
+     window still fits the list, the conversation and its sender panel. */
+  --c-shell-rail-width-expanded: 11rem;
   --c-shell-tabbar-height: 4rem;
   --c-shell-list-width: 22rem;
   --c-shell-active-indicator: var(--accent);
