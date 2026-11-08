@@ -768,11 +768,49 @@ export interface GatewayUpdates {
   page: string
   /** When a newer image is out: the command that takes it, run beside `compose.yaml`. */
   command?: string
+  /** The host helper (ADR-0078): set up or not, what's wrong with its settings, where its install steps are. */
+  helper: { ready: boolean; problem: string | null; install: string }
+  /** Whether Settings offers Update (the helper is set up and a newer image is out). */
+  canUpdate: boolean
+  /** Whether Settings offers Reload (the helper is set up). */
+  canReload: boolean
+  /** The last Update or Reload, as far as this gateway process saw it. */
+  action: GatewayUpdateAction | null
+}
+
+/** An Update or Reload asked of the host helper. */
+export interface GatewayUpdateAction {
+  kind: "update" | "reload"
+  tag: string | null
+  state: "working" | "done" | "failed"
+  /** Where it stands, in the gateway's words. */
+  line: string
+  /** When it was asked, in Unix seconds. */
+  at: number
 }
 
 export const gatewayUpdates = () => gatewayJson<GatewayUpdates>("/api/updates")
 export const checkGatewayUpdates = () => gatewayJson<GatewayUpdates>("/api/updates/check", { method: "POST" })
 export const setGatewayAutoCheck = (on: boolean) => gatewayJson<GatewayUpdates>("/api/updates/auto", { method: "POST", body: JSON.stringify({ on }) })
+/** Update: asks the host helper for the version on offer. Answers at once; the gateway then restarts. */
+export const updateGateway = (tag: string) => gatewayJson<GatewayUpdates>("/api/updates/update", { method: "POST", body: JSON.stringify({ tag }) })
+/** Reload: asks the host helper to restart the gateway. Answers at once. */
+export const reloadGateway = () => gatewayJson<GatewayUpdates>("/api/updates/reload", { method: "POST" })
+
+/** One look at the update status while the gateway may be restarting. Never throws. */
+export type GatewayPeek = { kind: "ok"; status: GatewayUpdates } | { kind: "signed-out" } | { kind: "away" }
+
+export async function peekGatewayUpdates(): Promise<GatewayPeek> {
+  try {
+    const r = await fetch("/api/updates", { credentials: "same-origin", cache: "no-store" })
+    // Sign-ins live in the gateway's memory, so one that restarted asks for a new one.
+    if (r.status === 401) return { kind: "signed-out" }
+    if (!r.ok) return { kind: "away" }
+    return { kind: "ok", status: (await r.json()) as GatewayUpdates }
+  } catch {
+    return { kind: "away" }
+  }
+}
 
 /** The link that opens an invitation. The code is after `#`, so it never reaches a server log. */
 export const invitationUrl = (code: string) => `${location.origin}/join#${code}`

@@ -44,6 +44,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 mod members;
 pub use members::Members;
+pub mod helper;
 pub mod updates;
 
 /// How long a session lasts without use.
@@ -400,6 +401,9 @@ pub fn router(gw: Gw) -> Router {
         .route("/api/updates", get(update_status))
         .route("/api/updates/check", post(update_check))
         .route("/api/updates/auto", post(update_auto))
+        // One-click Update and Reload through the host helper (ADR-0078), for the owner.
+        .route("/api/updates/update", post(update_now))
+        .route("/api/updates/reload", post(reload_now))
         .route("/api/attachments/{id}", get(attachment))
         // Public: a scheduling link's page reads its free times and books one (ADR-0026).
         .route("/api/book/{token}", get(booking_page).post(booking))
@@ -720,8 +724,8 @@ fn owner_only(gw: &Gateway, headers: &HeaderMap) -> Option<Response> {
     (!who.owner).then(|| err(StatusCode::FORBIDDEN, "only the gateway's owner can do that"))
 }
 
-fn update_report(gw: &Gateway, status: &updates::Status) -> Response {
-    let mut res = Json(updates::report(status, updates::auto_check(&gw.state))).into_response();
+fn update_report(gw: &Gateway) -> Response {
+    let mut res = Json(gw.updates.report(updates::auto_check(&gw.state))).into_response();
     res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     res
 }
@@ -732,7 +736,7 @@ async fn update_status(State(gw): State<Gw>, headers: HeaderMap) -> Response {
     if let Some(r) = owner_only(&gw, &headers) {
         return r;
     }
-    update_report(&gw, &gw.updates.status())
+    update_report(&gw)
 }
 
 /// Check for updates: one read of the manifest now; answers the new status.
@@ -740,8 +744,8 @@ async fn update_check(State(gw): State<Gw>, headers: HeaderMap) -> Response {
     if let Some(r) = not_owner(&gw, &headers) {
         return r;
     }
-    let status = gw.updates.check().await;
-    update_report(&gw, &status)
+    gw.updates.check().await;
+    update_report(&gw)
 }
 
 #[derive(Deserialize)]
@@ -757,7 +761,85 @@ async fn update_auto(State(gw): State<Gw>, headers: HeaderMap, Json(body): Json<
     if let Err(e) = updates::set_auto_check(&gw.state, body.on) {
         return err(StatusCode::INTERNAL_SERVER_ERROR, e);
     }
-    update_report(&gw, &gw.updates.status())
+    update_report(&gw)
+}
+
+#[derive(Deserialize)]
+struct UpdateAsk {
+    tag: String,
+}
+
+/// Update: `{"tag": "<the version on offer>"}`. Asks the host helper to pull
+/// that version's image (checked against the manifest's digest) and recreate
+/// the gateway on it. Answers `202` at once with the status: the helper's
+/// work replaces this process, so Settings polls `GET /api/updates` until
+/// the gateway is back.
+async fn update_now(State(gw): State<Gw>, headers: HeaderMap, Json(body): Json<UpdateAsk>) -> Response {
+    if let Some(r) = not_owner(&gw, &headers) {
+        return r;
+    }
+    let who = gw.session(&headers).map(|w| w.name).unwrap_or_default();
+    let status = gw.updates.status();
+    let tag: String = body.tag.chars().take(128).collect();
+    if !(status.state == app_updates::UpdateState::Available && status.offered.as_deref() == Some(tag.as_str())) {
+        gw.updates.refuse(helper::Kind::Update, Some(tag.clone()), updates::OFFER_CHANGED);
+        log_helper(&who, helper::Kind::Update, Some(&tag), Err(updates::OFFER_CHANGED));
+        return err(StatusCode::CONFLICT, updates::OFFER_CHANGED);
+    }
+    let request = host_helper::UpdateRequest { tag: Some(tag.clone()), expect_digest: gw.updates.offered_digest() };
+    start_helper(&gw, who, helper::Kind::Update, Some(tag), move |h| h.update(&request).map(|r| helper::updated(&r)))
+}
+
+/// Reload: asks the host helper to restart the gateway. Answers `202` at
+/// once, like Update.
+async fn reload_now(State(gw): State<Gw>, headers: HeaderMap) -> Response {
+    if let Some(r) = not_owner(&gw, &headers) {
+        return r;
+    }
+    let who = gw.session(&headers).map(|w| w.name).unwrap_or_default();
+    start_helper(&gw, who, helper::Kind::Reload, None, |h| h.restart().map(|r| helper::restarted(&r)))
+}
+
+/// Asks the helper on a thread of its own (the call blocks, and the
+/// runtime's shutdown never waits for a plain thread) and answers at once.
+fn start_helper(gw: &Gateway, who: String, kind: helper::Kind, tag: Option<String>, call: impl FnOnce(&dyn helper::HostHelper) -> Result<String, host_helper::ClientError> + Send + 'static) -> Response {
+    let asker = match gw.updates.begin(kind, tag.clone()) {
+        Ok(h) => h,
+        Err(why) => {
+            log_helper(&who, kind, tag.as_deref(), Err(&why));
+            return err(StatusCode::CONFLICT, why);
+        }
+    };
+    log_helper(&who, kind, tag.as_deref(), Ok(None));
+    let updates = gw.updates.clone();
+    let spawned = std::thread::Builder::new().name("host-helper".into()).spawn(move || {
+        let outcome = call(asker.as_ref()).map_err(|e| helper::explain(kind, &e));
+        log_helper(&who, kind, tag.as_deref(), outcome.as_ref().map(|d| Some(d.as_str())).map_err(String::as_str));
+        updates.finish(outcome);
+    });
+    if spawned.is_err() {
+        let why = "The gateway couldn't start the request to the host helper. Try again.";
+        gw.updates.finish(Err(why.into()));
+        return err(StatusCode::INTERNAL_SERVER_ERROR, why);
+    }
+    let mut res = update_report(gw);
+    *res.status_mut() = StatusCode::ACCEPTED;
+    res
+}
+
+/// One line in the gateway's log: who (the owner, by name), what, which
+/// version, and how it went. Never the key: it isn't in anything this sees.
+fn log_helper(who: &str, kind: helper::Kind, tag: Option<&str>, outcome: Result<Option<&str>, &str>) {
+    let what = match (kind, tag) {
+        (helper::Kind::Update, Some(tag)) => format!("an update to {tag}"),
+        (helper::Kind::Update, None) => "an update".into(),
+        (helper::Kind::Reload, _) => "a reload".into(),
+    };
+    match outcome {
+        Ok(None) => eprintln!("gateway: the owner ({who}) asked the host helper for {what}"),
+        Ok(Some(done)) => eprintln!("gateway: the host helper finished {what}: {done}"),
+        Err(why) => eprintln!("gateway: {what} for the owner ({who}) didn't happen: {why}"),
+    }
 }
 
 #[derive(Deserialize)]

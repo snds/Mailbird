@@ -20,14 +20,22 @@
 //! - sending nothing about the gateway: one `GET` with `accept` and the user
 //!   agent `vale-gateway` (no version, no address, no account).
 //!
-//! When a newer build is out, Settings shows its version and the command
-//! that updates a compose setup by hand. Pulling the image and restarting
-//! the container is left to the person, or later to a helper on the host:
-//! the gateway has no Docker socket and no way to restart itself.
+//! When a newer build is out, Settings shows its version. The gateway has
+//! no Docker socket and no way to restart itself, so who takes it depends
+//! on the host:
+//!
+//! - **with the host helper** (its `host-helper.env` set; [`crate::helper`],
+//!   ADR-0078): **Update** asks the helper to pull that version's image,
+//!   checked against the digest `latest.json` names, and recreate the
+//!   container; **Reload** asks it to restart the container. Settings then
+//!   waits for the gateway to come back;
+//! - **without it:** Settings shows the command that updates a compose
+//!   setup by hand, and points to the helper's install steps.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::helper::{Action, HostHelper, Kind, Progress, Setting};
 use app_updates::{Channel, Feed, GITHUB_HOSTS, UpdateState};
 use futures::future::BoxFuture;
 use pim_app::Shared;
@@ -201,6 +209,21 @@ struct Manifest {
     version: String,
 }
 
+#[derive(Deserialize)]
+struct Digest {
+    digest: Option<String>,
+}
+
+/// The image digest a manifest names (`sha256:` and 64 hex characters),
+/// when it names a well-formed one. The image workflow writes it beside
+/// `version`; Update passes it to the host helper as `expect_digest`.
+pub fn digest_of(body: &[u8]) -> Option<String> {
+    let d: Digest = serde_json::from_slice(body).ok()?;
+    d.digest
+        .map(|d| d.trim().to_string())
+        .filter(|d| host_helper::protocol::valid_digest(d))
+}
+
 /// Reads a manifest (`latest.json` beside the image: only its `version` is
 /// used) against the running version.
 pub fn judge(current: &Version, body: &[u8]) -> Result<Outcome, String> {
@@ -216,6 +239,16 @@ pub fn judge(current: &Version, body: &[u8]) -> Result<Outcome, String> {
         Outcome::UpToDate
     })
 }
+
+/// Why Update or Reload can't start: the host helper isn't set up.
+pub const HELPER_OFF: &str = "One-click Update and Reload need the host helper, and the gateway has no helper settings (host-helper.env).";
+
+/// Why Update or Reload can't start: one is already running.
+pub const ALREADY_RUNNING: &str = "An update or reload is already running. Wait for it to finish.";
+
+/// Why Update can't start: Settings asked for another version than the
+/// one on offer now.
+pub const OFFER_CHANGED: &str = "The version on offer has changed. Check for updates again.";
 
 /// Why a build that isn't on the main channel doesn't check.
 pub const OFF_NOT_MAIN: &str = "Update checks are off for this build: it was built from source, and only the published image (the main channel) checks for now.";
@@ -283,6 +316,12 @@ pub struct Updates {
     version: Version,
     status: Mutex<Status>,
     source: Mutex<Option<Arc<dyn ManifestSource>>>,
+    /// The digest of the offered image, from the same manifest.
+    offered_digest: Mutex<Option<String>>,
+    /// The host helper, when it is set up (`main` reads it at start).
+    helper: Mutex<Setting>,
+    /// The last Update or Reload asked for.
+    action: Mutex<Option<Action>>,
 }
 
 impl std::fmt::Debug for Updates {
@@ -326,7 +365,109 @@ impl Updates {
             version,
             status: Mutex::new(status),
             source: Mutex::new(source),
+            offered_digest: Mutex::new(None),
+            helper: Mutex::new(Setting::Off),
+            action: Mutex::new(None),
         }
+    }
+
+    /// Sets how Update and Reload reach the host helper.
+    pub fn set_helper(&self, setting: Setting) {
+        *lock(&self.helper) = setting;
+    }
+
+    /// How Update and Reload reach the host helper.
+    pub fn helper(&self) -> Setting {
+        lock(&self.helper).clone()
+    }
+
+    /// The offered image's digest, when the manifest named one.
+    pub fn offered_digest(&self) -> Option<String> {
+        lock(&self.offered_digest).clone()
+    }
+
+    /// The last Update or Reload asked for, if any.
+    pub fn action(&self) -> Option<Action> {
+        lock(&self.action).clone()
+    }
+
+    /// Starts an Update or Reload: the helper to ask, or why it can't
+    /// start (no helper, a broken setting, one already running). Either
+    /// way the action is recorded for Settings.
+    pub fn begin(&self, kind: Kind, tag: Option<String>) -> Result<Arc<dyn HostHelper>, String> {
+        let now = now();
+        let mut action = lock(&self.action);
+        if let Some(a) = action.as_ref()
+            && a.progress == Progress::Working
+            && now - a.at < crate::helper::WORKING_FOR
+        {
+            return Err(ALREADY_RUNNING.to_string());
+        }
+        let helper = match self.helper() {
+            Setting::Ready(h) => Ok(h),
+            Setting::Broken(why) => Err(why),
+            Setting::Off => Err(HELPER_OFF.to_string()),
+        };
+        *action = Some(Action {
+            kind,
+            tag,
+            at: now,
+            progress: match &helper {
+                Ok(_) => Progress::Working,
+                Err(why) => Progress::Failed(why.clone()),
+            },
+        });
+        helper
+    }
+
+    /// Records how a started Update or Reload ended, when this process is
+    /// still here to see it.
+    pub fn finish(&self, outcome: Result<String, String>) {
+        if let Some(a) = lock(&self.action).as_mut() {
+            a.progress = match outcome {
+                Ok(done) => Progress::Done(done),
+                Err(why) => Progress::Failed(why),
+            };
+        }
+    }
+
+    /// Records an Update or Reload that was refused before it started.
+    pub fn refuse(&self, kind: Kind, tag: Option<String>, why: &str) {
+        *lock(&self.action) = Some(Action {
+            kind,
+            tag,
+            at: now(),
+            progress: Progress::Failed(why.to_string()),
+        });
+    }
+
+    /// What `GET /api/updates` answers: [`report`], plus the host helper
+    /// (set up or not, what's wrong, where its install steps are), which
+    /// buttons Settings offers, and the last Update or Reload.
+    pub fn report(&self, auto: bool) -> serde_json::Value {
+        let status = self.status();
+        let helper = self.helper();
+        let mut out = report(&status, auto);
+        out["helper"] = serde_json::json!({
+            "ready": helper.ready(),
+            "problem": helper.problem(),
+            "install": crate::helper::INSTALL_STEPS,
+        });
+        out["canUpdate"] =
+            (helper.ready() && status.state == UpdateState::Available && status.offered.is_some())
+                .into();
+        out["canReload"] = helper.ready().into();
+        out["action"] = match self.action() {
+            None => serde_json::Value::Null,
+            Some(a) => serde_json::json!({
+                "kind": a.kind.noun(),
+                "tag": a.tag,
+                "state": a.progress.name(),
+                "line": a.line(),
+                "at": a.at,
+            }),
+        };
+        out
     }
 
     /// The status now.
@@ -367,9 +508,16 @@ impl Updates {
             Some(source) => source
                 .fetch(endpoint)
                 .await
-                .and_then(|body| judge(&self.version, &body)),
+                .and_then(|body| Ok((judge(&self.version, &body)?, digest_of(&body)))),
             None => Err(UNREACHABLE.to_string()),
         };
+        let result = result.map(|(outcome, digest)| {
+            *lock(&self.offered_digest) = match outcome {
+                Outcome::Newer(_) => digest,
+                Outcome::UpToDate => None,
+            };
+            outcome
+        });
         let mut s = lock(&self.status);
         s.checked_at = Some(now());
         match result {
@@ -386,6 +534,7 @@ impl Updates {
             Err(e) => {
                 s.state = UpdateState::Failed;
                 s.offered = None;
+                *lock(&self.offered_digest) = None;
                 eprintln!("gateway: update check failed: {e}");
                 s.error = Some(e);
             }
@@ -557,6 +706,109 @@ mod tests {
         assert_eq!(status_line(&s, true), OFF_NOT_MAIN);
         assert!(lock(&source.1).is_empty());
         assert_eq!(report(&s, true)["enabled"], false);
+    }
+
+    #[test]
+    fn the_manifest_digest_is_read_only_when_well_formed() {
+        let d = format!("sha256:{}", "a".repeat(64));
+        assert_eq!(
+            digest_of(format!(r#"{{"version":"1","digest":"{d}"}}"#).as_bytes()),
+            Some(d)
+        );
+        assert_eq!(digest_of(br#"{"version":"1"}"#), None);
+        assert_eq!(digest_of(br#"{"version":"1","digest":"sha256:abc"}"#), None);
+        assert_eq!(digest_of(br#"{"version":"1","digest":"md5:00"}"#), None);
+        assert_eq!(digest_of(b"not json"), None);
+    }
+
+    struct FakeHelper;
+
+    impl HostHelper for FakeHelper {
+        fn update(
+            &self,
+            _: &host_helper::UpdateRequest,
+        ) -> Result<host_helper::UpdateReply, host_helper::ClientError> {
+            unreachable!("showing the status asks nothing")
+        }
+        fn restart(&self) -> Result<host_helper::RestartReply, host_helper::ClientError> {
+            unreachable!("showing the status asks nothing")
+        }
+    }
+
+    async fn checked(manifest: &str, helper: Setting) -> Updates {
+        let source = Arc::new(Fixed(Ok(manifest.as_bytes().to_vec()), Mutex::default()));
+        let u = Updates::new(v("0.1.0-main.20261108000000"), Some(source));
+        u.set_helper(helper);
+        u.check().await;
+        u
+    }
+
+    #[tokio::test]
+    async fn the_buttons_follow_the_helper_and_the_offer() {
+        let digest = format!("sha256:{}", "b".repeat(64));
+        let newer = format!(r#"{{"version":"0.1.0-main.20261109000000","digest":"{digest}"}}"#);
+        let same = r#"{"version":"0.1.0-main.20261108000000"}"#;
+
+        // No helper: the command, the install pointer, no buttons.
+        let r = checked(&newer, Setting::Off).await.report(true);
+        assert_eq!(r["canUpdate"], false);
+        assert_eq!(r["canReload"], false);
+        assert_eq!(r["helper"]["ready"], false);
+        assert_eq!(r["helper"]["install"], crate::helper::INSTALL_STEPS);
+        assert_eq!(r["command"], UPDATE_COMMAND);
+        assert!(r["action"].is_null());
+
+        // Half set up: what's wrong, still no buttons.
+        let r = checked(&newer, Setting::Broken("HOST_HELPER_KEY isn't set.".into()))
+            .await
+            .report(true);
+        assert_eq!(r["helper"]["problem"], "HOST_HELPER_KEY isn't set.");
+        assert_eq!(r["canReload"], false);
+
+        // Set up, a newer image: Update and Reload; the digest is kept for Update.
+        let u = checked(&newer, Setting::Ready(Arc::new(FakeHelper))).await;
+        let r = u.report(true);
+        assert_eq!(r["canUpdate"], true);
+        assert_eq!(r["canReload"], true);
+        assert!(r["helper"]["problem"].is_null());
+        assert_eq!(u.offered_digest(), Some(digest));
+
+        // Set up, up to date: Reload alone, no digest.
+        let u = checked(same, Setting::Ready(Arc::new(FakeHelper))).await;
+        let r = u.report(true);
+        assert_eq!(r["canUpdate"], false);
+        assert_eq!(r["canReload"], true);
+        assert_eq!(u.offered_digest(), None);
+    }
+
+    #[tokio::test]
+    async fn an_action_runs_once_at_a_time() {
+        let u = checked(
+            r#"{"version":"0.1.0-main.20261108000000"}"#,
+            Setting::Ready(Arc::new(FakeHelper)),
+        )
+        .await;
+        assert!(u.begin(Kind::Reload, None).is_ok());
+        assert_eq!(
+            u.begin(Kind::Reload, None).err().as_deref(),
+            Some(ALREADY_RUNNING)
+        );
+        assert_eq!(u.report(true)["action"]["state"], "working");
+        u.finish(Ok("The host helper restarted gateway.".into()));
+        let r = u.report(true);
+        assert_eq!(r["action"]["state"], "done");
+        assert_eq!(r["action"]["line"], "The host helper restarted gateway.");
+        assert!(
+            u.begin(Kind::Reload, None).is_ok(),
+            "a finished one doesn't block"
+        );
+
+        let off = checked(r#"{"version":"0.1.0-main.20261108000000"}"#, Setting::Off).await;
+        assert_eq!(
+            off.begin(Kind::Reload, None).err().as_deref(),
+            Some(HELPER_OFF)
+        );
+        assert_eq!(off.report(true)["action"]["state"], "failed");
     }
 
     /// The version the image workflow stamps is a main-channel version.

@@ -40,7 +40,7 @@ Sean approved one way for all his apps to update (the unified updates proposal, 
 
 ## Not in this step
 
-- **Update and Reload buttons.** They need the restart helper on the Unraid host (lane D item 3), which Sean installs.
+- **Update and Reload buttons.** They need the restart helper on the Unraid host (lane D item 3), which Sean installs. Wired in [ADR-0078](0078-gateway-update-and-reload.md).
 - **A stable channel** for tagged releases. The kit has one; the gateway follows `main` for now.
 - **Images for other architectures.** The workflow builds `linux/amd64` only, the runner's own.
 

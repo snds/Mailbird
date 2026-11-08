@@ -54,7 +54,17 @@ async fn main() {
     pim_app::secrets::install(Box::new(secrets));
     // The owner's team, if they add one (ADR-0063).
     let members = Members::open(data.join("members.json")).unwrap_or_else(|e| fail(e));
-    let gw = Gateway::new(state, Config { password, members, web_dir, secure_cookies, public_url });
+    // One-click Update and Reload (ADR-0078): the host helper's settings, from
+    // its host-helper.env. Never the key in a log line.
+    let updates = vale_gateway::updates::Updates::default();
+    let helper = vale_gateway::helper::Setting::from_env();
+    match &helper {
+        vale_gateway::helper::Setting::Ready(_) => eprintln!("gateway: Settings → Gateway updates' Update and Reload ask the host helper"),
+        vale_gateway::helper::Setting::Broken(why) => eprintln!("gateway: the host helper's settings aren't usable: {why}"),
+        vale_gateway::helper::Setting::Off => {}
+    }
+    updates.set_helper(helper);
+    let gw = Gateway::with_updates(state, Config { password, members, web_dir, secure_cookies, public_url }, updates);
 
     eprintln!("gateway {} on {address}, data in {}", vale_gateway::updates::running(), data.display());
     // Says when a newer image is out (ADR-0077); it never restarts anything.
