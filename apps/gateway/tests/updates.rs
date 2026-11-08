@@ -2,6 +2,8 @@
 //! the channel, checks now, and turns the automatic check off and on; a
 //! newer image shows its version and the command that takes it. A team
 //! member and a stranger see none of it, and writes need the X-Vale header.
+//! With the host helper set up (ADR-0078), the owner updates and reloads
+//! through it; refusals read in plain words; without it, the command.
 
 use std::sync::{Arc, Mutex};
 
@@ -254,4 +256,284 @@ async fn a_build_from_source_says_it_doesnt_check() {
             .unwrap();
         assert_eq!(checked["state"], "idle", "nothing is fetched");
     }
+}
+
+/// A host helper that answers as told and remembers each request.
+struct Helper {
+    refuse: Option<host_helper::ClientError>,
+    asked: Mutex<Vec<host_helper::UpdateRequest>>,
+    restarts: Mutex<usize>,
+}
+
+impl vale_gateway::helper::HostHelper for Helper {
+    fn update(
+        &self,
+        request: &host_helper::UpdateRequest,
+    ) -> Result<host_helper::UpdateReply, host_helper::ClientError> {
+        self.asked.lock().unwrap().push(request.clone());
+        match &self.refuse {
+            Some(e) => Err(e.clone()),
+            None => Ok(host_helper::UpdateReply {
+                stack: "vale-gateway".into(),
+                pulled: format!(
+                    "ghcr.io/snds/vale-gateway:{}",
+                    request.tag.clone().unwrap_or_default()
+                ),
+                digest: request.expect_digest.clone().unwrap_or_default(),
+                services: vec!["gateway".into()],
+            }),
+        }
+    }
+
+    fn restart(&self) -> Result<host_helper::RestartReply, host_helper::ClientError> {
+        *self.restarts.lock().unwrap() += 1;
+        match &self.refuse {
+            Some(e) => Err(e.clone()),
+            None => Ok(host_helper::RestartReply {
+                stack: "vale-gateway".into(),
+                services: vec!["gateway".into()],
+            }),
+        }
+    }
+}
+
+/// Reads `/api/updates` until the last action is no longer working.
+async fn settled(c: &reqwest::Client, base: &str) -> Value {
+    for _ in 0..200 {
+        let s: Value = c
+            .get(format!("{base}/api/updates"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if s["action"]["state"] != "working" {
+            return s;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the helper's thread never finished");
+}
+
+#[tokio::test]
+async fn the_owner_updates_and_reloads_through_the_host_helper() {
+    use vale_gateway::helper::Setting;
+    let digest = format!("sha256:{}", "c".repeat(64));
+    let newer = "0.1.0-main.20261109120000";
+    let manifest: &'static str = Box::leak(
+        format!(
+            r#"{{"version":"{newer}","image":"ghcr.io/snds/vale-gateway","digest":"{digest}"}}"#
+        )
+        .into_boxed_str(),
+    );
+    let source = Arc::new(Manifest(manifest, Mutex::default()));
+    let helper = Arc::new(Helper {
+        refuse: None,
+        asked: Mutex::default(),
+        restarts: Mutex::default(),
+    });
+    let updates = Updates::new(
+        semver::Version::parse("0.1.0-main.20261108090000").unwrap(),
+        Some(source),
+    );
+    updates.set_helper(Setting::Ready(helper.clone()));
+    let base = serve("helper", Some(updates)).await;
+    let (owner, ana, stranger) = (client(), client(), client());
+    let post = |c: &reqwest::Client, path: &str, body: Value| {
+        c.post(format!("{base}{path}"))
+            .header("X-Vale", "1")
+            .json(&body)
+            .send()
+    };
+
+    // A stranger, a team member, and the owner without the header: refused, nothing asked.
+    let ask = json!({ "tag": newer });
+    assert_eq!(
+        post(&stranger, "/api/updates/update", ask.clone())
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    assert_eq!(
+        post(&owner, "/api/session", json!({ "password": PASSWORD }))
+            .await
+            .unwrap()
+            .status(),
+        204
+    );
+    let added: Value = post(
+        &owner,
+        "/api/members",
+        json!({ "name": "Ana", "email": "ana@example.com" }),
+    )
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    post(
+        &ana,
+        "/api/join",
+        json!({ "code": added["code"], "password": "ana-password-12" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        post(&ana, "/api/updates/reload", json!({}))
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    let no_header = owner
+        .post(format!("{base}/api/updates/reload"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(no_header.status(), 403);
+    assert_eq!(*helper.restarts.lock().unwrap(), 0);
+
+    // Before a check: Reload, no Update, and a tag not on offer is refused before the helper.
+    let s: Value = post(&owner, "/api/updates/check", json!({}))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(s["canUpdate"], true);
+    assert_eq!(s["canReload"], true);
+    let r = post(
+        &owner,
+        "/api/updates/update",
+        json!({ "tag": "0.1.0-main.20200101000000" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(r.status(), 409);
+    let e: Value = r.json().await.unwrap();
+    assert_eq!(e["error"], vale_gateway::updates::OFFER_CHANGED);
+    assert!(helper.asked.lock().unwrap().is_empty());
+
+    // Update: the offered tag and the manifest's digest; 202 at once.
+    let r = post(&owner, "/api/updates/update", ask.clone())
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 202);
+    let s = settled(&owner, &base).await;
+    assert_eq!(s["action"]["kind"], "update");
+    assert_eq!(s["action"]["state"], "done");
+    assert!(
+        s["action"]["line"].as_str().unwrap().starts_with(
+            "The host helper pulled ghcr.io/snds/vale-gateway:0.1.0-main.20261109120000"
+        )
+    );
+    assert_eq!(
+        *helper.asked.lock().unwrap(),
+        vec![host_helper::UpdateRequest {
+            tag: Some(newer.into()),
+            expect_digest: Some(digest),
+        }]
+    );
+
+    // Reload.
+    assert_eq!(
+        post(&owner, "/api/updates/reload", json!({}))
+            .await
+            .unwrap()
+            .status(),
+        202
+    );
+    let s = settled(&owner, &base).await;
+    assert_eq!(s["action"]["kind"], "reload");
+    assert_eq!(s["action"]["line"], "The host helper restarted gateway.");
+    assert_eq!(*helper.restarts.lock().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn a_refusal_from_the_host_helper_reads_in_plain_words_and_no_helper_means_the_command() {
+    use vale_gateway::helper::Setting;
+    let helper = Arc::new(Helper {
+        refuse: Some(host_helper::ClientError::Refused {
+            status: 409,
+            code: "digest_mismatch".into(),
+            message: "The pulled image isn't the expected build.".into(),
+        }),
+        asked: Mutex::default(),
+        restarts: Mutex::default(),
+    });
+    let updates = Updates::new(
+        semver::Version::parse("0.1.0-main.20261108090000").unwrap(),
+        Some(Arc::new(Manifest(
+            r#"{"version":"0.1.0-main.20261108090000"}"#,
+            Mutex::default(),
+        ))),
+    );
+    updates.set_helper(Setting::Ready(helper.clone()));
+    let base = serve("helper-refused", Some(updates)).await;
+    let owner = client();
+    owner
+        .post(format!("{base}/api/session"))
+        .header("X-Vale", "1")
+        .json(&json!({ "password": PASSWORD }))
+        .send()
+        .await
+        .unwrap();
+    let r = owner
+        .post(format!("{base}/api/updates/reload"))
+        .header("X-Vale", "1")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 202);
+    let s = settled(&owner, &base).await;
+    assert_eq!(s["action"]["state"], "failed");
+    assert_eq!(
+        s["action"]["line"],
+        "The reload didn't happen. The image the host helper downloaded isn't the build the release names, so it wasn't used and nothing restarted. The pulled image isn't the expected build."
+    );
+
+    // No helper: no buttons, the command and the install pointer instead.
+    let base = serve(
+        "no-helper",
+        Some(Updates::new(
+            semver::Version::parse("0.1.0-main.20261108090000").unwrap(),
+            Some(Arc::new(Manifest(
+                r#"{"version":"0.1.0-main.20261109120000"}"#,
+                Mutex::default(),
+            ))),
+        )),
+    )
+    .await;
+    let owner = client();
+    owner
+        .post(format!("{base}/api/session"))
+        .header("X-Vale", "1")
+        .json(&json!({ "password": PASSWORD }))
+        .send()
+        .await
+        .unwrap();
+    let s: Value = owner
+        .post(format!("{base}/api/updates/check"))
+        .header("X-Vale", "1")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(s["canUpdate"], false);
+    assert_eq!(s["canReload"], false);
+    assert_eq!(s["command"], UPDATE_COMMAND);
+    assert_eq!(s["helper"]["install"], vale_gateway::helper::INSTALL_STEPS);
+    let r = owner
+        .post(format!("{base}/api/updates/reload"))
+        .header("X-Vale", "1")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 409);
+    let e: Value = r.json().await.unwrap();
+    assert_eq!(e["error"], vale_gateway::updates::HELPER_OFF);
 }

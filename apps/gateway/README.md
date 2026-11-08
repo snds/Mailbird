@@ -69,7 +69,8 @@ That pulls `ghcr.io/snds/vale-gateway:main` and starts the new container on the 
 
 - **Where "newer" comes from:** `latest.json` on the rolling [`gateway-main`](https://github.com/snds/Vale/releases/tag/gateway-main) pre-release, which CI writes only after the image is in the registry. Each image is tagged `main` and its version, `0.1.0-main.<commit time, UTC>`.
 - **What a check sends:** one `GET` to GitHub, over https, with the user agent `vale-gateway`. No version, address, or account.
-- **It never updates itself.** The gateway has no Docker socket and doesn't restart. One-click Update and Reload come later, with a small helper on the server's host.
+- **It never updates itself.** The gateway has no Docker socket and doesn't restart.
+- **One-click Update and Reload, with the host helper** ([ADR-0078](../../docs/decisions/0078-gateway-update-and-reload.md)). The [host helper](https://github.com/snds/app-updates/blob/main/host-helper/README.md) runs beside the gateway on the host and holds the Docker socket; its README has the install steps. Once its `compose.override.yaml` sits beside `compose.yaml` (it adds the helper's network and `host-helper.env`: `HOST_HELPER_URL`, `HOST_HELPER_STACK`, `HOST_HELPER_KEY`) and the gateway is recreated, Settings shows **Update to {version}** for a newer image and **Reload**. Update pulls that version, checked against the digest in `latest.json`; Reload restarts the container. Settings waits while the gateway restarts, then asks everyone to sign in again. Refusals are shown in words, and each request is a line in the gateway's log. Without the helper, Settings keeps showing the command, and `docker compose up -d` works the same.
 - **A build from source** (`--build`, `cargo build`) reports `0.1.0` and doesn't check.
 
 ## Adding accounts
@@ -118,8 +119,9 @@ The browser calls these; you don't need them to use the app.
 | `POST /api/join` | Opens an invitation: `{"code":…,"password":…}`, and signs in. |
 | `POST /api/here` | Says which conversation you have open (`{"threadId":…}` or `null`); everyone hears `inbox:here`. |
 | `DELETE /api/session` | Signs out. |
-| `GET /api/updates` | The owner's: the version, channel, update status and its line, the switch, and the update command when a newer image is out. |
+| `GET /api/updates` | The owner's: the version, channel, update status and its line, the switch, the update command when a newer image is out, and the host helper's state (`helper`, `canUpdate`, `canReload`, the last `action`). |
 | `POST /api/updates/check` · `POST /api/updates/auto` | The owner checks now, or sets the automatic check (`{"on":…}`). Both answer the same status. |
+| `POST /api/updates/update` · `POST /api/updates/reload` | The owner asks the host helper for the version on offer (`{"tag":…}`) or a restart. `202` with the status at once; `409` with the reason when it can't start (no helper, another running, the offer changed). |
 | `POST /api/core/{command}` | Runs one app command with its JSON arguments. Needs a session and `X-Vale: 1`. Unknown commands are 404, bad arguments 400. |
 | `GET /api/events` | The event stream (Server-Sent Events). |
 | `GET /api/attachments/{id}` | Downloads one attachment. |

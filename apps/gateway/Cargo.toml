@@ -25,6 +25,11 @@ log = "0.4"
 # app follows (snds/app-updates, Apache-2.0, pinned by tag; no `tauri`
 # feature), the version order, and one https GET with the core's TLS setup.
 snds-app-updates = { git = "https://github.com/snds/app-updates", tag = "v0.1.0" }
+# One-click Update and Reload (ADR-0078): the host helper's client, signed
+# requests over its private network, signed replies checked. Client and
+# protocol only (`default-features = false`: no allow-list, no Docker code).
+# Pinned by commit until the helper is tagged.
+snds-app-updates-host-helper = { git = "https://github.com/snds/app-updates", rev = "c0ff0bfcb6eab8aa8287f33739ff149016d1e4bf", default-features = false }
 semver = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 
