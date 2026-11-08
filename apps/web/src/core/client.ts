@@ -744,6 +744,36 @@ export const joinGateway = (code: string, password: string) => gatewayJson<void>
 /** Says which conversation you have open, or none, so the team sees who's here. */
 export const sayHere = (threadId: string | null) => gatewayJson<void>("/api/here", { method: "POST", body: JSON.stringify({ threadId }) })
 
+// ── The gateway's update check (ADR-0077) ────────────────────────────────────
+
+/** Where the gateway's update check stands (`GET /api/updates`), for its owner. */
+export interface GatewayUpdates {
+  /** The running version, like `0.1.0-main.20261108093000`. */
+  version: string
+  channel: "main" | "stable"
+  /** False for a build from source: it doesn't check, and `off` says why. */
+  enabled: boolean
+  off: string | null
+  autoCheck: boolean
+  state: "idle" | "checking" | "up_to_date" | "available" | "failed"
+  offered: string | null
+  error: string | null
+  /** When the last check finished, in Unix seconds. */
+  checkedAt: number | null
+  /** The status line, in the gateway's words. */
+  line: string
+  /** The published image, `ghcr.io/snds/vale-gateway`. */
+  image: string
+  /** The release page that names the newest image. */
+  page: string
+  /** When a newer image is out: the command that takes it, run beside `compose.yaml`. */
+  command?: string
+}
+
+export const gatewayUpdates = () => gatewayJson<GatewayUpdates>("/api/updates")
+export const checkGatewayUpdates = () => gatewayJson<GatewayUpdates>("/api/updates/check", { method: "POST" })
+export const setGatewayAutoCheck = (on: boolean) => gatewayJson<GatewayUpdates>("/api/updates/auto", { method: "POST", body: JSON.stringify({ on }) })
+
 /** The link that opens an invitation. The code is after `#`, so it never reaches a server log. */
 export const invitationUrl = (code: string) => `${location.origin}/join#${code}`
 

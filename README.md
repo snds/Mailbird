@@ -71,6 +71,8 @@ The public key is committed as `apps/web/src-tauri/updater.pub` (key ID `75E5DC5
 
 Local builds (`pnpm tauri build`) carry the version `0.1.0` and don't check for updates: only CI's `0.1.0-main.<time>` builds follow the main channel.
 
+The web gateway is a server, so it doesn't replace itself ([ADR-0077](docs/decisions/0077-gateway-updates.md)). Every push to `main` publishes its image, `ghcr.io/snds/vale-gateway` (`main` and the build's version), and then the rolling [`gateway-main`](https://github.com/snds/Vale/releases/tag/gateway-main) pre-release names that version. The gateway checks at start and every six hours, and its owner's **Settings → Gateway updates** says when a newer image is out and shows `docker compose pull && docker compose up -d`.
+
 ### The design system (unicron)
 
 Primitives and core tokens come from [unicron](https://github.com/snds/unicron), as the versioned packages `@unicron/ui` and `@unicron/tokens`, installed from its GitHub release tarballs ([ADR-0052](docs/decisions/0052-unicron-packages.md)). Vale's own roles are in `apps/web/src/styles/app-extension.css`. A new or changed primitive goes to unicron first: it ships in a release, and Vale moves to it by changing the version in two URLs (`apps/web/package.json`, and the tokens override in `pnpm-workspace.yaml`).

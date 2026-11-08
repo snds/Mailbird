@@ -22,7 +22,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The image builds the web app and the gateway together, so there's nothing else to install.
+`docker compose up -d` runs the published image, `ghcr.io/snds/vale-gateway:main`, which CI builds from every push to `main`. `docker compose up -d --build` builds this checkout instead. The image holds the web app and the gateway together, so there's nothing else to install.
 
 - **Ports:** the gateway listens on `127.0.0.1:8080` only. Put a proxy that handles TLS in front of it: Caddy, nginx, Tailscale, or Cloudflare Tunnel.
 - **Use https.** Cookies are marked `Secure` unless you set `GATEWAY_INSECURE_COOKIES=1`, which is only for plain http on the same machine.
@@ -56,6 +56,21 @@ GATEWAY_PASSWORD=… GATEWAY_KEY=… GATEWAY_WEB=apps/web/dist ./target/release/
 | `GATEWAY_ADDRESS` | | Where to listen. Default `127.0.0.1:8080` (`0.0.0.0:8080` inside Docker). |
 | `GATEWAY_INSECURE_COOKIES` | | Set to `1` for plain http on this machine only. |
 | `GATEWAY_PUBLIC_URL` | | The address people reach the gateway at, like `https://cal.example`. With it, booking invitations carry a link to change or cancel the booking. Without it, the link is shown only on the confirmation page. |
+
+## Updates
+
+The gateway checks for a newer image when it starts and every six hours ([ADR-0077](../../docs/decisions/0077-gateway-updates.md)). **Settings → Gateway updates** (the owner's) shows its version, **Check for updates**, and **Check for updates automatically**. When a newer image is out, it shows the command to run beside `compose.yaml`:
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+That pulls `ghcr.io/snds/vale-gateway:main` and starts the new container on the same data and settings. Back up the `gateway-data` volume first.
+
+- **Where "newer" comes from:** `latest.json` on the rolling [`gateway-main`](https://github.com/snds/Vale/releases/tag/gateway-main) pre-release, which CI writes only after the image is in the registry. Each image is tagged `main` and its version, `0.1.0-main.<commit time, UTC>`.
+- **What a check sends:** one `GET` to GitHub, over https, with the user agent `vale-gateway`. No version, address, or account.
+- **It never updates itself.** The gateway has no Docker socket and doesn't restart. One-click Update and Reload come later, with a small helper on the server's host.
+- **A build from source** (`--build`, `cargo build`) reports `0.1.0` and doesn't check.
 
 ## Adding accounts
 
@@ -103,6 +118,8 @@ The browser calls these; you don't need them to use the app.
 | `POST /api/join` | Opens an invitation: `{"code":…,"password":…}`, and signs in. |
 | `POST /api/here` | Says which conversation you have open (`{"threadId":…}` or `null`); everyone hears `inbox:here`. |
 | `DELETE /api/session` | Signs out. |
+| `GET /api/updates` | The owner's: the version, channel, update status and its line, the switch, and the update command when a newer image is out. |
+| `POST /api/updates/check` · `POST /api/updates/auto` | The owner checks now, or sets the automatic check (`{"on":…}`). Both answer the same status. |
 | `POST /api/core/{command}` | Runs one app command with its JSON arguments. Needs a session and `X-Vale: 1`. Unknown commands are 404, bad arguments 400. |
 | `GET /api/events` | The event stream (Server-Sent Events). |
 | `GET /api/attachments/{id}` | Downloads one attachment. |

@@ -21,6 +21,12 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
 log = "0.4"
+# Update checks (ADR-0077): the shared kit's rules, the same ones the desktop
+# app follows (snds/app-updates, Apache-2.0, pinned by tag; no `tauri`
+# feature), the version order, and one https GET with the core's TLS setup.
+snds-app-updates = { git = "https://github.com/snds/app-updates", tag = "v0.1.0" }
+semver = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "stream"] }

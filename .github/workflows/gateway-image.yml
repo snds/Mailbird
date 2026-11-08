@@ -1,0 +1,167 @@
+# The gateway's image on its main channel (ADR-0077). Every push to main:
+#
+# 1. builds apps/gateway/Dockerfile with the version stamped,
+#    `<apps/gateway/Cargo.toml version>-main.<commit time, UTC, YYYYMMDDHHMMSS>`,
+#    and checks the container starts and reports that version;
+# 2. pushes ghcr.io/snds/vale-gateway:<version>, then moves :main to the
+#    same digest, and attests its build provenance to the registry;
+# 3. only then writes `latest.json` ({"version", "image", "digest", "commit"})
+#    to the rolling `gateway-main` pre-release of this repository. A running
+#    gateway reads that file (apps/gateway/src/updates.rs), so it can only
+#    ever offer an image that's already in the registry.
+#
+# It needs no secret: GITHUB_TOKEN with `packages: write` and `contents: write`.
+# A run for an older commit (a re-run) pushes its version tag but never moves
+# :main or the manifest backwards. Pull requests don't run it; CI's `images`
+# job checks the image builds.
+name: Gateway image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: gateway-image
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: meta
+        run: |
+          set -euo pipefail
+          base=$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/gateway/Cargo.toml | head -1)
+          stamp=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y%m%d%H%M%S)
+          version="$base-main.$stamp"
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-main\.[0-9]{14}$' || { echo "::error::bad version $version"; exit 1; }
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/vale-gateway"
+          {
+            echo "version=$version"
+            echo "image=$image"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::building $image:$version"
+      - name: Build
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: docker build -f apps/gateway/Dockerfile --build-arg "VALE_GATEWAY_VERSION=$VERSION" -t "$IMAGE:$VERSION" .
+      - name: The image starts, serves the app and reports its version
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker run -d --name gw -p 127.0.0.1:8080:8080 -e GATEWAY_PASSWORD=ci-password-0123456789 -e GATEWAY_KEY="$(openssl rand -base64 32)" "$IMAGE:$VERSION"
+          for _ in $(seq 1 20); do curl -fs http://127.0.0.1:8080/api/session && break; sleep 1; done
+          curl -fs http://127.0.0.1:8080/ | grep -q '<div id="root">'
+          docker logs gw 2>&1 | tee gw.log
+          grep -q "gateway $VERSION on " gw.log
+          [ "$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$IMAGE:$VERSION")" = "$VERSION" ]
+          docker rm -f gw
+      - name: Push the version tag
+        id: push
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$VERSION"
+          digest=$(docker inspect --format '{{ index .RepoDigests 0 }}' "$IMAGE:$VERSION")
+          digest=${digest#*@}
+          echo "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || { echo "::error::no digest for $IMAGE:$VERSION"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "::notice::pushed $IMAGE:$VERSION ($digest)"
+      - name: Build provenance for the image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.meta.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Is this the newest build?
+        id: newest
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          published=""
+          if gh release download gateway-main -p latest.json -O current.json 2>/dev/null; then
+            published=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' current.json)
+          fi
+          # Every version here is `x.y.z-main.<14 digits>`, which sort -V orders as semver does.
+          newest=$(printf '%s\n%s\n' "$published" "$VERSION" | sed '/^$/d' | sort -V | tail -1)
+          if [ "$newest" = "$VERSION" ] && [ "$published" != "$VERSION" ]; then
+            echo "move=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "move=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::published $published is not older than $VERSION: :main and the manifest stay"
+          fi
+      - name: Move :main to the same digest
+        if: steps.newest.outputs.move == 'true'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker tag "$IMAGE:$VERSION" "$IMAGE:main"
+          docker push "$IMAGE:main"
+          moved=$(docker inspect --format '{{ index .RepoDigests 0 }}' "$IMAGE:main")
+          [ "${moved#*@}" = "$DIGEST" ] || { echo "::error::$IMAGE:main isn't $DIGEST"; exit 1; }
+      - name: Announce it in gateway-main's latest.json
+        if: steps.newest.outputs.move == 'true'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          manifest = {
+              "version": os.environ["VERSION"],
+              "image": os.environ["IMAGE"],
+              "digest": os.environ["DIGEST"],
+              "commit": os.environ["GITHUB_SHA"],
+          }
+          with open("latest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+          PY
+          cat latest.json
+          cat > notes.md <<NOTES
+          The Vale web gateway's newest image (ADR-0077): \`$IMAGE:$VERSION\`, also tagged \`main\` (\`$DIGEST\`).
+
+          To update a compose setup, run this beside its \`compose.yaml\`:
+
+          \`\`\`sh
+          docker compose pull && docker compose up -d
+          \`\`\`
+
+          A running gateway reads \`latest.json\` here and says in Settings → Gateway updates when a newer image is out. Built from $GITHUB_SHA.
+          NOTES
+          if gh release view gateway-main > /dev/null 2>&1; then
+            gh release upload gateway-main latest.json --clobber
+            gh release edit gateway-main --notes-file notes.md --title "Vale gateway $VERSION"
+          else
+            gh release create gateway-main latest.json --prerelease --target "$GITHUB_SHA" \
+              --title "Vale gateway $VERSION" --notes-file notes.md
+          fi
+          echo "::notice::gateway-main now names $VERSION"
