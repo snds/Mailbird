@@ -3,7 +3,7 @@ import type { ReactNode } from "react"
 import { useUi, type SettingsSection } from "@/app/ui-store"
 import { Button, Icon, type IconName, Item, ItemContent, ItemMedia, ItemTitle } from "@unicron/ui"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
-import { isMember, signOutOfGateway } from "@/core/client"
+import { isMember, isTauri, signOutOfGateway } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
 import { AccountsSection } from "@/features/accounts"
 import { AdvancedMail } from "@/features/advanced-mail"
@@ -14,6 +14,7 @@ import { MenuBarSettingsSection } from "@/features/menu-bar-settings"
 import { PushSettingsSection } from "@/features/push-settings"
 import { ScreenerSettingsSection } from "@/features/screener-settings"
 import { Members } from "@/features/team-members"
+import { AboutSection } from "@/features/updates/about-section"
 import { WritingSettings } from "@/features/writing-settings"
 
 import { SectionHeader } from "./section-header"
@@ -184,6 +185,19 @@ function useSections(): Section[] {
             description="People you add work this gateway's mail with you: they read and reply from its accounts, assign conversations, and leave each other notes. Your accounts, settings, calendars, contacts, and notes stay yours."
           />
           <Members />
+        </>
+      ),
+    },
+    {
+      // Updates are the desktop app's (ADR-0076): not on the web, a gateway, or Vale Demo.
+      id: "about",
+      icon: "info",
+      title: "About",
+      when: isTauri(),
+      body: () => (
+        <>
+          <SectionHeader title="About" description="This version of Vale, and its updates. A newer build downloads quietly, and Vale offers to restart for it." />
+          <AboutSection />
         </>
       ),
     },

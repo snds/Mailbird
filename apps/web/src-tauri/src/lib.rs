@@ -5,6 +5,8 @@
 //! the same entry point the web gateway uses (ADR-0016).
 
 mod menu_bar;
+#[cfg(desktop)]
+mod updater;
 
 use std::path::{Path, PathBuf};
 
@@ -113,7 +115,12 @@ async fn core(app: State<'_, AppHandle>, state: State<'_, Shared>, name: String,
 pub fn run() {
     let in_tray = menu_bar::InTray::default();
     let closing = in_tray.clone();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Automatic updates on the desktop (ADR-0076), driven from Rust: the
+    // webview gets no updater permission.
+    #[cfg(desktop)]
+    let builder = builder.plugin(updater::plugin());
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -135,6 +142,10 @@ pub fn run() {
             let handle = AppHandle::new(TauriHost(app.handle().clone(), in_tray.clone()));
             app.manage(state.clone());
             app.manage(handle.clone());
+            // Checks at launch and every six hours while Settings → About's
+            // switch is on; "Check for Updates…" in the macOS app menu.
+            #[cfg(desktop)]
+            updater::start(app.handle(), state.clone());
             // Inside Tauri's async runtime: the workers spawn Tokio tasks.
             tauri::async_runtime::spawn(async move { pim_app::workers::start(handle, state) });
             Ok(())
@@ -151,7 +162,7 @@ pub fn run() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![core])
+        .invoke_handler(handlers())
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
@@ -160,6 +171,26 @@ pub fn run() {
             if let tauri::RunEvent::Reopen { .. } = event {
                 menu_bar::show_main(app, None);
             }
+            // A downloaded update not yet taken installs now, without relaunching.
+            #[cfg(desktop)]
+            if let tauri::RunEvent::Exit = event {
+                updater::on_exit(app);
+            }
             let _ = (app, event);
         });
+}
+
+/// The page's commands: `core`, and on the desktop the update kit's five
+/// plus "Get it from GitHub" (ADR-0076), which answer the page's About
+/// section directly.
+fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
+    #[cfg(desktop)]
+    {
+        use app_updates::shell::commands::*;
+        tauri::generate_handler![core, update_status, update_check, update_restart, update_auto_set, app_reload, updater::update_open_page]
+    }
+    #[cfg(not(desktop))]
+    {
+        tauri::generate_handler![core]
+    }
 }

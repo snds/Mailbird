@@ -1,11 +1,14 @@
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
 import { VERTICALS } from "@/app/verticals"
 import { Icon, type IconName, Command, CommandDialog, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@unicron/ui"
+import { isTauri } from "@/core/client"
 import { useKeyBindings, useScreener } from "@/core/queries"
 import { LANES } from "@/features/mail/lanes"
+import { withUpdates } from "@/features/updates/update-client"
 import { keyLabel } from "@/lib/keys"
 
 const LANE_ICONS: Record<string, IconName> = {
@@ -17,6 +20,12 @@ const LANE_ICONS: Record<string, IconName> = {
   waiting: "notifications",
   scheduled: "schedule_send",
   archive: "archive",
+}
+
+/** "Check for updates" from the menu: checks, and opens Settings → About, where the outcome shows. */
+function checkForUpdates() {
+  useUi.getState().openSettings("about")
+  void withUpdates((c) => c.check()).catch((e) => toast.error("Couldn't check for updates", { description: String(e) }))
 }
 
 const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"
@@ -124,6 +133,19 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
               <Icon name="swipe" />
               Change keys and swipes
             </CommandItem>
+            {/* The desktop's updater (ADR-0076); its outcome shows in Settings → About. */}
+            {isTauri() && (
+              <>
+                <CommandItem onSelect={run(() => checkForUpdates())} keywords={["update", "upgrade", "new version", "about"]}>
+                  <Icon name="refresh" />
+                  Check for updates
+                </CommandItem>
+                <CommandItem onSelect={run(() => void withUpdates((c) => c.reload()).catch((e) => toast.error("Couldn't reload Vale", { description: String(e) })))} keywords={["restart", "relaunch", "reopen"]}>
+                  <Icon name="replay" />
+                  Reload app
+                </CommandItem>
+              </>
+            )}
             <CommandItem onSelect={run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark"))} keywords={["theme", "dark mode", "light mode", "appearance"]}>
               <Icon name={resolvedTheme === "dark" ? "light_mode" : "dark_mode"} />
               {resolvedTheme === "dark" ? "Use light mode" : "Use dark mode"}

@@ -140,3 +140,25 @@ jobs:
       # The shell embeds the built front end, so tauri::generate_context! needs dist/.
       - run: mkdir -p apps/web/dist && touch apps/web/dist/index.html
       - run: cargo check -p vale-shell
+
+  # Publishes each push to main as the rolling `vale-main` pre-release on
+  # snds/releases, signed with Vale's update key (ADR-0076), through the
+  # update kit's reusable workflow (pinned; its README → Releasing). Without
+  # the secrets it's a dry run that builds and says which secret is missing;
+  # it never fails a push for one. Pull requests don't run it.
+  release-main:
+    if: github.event_name == 'push'
+    needs: [web, shell]
+    permissions:
+      contents: read
+    uses: snds/app-updates/.github/workflows/release-main.yml@4164991dd62f6d31dd99c2444906c8de53f6a719
+    with:
+      app: vale
+      tauri-dir: apps/web/src-tauri
+      platforms: '["macos-universal", "windows-x64"]'
+      package-manager: pnpm
+      kit-ref: 4164991dd62f6d31dd99c2444906c8de53f6a719
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
