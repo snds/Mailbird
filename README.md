@@ -59,6 +59,18 @@ cargo test -p pim-core --test jmap -- --ignored
 
 The desktop shell needs [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/): WebView2 on Windows, Xcode CLT on macOS, and WebKitGTK plus libdbus on Linux (for the keychain).
 
+### Updates
+
+The desktop app updates itself through Sean's shared update kit, [snds/app-updates](https://github.com/snds/app-updates) ([ADR-0076](docs/decisions/0076-automatic-updates.md)). Every push to `main` becomes the rolling [`vale-main`](https://github.com/snds/releases/releases/tag/vale-main) pre-release on snds/releases. Vale checks at launch and every six hours, downloads a newer build quietly, and offers **Restart to update**. Settings → About has **Check for updates**, **Reload app**, and **Check for updates automatically**.
+
+The public key is committed as `apps/web/src-tauri/updater.pub` (key ID `75E5DC5D3F784ACD`). A build without that file says "Updates are off in this build: it was made without the update key." To turn publishing on:
+
+1. The key: made once with `npx tauri signer generate -w ~/.tauri/vale.key`. Keep the secret half and its password in your password manager; commit only the `.pub` as `apps/web/src-tauri/updater.pub`.
+2. In this repo's Actions secrets, add `TAURI_SIGNING_PRIVATE_KEY` (the secret key file's contents), `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `RELEASES_TOKEN` (a fine-grained token with Contents: read and write on snds/releases only).
+3. That's all: CI's `release-main` job publishes each push to `main` once the secrets are there. Until then it's a dry run that says which secret is missing. snds/releases needs at least one commit (a README) before its first release.
+
+Local builds (`pnpm tauri build`) carry the version `0.1.0` and don't check for updates: only CI's `0.1.0-main.<time>` builds follow the main channel.
+
 ### The design system (unicron)
 
 Primitives and core tokens come from [unicron](https://github.com/snds/unicron), as the versioned packages `@unicron/ui` and `@unicron/tokens`, installed from its GitHub release tarballs ([ADR-0052](docs/decisions/0052-unicron-packages.md)). Vale's own roles are in `apps/web/src/styles/app-extension.css`. A new or changed primitive goes to unicron first: it ships in a release, and Vale moves to it by changing the version in two URLs (`apps/web/package.json`, and the tokens override in `pnpm-workspace.yaml`).

@@ -36,7 +36,7 @@ export interface Jump {
 }
 
 /** The settings page's sections (ADR-0075). */
-export type SettingsSection = "accounts" | "writing" | "mail" | "shortcuts" | "ai" | "calendar" | "phone" | "team"
+export type SettingsSection = "accounts" | "writing" | "mail" | "shortcuts" | "ai" | "calendar" | "phone" | "team" | "about"
 
 const VERTICAL_OF: Record<Jump["kind"], VerticalId> = { thread: "mail", event: "calendar", contact: "contacts", note: "notes" }
 
