@@ -8,6 +8,7 @@ import { useAccounts, useCore } from "@/core/queries"
 import { AccountsSection } from "@/features/accounts"
 import { AdvancedMail } from "@/features/advanced-mail"
 import { AiSettingsForm } from "@/features/ai-settings"
+import { GatewayUpdatesSection } from "@/features/gateway-updates"
 import { ShortcutSettings } from "@/features/grammar"
 import { MeetingSettingsSection } from "@/features/meeting-settings"
 import { MenuBarSettingsSection } from "@/features/menu-bar-settings"
@@ -170,6 +171,19 @@ function useSections(): Section[] {
         <>
           <SectionHeader title="New mail on your phone" description="How mail reaches your phone while the app is closed. The desktop app keeps its own connection open while it runs." />
           <PushSettingsSection />
+        </>
+      ),
+    },
+    {
+      // The gateway's own updates (ADR-0077), for its owner: it says when a newer image is out.
+      id: "gateway",
+      icon: "dns",
+      title: "Gateway updates",
+      when: remote && !member,
+      body: () => (
+        <>
+          <SectionHeader title="Gateway updates" description="This gateway's version, and whether a newer image is out. The gateway never restarts itself: you update it on its server." />
+          <GatewayUpdatesSection />
         </>
       ),
     },

@@ -56,7 +56,11 @@ async fn main() {
     let members = Members::open(data.join("members.json")).unwrap_or_else(|e| fail(e));
     let gw = Gateway::new(state, Config { password, members, web_dir, secure_cookies, public_url });
 
-    eprintln!("gateway {} on {address}, data in {}", env!("CARGO_PKG_VERSION"), data.display());
+    eprintln!("gateway {} on {address}, data in {}", vale_gateway::updates::running(), data.display());
+    // Says when a newer image is out (ADR-0077); it never restarts anything.
+    if gw.spawn_update_checks() {
+        eprintln!("gateway: checks for updates at start and every 6 h (Settings → Gateway updates has the switch)");
+    }
     let listener = tokio::net::TcpListener::bind(&address).await.unwrap_or_else(|e| fail(format!("can't listen on {address}: {e}")));
     axum::serve(listener, router(gw))
         .with_graceful_shutdown(async {

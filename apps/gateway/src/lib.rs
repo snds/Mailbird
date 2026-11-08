@@ -44,6 +44,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 mod members;
 pub use members::Members;
+pub mod updates;
 
 /// How long a session lasts without use.
 const SESSION_IDLE: Duration = Duration::from_secs(30 * 24 * 3600);
@@ -281,6 +282,8 @@ pub struct Gateway {
     failures: Mutex<(Instant, u32)>,
     /// (window start, booking attempts in it) from public pages.
     bookings: Mutex<(Instant, u32)>,
+    /// The update check (ADR-0077): this build against the newest published image.
+    updates: Arc<updates::Updates>,
 }
 
 type Gw = Arc<Gateway>;
@@ -288,10 +291,21 @@ type Gw = Arc<Gateway>;
 impl Gateway {
     /// Starts the app's background workers (sync, push, outbox) too.
     pub fn new(state: Shared, config: Config) -> Gw {
+        Self::with_updates(state, config, updates::Updates::default())
+    }
+
+    /// The same, with its own update check (tests give one a fixed manifest).
+    pub fn with_updates(state: Shared, config: Config, updates: updates::Updates) -> Gw {
         let (events, _) = broadcast::channel(256);
         let app = AppHandle::new(GatewayHost { events: events.clone() });
         pim_app::workers::start(app.clone(), state.clone());
-        Arc::new(Self { app, state, events, config, sessions: Mutex::new(HashMap::new()), here: Mutex::new(HashMap::new()), failures: Mutex::new((Instant::now(), 0)), bookings: Mutex::new((Instant::now(), 0)) })
+        Arc::new(Self { app, state, events, config, sessions: Mutex::new(HashMap::new()), here: Mutex::new(HashMap::new()), failures: Mutex::new((Instant::now(), 0)), bookings: Mutex::new((Instant::now(), 0)), updates: Arc::new(updates) })
+    }
+
+    /// Checks for a newer image at start and every six hours while the
+    /// owner's switch is on (ADR-0077). False for a build that doesn't check.
+    pub fn spawn_update_checks(&self) -> bool {
+        updates::spawn(self.updates.clone(), self.state.clone())
     }
 
     fn session(&self, headers: &HeaderMap) -> Option<Who> {
@@ -382,6 +396,10 @@ pub fn router(gw: Gw) -> Router {
         .route("/api/members/{id}/invite", post(reinvite_member))
         .route("/api/join", post(join))
         .route("/api/here", post(here))
+        // Update checks (ADR-0077), for the owner: the status, Check now, the switch.
+        .route("/api/updates", get(update_status))
+        .route("/api/updates/check", post(update_check))
+        .route("/api/updates/auto", post(update_auto))
         .route("/api/attachments/{id}", get(attachment))
         // Public: a scheduling link's page reads its free times and books one (ADR-0026).
         .route("/api/book/{token}", get(booking_page).post(booking))
@@ -692,6 +710,54 @@ fn not_owner(gw: &Gateway, headers: &HeaderMap) -> Option<Response> {
         return Some(err(StatusCode::FORBIDDEN, "missing the X-Vale header"));
     }
     (!who.owner).then(|| err(StatusCode::FORBIDDEN, "only the gateway's owner can do that"))
+}
+
+// ── Update checks (ADR-0077) ─────────────────────────────────────────────────
+
+/// Whether this request may see the update check: the owner's session.
+fn owner_only(gw: &Gateway, headers: &HeaderMap) -> Option<Response> {
+    let Some(who) = gw.session(headers) else { return Some(err(StatusCode::UNAUTHORIZED, "sign in first")) };
+    (!who.owner).then(|| err(StatusCode::FORBIDDEN, "only the gateway's owner can do that"))
+}
+
+fn update_report(gw: &Gateway, status: &updates::Status) -> Response {
+    let mut res = Json(updates::report(status, updates::auto_check(&gw.state))).into_response();
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
+}
+
+/// The running version, its channel, where the check stands, and, when a
+/// newer image is out, the command that takes it.
+async fn update_status(State(gw): State<Gw>, headers: HeaderMap) -> Response {
+    if let Some(r) = owner_only(&gw, &headers) {
+        return r;
+    }
+    update_report(&gw, &gw.updates.status())
+}
+
+/// Check for updates: one read of the manifest now; answers the new status.
+async fn update_check(State(gw): State<Gw>, headers: HeaderMap) -> Response {
+    if let Some(r) = not_owner(&gw, &headers) {
+        return r;
+    }
+    let status = gw.updates.check().await;
+    update_report(&gw, &status)
+}
+
+#[derive(Deserialize)]
+struct AutoCheck {
+    on: bool,
+}
+
+/// "Check for updates automatically": `{"on": bool}`, kept in the core's settings.
+async fn update_auto(State(gw): State<Gw>, headers: HeaderMap, Json(body): Json<AutoCheck>) -> Response {
+    if let Some(r) = not_owner(&gw, &headers) {
+        return r;
+    }
+    if let Err(e) = updates::set_auto_check(&gw.state, body.on) {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, e);
+    }
+    update_report(&gw, &gw.updates.status())
 }
 
 #[derive(Deserialize)]

@@ -1,12 +1,15 @@
 # Vale web gateway on a personal server. See README.md.
 #   cp .env.example .env   # fill in GATEWAY_PASSWORD and GATEWAY_KEY
-#   docker compose up -d
+#   docker compose up -d            # the published image (every push to main)
+#   docker compose up -d --build    # or build it from this checkout instead
+# Updating to the newest published image (Settings → Gateway updates says
+# when one is out, ADR-0077): `docker compose pull && docker compose up -d`.
 services:
   gateway:
     build:
       context: ../..
       dockerfile: apps/gateway/Dockerfile
-    image: vale-gateway
+    image: ghcr.io/snds/vale-gateway:main
     restart: unless-stopped
     env_file: .env
     volumes:
