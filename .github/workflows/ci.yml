@@ -151,13 +151,13 @@ jobs:
     needs: [web, shell]
     permissions:
       contents: read
-    uses: snds/app-updates/.github/workflows/release-main.yml@4164991dd62f6d31dd99c2444906c8de53f6a719
+    uses: snds/app-updates/.github/workflows/release-main.yml@717320098ab34d67f36f85794ba6fb0b91bd8fd7
     with:
       app: vale
       tauri-dir: apps/web/src-tauri
       platforms: '["macos-universal", "windows-x64"]'
       package-manager: pnpm
-      kit-ref: 4164991dd62f6d31dd99c2444906c8de53f6a719
+      kit-ref: 717320098ab34d67f36f85794ba6fb0b91bd8fd7
     secrets:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
