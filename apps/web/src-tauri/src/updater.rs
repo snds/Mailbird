@@ -61,7 +61,7 @@ const AUTO_CHECK: &str = "updates.autoCheck";
 /// The ID of the key Sean made for Vale (2026-11-08), whose public half is
 /// `updater.pub`. A test holds the committed file to it.
 #[cfg(test)]
-const RELEASE_KEY_ID: &str = "75E5DC5D3F784ACD";
+const RELEASE_KEY_ID: &str = "98E8E6D6FFEA0C53";
 
 /// The public key built in from `updater.pub` (build.rs), if the file was
 /// there when this build was made. Without it, updates are off in the build

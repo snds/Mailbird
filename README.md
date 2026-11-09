@@ -63,7 +63,7 @@ The desktop shell needs [Tauri's prerequisites](https://v2.tauri.app/start/prere
 
 The desktop app updates itself through Sean's shared update kit, [snds/app-updates](https://github.com/snds/app-updates) ([ADR-0076](docs/decisions/0076-automatic-updates.md)). Every push to `main` becomes the rolling [`vale-main`](https://github.com/snds/releases/releases/tag/vale-main) pre-release on snds/releases. Vale checks at launch and every six hours, downloads a newer build quietly, and offers **Restart to update**. Settings → About has **Check for updates**, **Reload app**, and **Check for updates automatically**.
 
-The public key is committed as `apps/web/src-tauri/updater.pub` (key ID `75E5DC5D3F784ACD`). A build without that file says "Updates are off in this build: it was made without the update key." To turn publishing on:
+The public key is committed as `apps/web/src-tauri/updater.pub` (key ID `98E8E6D6FFEA0C53`). A build without that file says "Updates are off in this build: it was made without the update key." To turn publishing on:
 
 1. The key: made once with `npx tauri signer generate -w ~/.tauri/vale.key`. Keep the secret half and its password in your password manager; commit only the `.pub` as `apps/web/src-tauri/updater.pub`.
 2. In this repo's Actions secrets, add `TAURI_SIGNING_PRIVATE_KEY` (the secret key file's contents), `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `RELEASES_TOKEN` (a fine-grained token with Contents: read and write on snds/releases only).

@@ -12,7 +12,7 @@ Sean approved one way for all his desktop apps to update (the unified updates pr
 
 - **Every push to `main` is a build** on one rolling pre-release, `vale-main`, in the shared public repo **snds/releases**. Each has a signed bundle per platform and Tauri's manifest, `latest.json`. Its version is the app's own plus the commit time in UTC: `0.1.0-main.20261108093000`.
 - **CI's `release-main` job** calls the kit's reusable workflow, pinned to one commit, on pushes to `main` for macOS (universal) and Windows. Until the signing key and `RELEASES_TOKEN` are repository secrets, it's a dry run that builds and says what's missing; it never fails a push for one.
-- **Vale's own key** signs every update. Its public half is committed as `apps/web/src-tauri/updater.pub` (key ID `75E5DC5D3F784ACD`), built in by `build.rs`, and a test holds the file to that ID. A build without the file says "Updates are off in this build: it was made without the update key."
+- **Vale's own key** signs every update. Its public half is committed as `apps/web/src-tauri/updater.pub` (key ID `98E8E6D6FFEA0C53`), built in by `build.rs`, and a test holds the file to that ID. A build without the file says "Updates are off in this build: it was made without the update key."
 
 ### What the app does
 
