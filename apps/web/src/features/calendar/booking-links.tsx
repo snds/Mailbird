@@ -75,7 +75,7 @@ export function BookingLinks() {
         <DialogContent size="md">{editing && <LinkForm key={editing.link?.id ?? "new"} link={editing.link} onDone={() => setEditing(null)} />}</DialogContent>
       </Dialog>
       <Dialog open={preview !== null} onOpenChange={(o) => !o && setPreview(null)}>
-        <DialogContent size="xl" className="p-0" aria-label="Booking page preview">
+        <DialogContent size="xl" className="[--c-dialog-padding:0]" aria-label="Booking page preview">
           {preview && (
             <>
               <p className="border-b px-4 py-2 text-xs text-muted-foreground">Preview: what visitors see. Booking here adds a real event.</p>

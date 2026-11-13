@@ -347,7 +347,7 @@ function ZoneRow({ zone, onZone, start, end }: { zone: string; onZone: (z: strin
         <label htmlFor="event-zone" className={label}>
           Time zone
         </label>
-        <NativeSelect id="event-zone" value={zone} onChange={(ev) => onZone(ev.target.value)} className="ml-auto max-w-[60%]">
+        <NativeSelect id="event-zone" value={zone} onChange={(ev) => onZone(ev.target.value)} className="ml-auto max-w-[70%] pointer-fine:max-w-[60%]">
           <NativeSelectOption value={mine}>{`Yours · ${name(mine)}`}</NativeSelectOption>
           {zone !== mine && <NativeSelectOption value={zone}>{name(zone)}</NativeSelectOption>}
           <optgroup label="Other zones">

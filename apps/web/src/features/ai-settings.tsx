@@ -201,7 +201,7 @@ function ModelPicker({ provider, url, model, onPick, empty }: { provider: AiProv
   if (models.isPending) {
     return (
       <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner /> Checking the connection…
+        <Spinner aria-hidden /> Checking the connection…
       </p>
     )
   }

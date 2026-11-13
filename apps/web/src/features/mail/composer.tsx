@@ -83,7 +83,7 @@ export function Composer() {
   if (tabletUp) {
     return (
       <Dialog open={open} onOpenChange={(o) => !o && close()}>
-        <DialogContent size="xl" className="flex max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-0 p-0" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
+        <DialogContent size="xl" className="flex max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-0 [--c-dialog-padding:0]" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
           <DialogTitle className="sr-only">New message</DialogTitle>
           {body}
         </DialogContent>

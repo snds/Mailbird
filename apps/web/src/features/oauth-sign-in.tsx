@@ -111,7 +111,8 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
 
       {signIn.isPending ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border bg-muted/40 px-4 py-6 text-center" role="status" aria-live="polite">
-          <Spinner className="size-6" />
+          {/* The status around it says what's happening; the spinner would add "Loading". */}
+          <Spinner className="size-6" aria-hidden />
           <p className="text-sm font-medium">Finish signing in in your browser</p>
           <p className="max-w-xs text-xs text-muted-foreground">When {copy.company} says you're signed in, come back here. The tab can be closed.</p>
           <Button variant="outline" size="sm" onClick={cancel}>

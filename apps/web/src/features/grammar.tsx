@@ -68,7 +68,7 @@ export function ShortcutSettings() {
             <span className={slot.long ? "pl-4 text-muted-foreground" : ""}>{slot.label}</span>
             <NativeSelect
               aria-label={slot.label}
-              className="w-56"
+              className="w-56 shrink-0"
               value={swipes?.[slot.key] ?? "none"}
               disabled={!swipes}
               onChange={(e) => set(slot.key, e.target.value as SwipeActionId)}

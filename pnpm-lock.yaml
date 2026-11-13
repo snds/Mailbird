@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz
+  '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
   '@tiptap/extension-bubble-menu': 3.31.3
   '@tiptap/extension-floating-menu': 3.31.3
 
@@ -74,11 +74,11 @@ importers:
         specifier: 3.0.9
         version: 3.0.9(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6)(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
       '@unicron/tokens':
-        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz
-        version: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz
+        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
+        version: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
       '@unicron/ui':
-        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.16.0/unicron-ui-0.16.0.tgz
-        version: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.16.0/unicron-ui-0.16.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz
+        version: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       chrono-node:
         specifier: 2.10.1
         version: 2.10.1
@@ -1034,13 +1034,13 @@ packages:
   '@types/use-sync-external-store@0.0.6':
     resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
 
-  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz':
-    resolution: {integrity: sha512-3jEBgvEtHcIaTGfIBiMIe9SeVX1R/JK03UBsNKcQISbGDcAy5jC8K2Lv+8TGPzcUSEdqA9DsmHd0m4zOxmPbOg==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz}
-    version: 0.10.0
-
-  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.16.0/unicron-ui-0.16.0.tgz':
-    resolution: {integrity: sha512-ar5x7YM+VnO5nRC4V4lxSTeNMmXE1YXgdmAwN6FQF0NNgbn+VrdqJBavpDvxnZAB1TWtYteE+vjozzHm14/XpQ==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.16.0/unicron-ui-0.16.0.tgz}
+  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz':
+    resolution: {integrity: sha512-dv1SRnTIjU/wxa0N/IuWsyWG86zHEN0BlCtmuNyP+4j+MZPvrVV19/tfeVQiUyfLSQtcdo+qQsOMnfwNhFX2Zg==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz}
     version: 0.16.0
+
+  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz':
+    resolution: {integrity: sha512-iYgt1fuz3EBhqIQvPLv/cLMW1KwGNJxqHu7dix5H5US5wTvz4fSQ/lM0iiRL7Qvdj9+z6s0ZF6PVfJiIbC08TQ==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz}
+    version: 0.24.0
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -1504,6 +1504,12 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  react-resizable-panels@4.14.8:
+    resolution: {integrity: sha512-kVot7JCIZct85ZY87vww95R7tI25VSTjHpEAIIy2YcsOtbtwG6l1+vDD6TCYgmgE/JSp0ADqNooHn97Y6dMOFw==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
 
   react-style-singleton@2.2.3:
     resolution: {integrity: sha512-b6jSvxvVnyptAiLjbkWLE/lOnR4lfTtDAl+eUC7RZy+QQWc6wRzIV2CE6xBuMmDxc2qIihtDCZD5NPOFl7fRBQ==}
@@ -2425,13 +2431,13 @@ snapshots:
 
   '@types/use-sync-external-store@0.0.6': {}
 
-  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz': {}
+  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz': {}
 
-  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.16.0/unicron-ui-0.16.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@fontsource-variable/inter': 5.3.0
-      '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz
+      '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       cmdk: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -2439,6 +2445,7 @@ snapshots:
       next-themes: 0.4.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+      react-resizable-panels: 4.14.8(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       sonner: 2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       tailwind-merge: 3.7.0
       tailwindcss: 4.3.3
@@ -2843,6 +2850,11 @@ snapshots:
       use-sidecar: 1.1.3(@types/react@19.3.0)(react@19.3.0)
     optionalDependencies:
       '@types/react': 19.3.0
+
+  react-resizable-panels@4.14.8(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+    dependencies:
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
 
   react-style-singleton@2.2.3(@types/react@19.3.0)(react@19.3.0):
     dependencies:
