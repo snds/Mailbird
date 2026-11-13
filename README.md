@@ -40,6 +40,7 @@ pnpm dev                    # web app at http://localhost:5173
 pnpm build                  # type-check + production build
 cargo test -p pim-core      # Rust core
 pnpm tauri dev              # desktop shell (needs the Tauri prerequisites for your OS)
+pnpm shots --out ~/shots    # a picture of every screen, on sample data (tools/screenshots)
 ```
 
 **Web vs. desktop.** On its own, the web app runs on sample mail, so you can try every flow. For real accounts in a browser, run the [web gateway](apps/gateway/README.md) on a machine you own: it syncs your accounts with the same code as the desktop app and serves the web app (`docker compose up -d` in `apps/gateway`).

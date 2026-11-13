@@ -72,6 +72,7 @@ apps/web/               React app (Vite) — the UI for every platform
 apps/web/src-tauri/     Tauri 2 shell (desktop now, mobile next)
 crates/core/            pim-core — store, MIME, IMAP/SMTP adapters, capability matrix
 tools/test-mail-servers/ local Dovecot + SMTP sink, and Stalwart (JMAP), for integration tests
+tools/screenshots/      pnpm shots: a picture of every screen, phone and desktop, light and dark
 docs/                   research, stack, decisions (ADRs)
 ```
 
@@ -157,3 +158,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0076](decisions/0076-automatic-updates.md) | Desktop updates through `snds/app-updates` (pinned): `src-tauri/src/updater.rs` (feed `vale-main` on snds/releases, key from `updater.pub` via `build.rs`, `ValeHost` keeps `updates.autoCheck` in the core's settings), the kit's commands beside `core` plus `update_open_page`, event `vale://update`; Settings → About and two command-menu items (`features/updates`); off in Vale Demo and on phones; CI `release-main` calls the kit's workflow |
 | [0077](decisions/0077-gateway-updates.md) | Gateway update checks: `gateway-image.yml` pushes `ghcr.io/snds/vale-gateway:<x.y.z-main.time>` and `:main` on each push to `main`, then writes `latest.json` to snds/Vale's `gateway-main` pre-release; `apps/gateway/src/updates.rs` reads it with the kit's rules (`snds-app-updates` v0.1.0, no `tauri`) at start, every 6 h (`updates.autoCheck`) and on demand; owner-only `/api/updates`; Settings → Gateway updates shows the `docker compose pull && docker compose up -d` command; no Docker socket, no self-restart |
 | [0078](decisions/0078-gateway-update-and-reload.md) | Update and Reload through the host helper: `snds-app-updates-host-helper` client (rev `c0ff0bf`, no default features) from `host-helper.env`; owner-only `POST /api/updates/update` (`{tag}`, the offer only, `expect_digest` from `latest.json`) and `/reload`, `202` then the helper on a plain thread; `GET /api/updates` adds `helper`, `canUpdate`, `canReload`, `action`; Settings polls until the gateway is back; refusals in words (`helper::explain`); without the helper, the command and the install link |
+| [0079](decisions/0079-screenshots.md) | `pnpm shots` (`tools/screenshots`): builds `apps/web`, serves `dist` locally, `playwright-core` 1.63.0 drives Chromium through 75 scenes on the demo data, desktop 1440 × 900 and phone 390 × 844, light and dark (296 PNGs); fixed clock and zone, motion off, waits until still; any off-machine request or page error fails the picture; output ignored by git, not in CI |

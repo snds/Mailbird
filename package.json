@@ -8,12 +8,14 @@
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm --filter web typecheck",
+    "shots": "node tools/screenshots/shots.mjs",
     "tauri": "pnpm --filter web tauri",
     "ds:scan": "dsa scan",
     "ds:patterns": "dsa patterns",
     "ds:ratchet": "dsa ratchet"
   },
   "devDependencies": {
-    "@snds/dsa": "git+https://github.com/snds/dsa.git#a9343c175bd365f683e32cbd92e5bd2f6abf7174"
+    "@snds/dsa": "git+https://github.com/snds/dsa.git#a9343c175bd365f683e32cbd92e5bd2f6abf7174",
+    "playwright-core": "1.63.0"
   }
 }
