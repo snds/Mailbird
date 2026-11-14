@@ -26,5 +26,6 @@ export const scenes = [
   },
   { name: "settings-shortcuts", run: (app) => settings(app, "Shortcuts and gestures") },
   { name: "settings-ai", run: (app) => settings(app, "AI summaries and replies") },
-  { name: "settings-phone", run: (app) => settings(app, "New mail on your phone") },
+  // "New mail on your phone" until ADR-0085 named it Notifications; the scene keeps its name so its pictures pair up.
+  { name: "settings-phone", run: (app) => settings(app, "Notifications") },
 ]

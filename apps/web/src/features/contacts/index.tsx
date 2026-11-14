@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
 import { useSectionSwitcher } from "@/app/places"
@@ -7,7 +7,7 @@ import { pendingJump, useUi } from "@/app/ui-store"
 import { vertical } from "@/app/verticals"
 
 import { Icon, formatNavCount, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
-import { EntryRow, ListSearch } from "@/components/list-row"
+import { EntryRow } from "@/components/list-row"
 import { MasterDetail } from "@/components/master-detail"
 import { ScreenHead } from "@/components/page"
 import { useAccounts, useCollections, useContacts, useDeletedContacts, useDuplicates } from "@/core/queries"
@@ -52,8 +52,6 @@ export function ContactsView() {
       }),
     [],
   )
-  const [search, setSearch] = useState("")
-  const query = useDeferredValue(search.trim())
   // A label or a smart group that's gone (its last contact edited, the group deleted) gives way to everyone.
   const at = useContactsPlace()
   const { place } = at
@@ -69,7 +67,7 @@ export function ContactsView() {
     setOpen(open?.keep ? { id: open.id } : null)
   }
   const restoring = useRestoreContacts((s) => s.openedAt)
-  const { data: contacts = [], isPending, refetch } = useContacts(query, active, activeGroup?.id ?? null)
+  const { data: contacts = [], isPending, refetch } = useContacts("", active, activeGroup?.id ?? null)
   const { data: dupes = [] } = useDuplicates()
   // Source badges (ADR-0027): with more than one address book showing, each
   // row says where that card lives, so you edit the copy you mean.
@@ -150,19 +148,14 @@ export function ContactsView() {
             overline={`${active ?? activeGroup?.name ?? "Contacts"} // ${isPending ? "" : formatNavCount(contacts.length)}`}
             title={active ?? activeGroup?.name ?? "People"}
             switcher={switching.switcher}
-            below={
-              <>
-            {switcher}
-            <ListSearch placeholder="Search people" value={search} onChange={setSearch} />
-              </>
-            }
+            below={switcher}
           />
           <Layers restoring={restoring} />
         </>
       }
       list={
         <div role="list" aria-label="Contacts">
-          {dupes.length > 0 && !query && !active && !activeGroup && (
+          {dupes.length > 0 && !active && !activeGroup && (
             <div className="px-3 pb-2">
               <Item variant="muted" render={<button type="button" onClick={() => setPlace({ kind: "duplicates" })} />}>
                 <ItemMedia>
@@ -182,13 +175,11 @@ export function ContactsView() {
           )}
           {!isPending && contacts.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-              {query
-                ? `No one matches “${query}”${active ? ` in ${active}` : activeGroup ? ` in ${activeGroup.name}` : ""}.`
-                : active
-                  ? `No one has the ${active} label${activeGroup ? ` in ${activeGroup.name}` : ""}.`
-                  : activeGroup
-                    ? `No one fits ${activeGroup.name} right now. People join as their cards change.`
-                    : "No contacts yet."}
+              {active
+                ? `No one has the ${active} label${activeGroup ? ` in ${activeGroup.name}` : ""}.`
+                : activeGroup
+                  ? `No one fits ${activeGroup.name} right now. People join as their cards change.`
+                  : "No contacts yet."}
             </p>
           )}
           {sections.map((s) => (
@@ -208,7 +199,7 @@ export function ContactsView() {
               ))}
             </section>
           ))}
-          {gone.length > 0 && !query && !active && !activeGroup && (
+          {gone.length > 0 && !active && !activeGroup && (
             <div className="p-3 text-muted-foreground">
               <Item render={<button type="button" onClick={() => setPlace({ kind: "deleted" })} />}>
                 <ItemMedia>

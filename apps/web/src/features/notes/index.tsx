@@ -1,4 +1,4 @@
-import { type ReactNode, useDeferredValue, useState } from "react"
+import { type ReactNode, useState } from "react"
 
 import { factTime, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
 import { useSectionSwitcher } from "@/app/places"
@@ -6,7 +6,7 @@ import { SectionSwitcher } from "@/app/section-switcher"
 import { useUi } from "@/app/ui-store"
 import { vertical } from "@/app/verticals"
 import { Icon, Button, formatNavCount, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Toggle, Tooltip, TooltipContent, TooltipTrigger, toast } from "@unicron/ui"
-import { EntryRow, ListSearch } from "@/components/list-row"
+import { EntryRow } from "@/components/list-row"
 import { MasterDetail } from "@/components/master-detail"
 import { ScreenHead } from "@/components/page"
 import { getCoreClient } from "@/core/client"
@@ -37,7 +37,6 @@ export function NotesView() {
   // calendar, or contacts) can open a note from anywhere.
   const selected = useUi((s) => s.openNote)
   const setSelected = useUi((s) => s.setOpenNote)
-  const [search, setSearch] = useState("")
   // Notes' place (ADR-0084): a folder, narrowed by one tag. A folder or a tag that is gone just stops filtering.
   const { place, folder: activeFolder, name: placeName } = useNotesPlace()
   const tag = place.tag
@@ -48,8 +47,8 @@ export function NotesView() {
   // Opened by their intents, so the folders list and the command menu reach them too.
   const relayOpen = useSyncSetup((s) => s.open)
   const openingShared = useOpenSharedNote((s) => s.open)
-  const query = useDeferredValue(search.trim())
-  const noteQuery = { search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
+  // Finding a note by its words is Search's (ADR-0085); the list is the folder, narrowed by the tag.
+  const noteQuery = { search: null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
   const { data: found = [], isPending, refetch } = useNotes(noteQuery)
   // Pinned is a place the core has no query for: the same read, narrowed here.
   const notes = pinnedOnly ? found.filter((n) => n.pinned) : found
@@ -78,11 +77,11 @@ export function NotesView() {
   const rest = notes.filter((n) => !n.pinned && !due.includes(n))
   const empty = archived
     ? "Archived notes show up here."
-    : pinnedOnly && !query && !tag
+    : pinnedOnly && !tag
       ? "Nothing pinned. Pin a note from its menu to keep it here."
-    : activeFolder && !query && !tag
+    : activeFolder && !tag
       ? "No notes in this folder yet. They join by themselves when they match."
-      : query || tag || activeFolder
+      : tag || activeFolder
         ? "No notes match."
         : "No notes yet. Start one, or import from Apple Notes, Keep, or a Markdown folder."
 
@@ -202,12 +201,9 @@ export function NotesView() {
               </>
             }
             below={
-            <div className="flex flex-col gap-2">
               <SectionSwitcher state={switching} overline={["Notes", place.folder.kind === "all" ? null : placeName, tag ? `#${tag}` : null].filter(Boolean).join(" // ")} title="Folders">
                 <NotesNav layer more={switching.sheet} />
               </SectionSwitcher>
-              <ListSearch placeholder={place.folder.kind === "all" ? "Search notes" : `Search ${placeName}`} value={search} onChange={setSearch} />
-            </div>
             }
           />
         }

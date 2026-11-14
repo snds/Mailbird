@@ -1,5 +1,6 @@
 import { AppFrameSidebar, AppLockup, NavItem, NavSection, useAppFrame } from "@unicron/ui"
 import { useKeyBindings } from "@/core/queries"
+import { searchKey } from "@/lib/keys"
 
 import { placeIsGroupItem } from "./places"
 import { SectionGroups } from "./section-groups"
@@ -12,8 +13,8 @@ interface SidebarProps {
   sections: Vertical[]
   /** The open section. Its create action stays on the button on Search and Settings. */
   active: Vertical
-  /** Where you are: a section, or Settings. Which item says so is worked out here: one per nav list (brief 3.3). */
-  current: VerticalId | "settings"
+  /** Where you are: a section, Search, or Settings. Which item says so is worked out here: one per nav list (brief 3.3). */
+  current: VerticalId | "search" | "settings"
   onNavigate: (id: VerticalId) => void
   onSettings: () => void
   onSearch: () => void
@@ -38,8 +39,8 @@ export function Sidebar({ sections, active, current, onNavigate, onSettings, onS
   const groups = !collapsed && frame.layout === "expanded" && !frame.sidebarRail
   const calendarPlace = useUi((s) => s.calendarPlace)
   // One current item: the place's own row in the section's group when it has one and the group shows;
-  // otherwise the section under Apps. Settings marks itself alone.
-  const inGroup = current !== "settings" && groups && placeIsGroupItem(current, calendarPlace)
+  // otherwise the section under Apps. Settings marks itself alone, and so does Search.
+  const inGroup = current !== "settings" && current !== "search" && groups && placeIsGroupItem(current, calendarPlace)
   const mark = useUpdateMark()
   const { data: keys } = useKeyBindings()
   return (
@@ -57,7 +58,7 @@ export function Sidebar({ sections, active, current, onNavigate, onSettings, onS
       collapsed={collapsed}
       onCollapsedChange={setCollapsed}
     >
-      <NavItem label="Search" icon="search" mark={{ keys: keys?.["mail.search"] ?? "/" }} onClick={onSearch} />
+      <NavItem label="Search" icon="search" current={current === "search"} mark={searchKey(keys) ? { keys: searchKey(keys) } : undefined} onClick={onSearch} />
       {/* A team member has Mail only, so there is nothing to list (brief X10). No counts: the core has none. */}
       {sections.length > 1 && (
         <NavSection title="Apps" count={VERTICALS.length}>

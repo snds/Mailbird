@@ -19,7 +19,8 @@ type View = "list" | "cards" | "map"
  */
 export function NotesNav({ layer = false, more = false }: { layer?: boolean; more?: boolean }) {
   const { place, folders, tags } = useNotesPlace()
-  const settings = useUi((s) => s.settings)
+  // Settings or Search stands in the section's place: then none of its rows is the current one.
+  const settings = useUi((s) => !!s.settings || !!s.search)
   const picked = useNavPicked()
   const go = (folder: NotesPlace["folder"]) => {
     useUi.getState().setNotesFolder(folder)

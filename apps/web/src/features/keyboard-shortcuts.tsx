@@ -3,7 +3,7 @@ import { useEffect } from "react"
 import { useUi } from "@/app/ui-store"
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Kbd } from "@unicron/ui"
 import { useKeyBindings } from "@/core/queries"
-import { FIXED_KEYS, KEY_COMMANDS, type KeyArea, keyLabel } from "@/lib/keys"
+import { FIXED_KEYS, KEY_COMMANDS, type KeyArea, keyLabel, listedUnder } from "@/lib/keys"
 
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"
 
@@ -37,7 +37,7 @@ export function KeyboardShortcuts() {
 
   const rows = (area: KeyArea | "everywhere") => [
     ...FIXED_KEYS.filter((f) => f.area === area).map((f) => ({ does: f.does, keys: f.keys.map((k) => k.replace("⌘", MOD)) })),
-    ...KEY_COMMANDS.filter((c) => c.area === area && keys?.[c.id]).map((c) => ({ does: c.does, keys: [keyLabel(keys![c.id]!)] })),
+    ...KEY_COMMANDS.filter((c) => listedUnder(c) === area && keys?.[c.id]).map((c) => ({ does: c.does, keys: [keyLabel(keys![c.id]!)] })),
   ]
 
   return (

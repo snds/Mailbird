@@ -21,7 +21,8 @@ export function CalendarNav({ standalone = false }: { standalone?: boolean }) {
   const { isPending } = useCollections("calendar")
   const { data: accounts = [] } = useAccounts()
   const place = useUi((s) => s.calendarPlace)
-  const settings = useUi((s) => s.settings)
+  // Settings or Search stands in the section's place: then none of its rows is the current one.
+  const settings = useUi((s) => !!s.settings || !!s.search)
   const picked = useNavPicked()
   const toggle = usePimAction((c, { id, hidden }: { id: string; hidden: boolean }) => c.setCollectionHidden(id, hidden))
   const { sets, active, apply, remove } = useSets(calendars)

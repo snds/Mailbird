@@ -10,7 +10,6 @@ import { QuickCreateMenu, type CreateHandlers } from "./quick-create"
 import { returnToRoot } from "./screen"
 import { Sidebar } from "./sidebar"
 import { StatusLine } from "./status-line"
-import { useUi } from "./ui-store"
 import { VERTICALS, vertical, type VerticalId } from "./verticals"
 
 interface ShellProps {
@@ -23,6 +22,10 @@ interface ShellProps {
   handlers: CreateHandlers
   /** Settings is open in place of the section (ADR-0075); on a phone it is a pushed screen. */
   settingsOpen: boolean
+  /** Search is open in place of the section (ADR-0085): its item is the current one, and no section is. */
+  searchOpen: boolean
+  onSearch: () => void
+  onLeaveSearch: () => void
   onSettings: () => void
   onCloseSettings: () => void
   children: ReactNode
@@ -40,14 +43,13 @@ interface ShellProps {
  *
  * A short screen (a phone on its side) stands the bottom row as a column at
  * the trailing edge; that is the frame's rule too. Settings opens in place of
- * the section. Search opens the command menu until Search is a place.
+ * the section, and so does Search (ADR-0085).
  */
-export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen, onSettings, onCloseSettings, children }: ShellProps) {
+export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen, searchOpen, onSearch, onLeaveSearch, onSettings, onCloseSettings, children }: ShellProps) {
   const section = vertical(active)
   // A team member on a gateway works the mail; the rest is the owner's (ADR-0063).
   const sections = isMember() ? VERTICALS.filter((v) => v.id === "mail") : VERTICALS
   const [quickOpen, setQuickOpen] = useState(false)
-  const search = () => useUi.getState().setPaletteOpen(true)
 
   // A change of place is a history entry, so the browser's and the phone's Back go back one place (ADR-0084).
   useEffect(() => watchPlaces(), [])
@@ -70,18 +72,18 @@ export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen,
       <Sidebar
         sections={sections}
         active={section}
-        current={settingsOpen ? "settings" : active}
+        current={settingsOpen ? "settings" : searchOpen ? "search" : active}
         onNavigate={onNavigate}
         onSettings={onSettings}
-        onSearch={search}
+        onSearch={onSearch}
         onCreate={onCreate}
         quickOpen={quickOpen}
         onQuickCreate={() => setQuickOpen(true)}
       />
-      <TopLine section={settingsOpen ? "Settings" : section.label} onSection={settingsOpen ? onSettings : returnToRoot} />
-      <PhoneTopRow settingsOpen={settingsOpen} onSettings={onSettings} onCloseSettings={leaveSettings} />
+      <TopLine section={settingsOpen ? "Settings" : searchOpen ? "Search" : section.label} onSection={settingsOpen ? onSettings : searchOpen ? onSearch : returnToRoot} />
+      <PhoneTopRow settingsOpen={settingsOpen} searchOpen={searchOpen} onSettings={onSettings} onCloseSettings={leaveSettings} onLeaveSearch={onLeaveSearch} />
       <AppFrameMain>{children}</AppFrameMain>
-      <PhoneBottomRow sections={sections} active={section} onNavigate={onNavigate} settingsOpen={settingsOpen} onSearch={search} onCreate={onCreate} handlers={handlers} />
+      <PhoneBottomRow sections={sections} active={section} onNavigate={onNavigate} settingsOpen={settingsOpen} searchOpen={searchOpen} onSearch={onSearch} onCreate={onCreate} handlers={handlers} />
       <QuickCreateMenu open={quickOpen} onOpenChange={setQuickOpen} handlers={handlers} />
       {/* Inside the frame, so a toast stands where the frame says: the content's bottom left, or the phone's strip slot. */}
       <Toaster />

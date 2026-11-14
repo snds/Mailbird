@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query"
-import { Activity, useEffect } from "react"
+import { Activity, useEffect, useState } from "react"
 import { ThemeProvider } from "next-themes"
 
 import { AppShell } from "@/app/shell"
@@ -11,6 +11,9 @@ import { queryClient, useCoreEvents } from "@/core/queries"
 import { APP_JUMP_KEY } from "@/lib/app-jump"
 import { CommandPalette } from "@/features/command-palette"
 import { KeyboardShortcuts } from "@/features/keyboard-shortcuts"
+import { SearchView } from "@/features/search"
+import { leaveSearch, openSearch } from "@/features/search/open"
+import { useSearchKey } from "@/features/search/search-key"
 import { SettingsView } from "@/features/settings"
 import { GatewayGate } from "@/features/gateway-sign-in"
 import { BookingPage, ManageBookingPage } from "@/features/booking/page"
@@ -49,8 +52,18 @@ function Root() {
   const settings = useUi((s) => s.settings)
   const openSettings = useUi((s) => s.openSettings)
   const closeSettings = useUi((s) => s.closeSettings)
+  const search = useUi((s) => !!s.search)
   useCoreEvents()
   useAppJumps()
+  useSearchKey()
+  // A result opened from Search is a jump (ADR-0085). The section stood hidden behind Search and reads
+  // a jump only as it mounts, so it starts afresh for one; left any other way, it comes back as it was.
+  const [fresh, setFresh] = useState(0)
+  const [searching, setSearching] = useState(search)
+  if (searching !== search) {
+    setSearching(search)
+    if (!search && useUi.getState().jump) setFresh(fresh + 1)
+  }
   const View = VIEWS[active]
   // Each kind's create flow from anywhere: the command menu's CREATE group and quick create run the same ones.
   const create = {
@@ -65,8 +78,11 @@ function Root() {
       <AppShell
         active={active}
         // The open area's own button, from settings, returns to it as it was.
-        onNavigate={(id) => (settings && id === active ? closeSettings() : setActive(id))}
+        onNavigate={(id) => (settings && id === active ? closeSettings() : search && !settings && id === active ? leaveSearch() : setActive(id))}
         settingsOpen={!!settings}
+        searchOpen={search && !settings}
+        onSearch={() => openSearch()}
+        onLeaveSearch={leaveSearch}
         onSettings={() => openSettings()}
         onCloseSettings={closeSettings}
         onCreate={() => {
@@ -82,13 +98,14 @@ function Root() {
             you left it (ADR-0075). Hidden, it also lets go of the frame: its
             columns, its page head and its way back are Settings' meanwhile
             (ADR-0083). Its own box keeps its columns from standing next to
-            Settings' in the frame's eyes. */}
+            Settings' in the frame's eyes. Search stands in its place the
+            same way (ADR-0085). */}
         <div className="contents">
-          <Activity mode={settings ? "hidden" : "visible"}>
-            <View key={active} />
+          <Activity mode={settings || search ? "hidden" : "visible"}>
+            <View key={`${active}/${fresh}`} />
           </Activity>
         </div>
-        {settings && <SettingsView />}
+        {settings ? <SettingsView /> : search && <SearchView />}
       </AppShell>
       <ComposeMail />
       <EventEditor />

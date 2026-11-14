@@ -4,11 +4,13 @@ import { useEffect, useState } from "react"
 import { useUi } from "@/app/ui-store"
 import { VERTICALS } from "@/app/verticals"
 import { Icon, type IconName, Command, CommandDialog, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut, toast } from "@unicron/ui"
-import { isTauri } from "@/core/client"
+import { isMember, isTauri } from "@/core/client"
 import { useKeyBindings, useScreener } from "@/core/queries"
 import { LANES } from "@/features/mail/lanes"
+import { openSearch } from "@/features/search/open"
+import { useSettingsSections } from "@/features/settings/sections"
 import { withUpdates } from "@/features/updates/update-client"
-import { keyLabel } from "@/lib/keys"
+import { keyLabel, searchKey } from "@/lib/keys"
 
 const LANE_ICONS: Record<string, IconName> = {
   inbox: "email",
@@ -41,6 +43,8 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
   const { data: screener } = useScreener()
   const { data: keys } = useKeyBindings()
   const quickLabel = useUi((s) => s.quickContext?.label)
+  // The settings sections this person has, by name, from the one list the settings page reads (ADR-0085).
+  const sections = useSettingsSections()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -67,7 +71,7 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
       <Command>
         <CommandInput autoFocus placeholder="Type a command or search…" value={query} onValueChange={setQuery} />
         <CommandList>
-          {/* No empty state: while you type, "Search mail" is always there. */}
+          {/* No empty state: while you type, the search rows are always there. */}
           <CommandGroup heading="Create">
             <CommandItem onSelect={run(onCreate.mail)} keywords={["compose", "write", "email", "message"]}>
               <Icon name="edit" />
@@ -108,6 +112,12 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
                 {v.label}
               </CommandItem>
             ))}
+            {/* Search as a place (ADR-0085), from where you are. */}
+            <CommandItem value="go to Search" onSelect={run(() => openSearch())} keywords={["find", "look for"]}>
+              <Icon name="search" />
+              Search
+              {searchKey(keys) && <CommandShortcut>{keyLabel(searchKey(keys))}</CommandShortcut>}
+            </CommandItem>
           </CommandGroup>
           <CommandSeparator />
           <CommandGroup heading="Settings">
@@ -115,22 +125,16 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
               <Icon name="settings" />
               Settings
             </CommandItem>
-            <CommandItem onSelect={run(() => ui().openSettings("accounts"))} keywords={["settings", "add account", "sign in"]}>
-              <Icon name="user--settings" />
-              Accounts
-            </CommandItem>
-            <CommandItem onSelect={run(() => ui().openSettings("writing"))} keywords={["signature", "template", "snippet"]}>
-              <Icon name="edit" />
-              Signatures and templates
-            </CommandItem>
+            {sections.map((s) => (
+              <CommandItem key={s.id} value={`settings ${s.name}`} onSelect={run(() => ui().openSettings(s.id))} keywords={s.keywords}>
+                <Icon name={s.icon} />
+                {s.name}
+              </CommandItem>
+            ))}
             <CommandItem onSelect={run(() => ui().setShortcutsOpen(true))} keywords={["keyboard", "shortcuts", "keys", "hotkeys"]}>
               <Icon name="keyboard" />
               Keyboard shortcuts
               <CommandShortcut>?</CommandShortcut>
-            </CommandItem>
-            <CommandItem onSelect={run(() => ui().openSettings("shortcuts"))} keywords={["keyboard", "swipe", "gestures", "change keys"]}>
-              <Icon name="touch--interaction" />
-              Change keys and swipes
             </CommandItem>
             {/* The desktop's updater (ADR-0076); its outcome shows in Settings → About. */}
             {isTauri() && (
@@ -161,11 +165,18 @@ export function CommandPalette({ onCreate }: { onCreate: Record<"mail" | "calend
           </CommandGroup>
           {q && (
             <CommandGroup heading="Search" forceMount>
-              {/* Always offered while typing. Its value never matches, so a command that does ranks above it. */}
+              {/* Always offered while typing. Their values never match, so a command that does ranks above them. */}
               <CommandItem value="search-mail" forceMount onSelect={run(() => ui().showMailTab("inbox", q))}>
                 <Icon name="search" />
                 Search mail for “{q}”
               </CommandItem>
+              {/* The last row in every app (cross-app decisions §6). A team member has mail alone. */}
+              {!isMember() && (
+                <CommandItem value="search-everything" forceMount onSelect={run(() => openSearch("all", q))}>
+                  <Icon name="search" />
+                  Search everything for “{q}”
+                </CommandItem>
+              )}
             </CommandGroup>
           )}
         </CommandList>

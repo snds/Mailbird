@@ -1,4 +1,4 @@
-import type { NavItemSwatch } from "@unicron/ui"
+import type { CalendarEventProps, NavItemSwatch } from "@unicron/ui"
 import type { Collection } from "@/core/types"
 
 /** The OKLCH hue of a `#rrggbb` color, in degrees; null for anything else, and for a grey. */
@@ -38,3 +38,6 @@ export function calendarSwatches(calendars: Iterable<Collection>): Map<string, N
   }
   return out
 }
+
+/** The same swatch as an event card names it: a nav item counts them 1 to 12, a card "01" to "12". */
+export const eventSwatch = (swatch: NavItemSwatch | undefined) => (swatch ? (String(swatch).padStart(2, "0") as NonNullable<CalendarEventProps["swatch"]>) : undefined)

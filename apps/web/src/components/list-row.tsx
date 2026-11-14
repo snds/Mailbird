@@ -1,6 +1,5 @@
 import type { ReactNode } from "react"
 
-import { Icon, InputGroup, InputGroupAddon, InputGroupInput } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 /**
@@ -51,16 +50,5 @@ export function EntryRow({
       </span>
       {trailing}
     </button>
-  )
-}
-
-export function ListSearch({ placeholder, value, onChange }: { placeholder: string; value?: string; onChange?: (v: string) => void }) {
-  return (
-    <InputGroup className="h-10 rounded-xl bg-background">
-      <InputGroupAddon>
-        <Icon name="search" />
-      </InputGroupAddon>
-      <InputGroupInput type="search" placeholder={placeholder} aria-label={placeholder} value={value} onChange={onChange && ((e) => onChange(e.target.value))} />
-    </InputGroup>
   )
 }

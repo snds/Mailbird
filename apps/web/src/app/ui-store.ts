@@ -4,8 +4,9 @@ import { create } from "zustand"
 import type { Category, ContactInput, Draft, EditScope, EventInput, MessageSummary, SplitInput } from "@/core/types"
 
 import type { MailTab } from "@/features/mail/lanes"
+import type { SettingsSection } from "@/features/settings/sections"
 
-import type { CalendarPlace, ContactsPlace, NotesPlace, SearchPlace } from "./places"
+import type { CalendarPlace, ContactsPlace, NotesPlace, SearchPlace, SearchScope } from "./places"
 import type { VerticalId } from "./verticals"
 
 /** What the event editor is working on: a new event, or one being edited. */
@@ -37,8 +38,8 @@ export interface Jump {
   row?: MessageSummary
 }
 
-/** The settings page's sections (ADR-0075). */
-export type SettingsSection = "accounts" | "writing" | "mail" | "appearance" | "shortcuts" | "ai" | "calendar" | "phone" | "team" | "gateway" | "about"
+/** The mail lanes a search can stay inside. Scheduled and Team are lists of their own, with no search behind them. */
+const searchLane = (tab: MailTab): MailTab | null => (tab === "scheduled" || tab === "team" ? null : tab)
 
 const VERTICAL_OF: Record<Jump["kind"], VerticalId> = { thread: "mail", event: "calendar", contact: "contacts", note: "notes" }
 
@@ -121,11 +122,8 @@ interface UiState {
   /** Opens a shared conversation in Mail → Team. */
   showTeam: (id: string) => void
   setMailTab: (tab: MailTab) => void
-  /** Open Mail on a tab (from the command menu), optionally searching. */
+  /** Opens Mail on a tab (from the command menu). With words, it opens Search inside that lane (ADR-0085). */
   showMailTab: (tab: MailTab, search?: string) => void
-  /** The mail search box. Cleared when you leave Mail. */
-  mailSearch: string
-  setMailSearch: (search: string) => void
   /** People, Updates, or Newsletters in the inbox; null for all. */
   mailCategory: Category | null
   setMailCategory: (category: Category | null) => void
@@ -144,9 +142,17 @@ interface UiState {
   setNotesFolder: (folder: NotesPlace["folder"]) => void
   /** Narrows the open folder by a tag; null, or the tag in force again, clears it. */
   setNotesTag: (tag: string | null) => void
-  /** Search as a place (brief X2), or null. The search lane opens and fills it; until then Search is the command menu. */
+  /** Search as a place (ADR-0085; brief X2), or null. It stands in place of the open section, which stays as it was. */
   search: SearchPlace | null
-  setSearch: (search: SearchPlace | null) => void
+  /**
+   * Opens Search from where you are. With no scope: the lane of Mail you are in, or the kind of
+   * the open section; from Settings, everything. Already there, it keeps its words.
+   */
+  openSearch: (scope?: SearchScope, query?: string) => void
+  setSearchQuery: (query: string) => void
+  setSearchScope: (scope: SearchScope) => void
+  /** Leaves Search by hand, for the section behind it. `features/search` prefers the browser's Back when that is the same step. */
+  closeSearch: () => void
   /** The split editor: a new split (no id) or one being changed. */
   splitEditor: { id?: string; initial: Partial<SplitInput> } | null
   openSplitEditor: (state: { id?: string; initial: Partial<SplitInput> } | null) => void
@@ -163,7 +169,6 @@ export type ComposerDraft = Partial<Draft> & {
 const FIRST_PLACES = {
   mailTab: "inbox",
   mailAccount: null,
-  mailSearch: "",
   mailCategory: null,
   mailSplit: null,
   calendarPlace: "calendar",
@@ -238,9 +243,13 @@ export const useUi = create<UiState>((set, get) => ({
   mailTab: "inbox",
   teamOpen: null,
   setTeamOpen: (teamOpen) => set({ teamOpen }),
-  showTeam: (teamOpen) => set({ vertical: "mail", settings: null, search: null, mailTab: "team", teamOpen, mailSearch: "", mailCategory: null, mailSplit: null, jump: null, openNote: null }),
+  showTeam: (teamOpen) => set({ vertical: "mail", settings: null, search: null, mailTab: "team", teamOpen, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
   setMailTab: (mailTab) => set({ mailTab, settings: null, search: null }),
-  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", settings: null, search: null, mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
+  showMailTab: (mailTab, query = "") => {
+    const lane = searchLane(mailTab)
+    const search: SearchPlace | null = query ? { scope: lane ? "lane" : "mail", lane, query, from: "mail" } : null
+    set({ vertical: "mail", settings: null, search, mailTab, mailCategory: null, mailSplit: null, jump: null, openNote: null })
+  },
   mailAccount: null,
   setMailAccount: (mailAccount) => set({ mailAccount }),
   calendarPlace: "calendar",
@@ -251,15 +260,28 @@ export const useUi = create<UiState>((set, get) => ({
   setNotesFolder: (folder) => set((s) => ({ notesPlace: { folder, tag: folder.kind === "archive" ? null : s.notesPlace.tag }, settings: null, search: null })),
   setNotesTag: (tag) => set((s) => ({ notesPlace: { ...s.notesPlace, tag: tag === s.notesPlace.tag ? null : tag }, settings: null, search: null })),
   search: null,
-  setSearch: (search) => set({ search }),
+  openSearch: (scope, query) =>
+    set((s) => {
+      // From Settings the section behind is out of sight, so nothing narrows the search.
+      const lane = s.search ? s.search.lane : s.settings || s.vertical !== "mail" ? null : searchLane(s.mailTab)
+      const first: SearchScope = s.settings ? "all" : s.vertical !== "mail" ? s.vertical : lane ? "lane" : "mail"
+      return {
+        search: { scope: scope ?? s.search?.scope ?? first, lane, query: query ?? s.search?.query ?? "", from: s.vertical },
+        settings: null,
+        paletteOpen: false,
+        // As Settings does: the section is hidden meanwhile, and a note just made is closed first.
+        openNote: s.openNote?.fresh ? null : s.openNote,
+      }
+    }),
+  setSearchQuery: (query) => set((s) => (s.search ? { search: { ...s.search, query } } : s)),
+  setSearchScope: (scope) => set((s) => (s.search ? { search: { ...s.search, scope } } : s)),
+  closeSearch: () => set({ search: null }),
   mailCategory: null,
   setMailCategory: (mailCategory) => set({ mailCategory, mailSplit: null }),
   mailSplit: null,
   splitEditor: null,
   openSplitEditor: (splitEditor) => set({ splitEditor }),
   setMailSplit: (mailSplit) => set({ mailSplit, mailCategory: null }),
-  mailSearch: "",
-  setMailSearch: (mailSearch) => set({ mailSearch }),
 }))
 
 /** The jump a view should open on mount, if it's for that view. Read-only; clear it with `takeJump`. */

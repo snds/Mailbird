@@ -266,10 +266,12 @@ export const scenes = [
       await app.settle()
       ensure(await page.getByRole("dialog", { name: "Keyboard shortcuts" }).isVisible(), "? did not open the keys list")
       await leave(app)
-      // Search opens the command menu until Search is a place.
+      // Search is a place (ADR-0085): its button opens it, and Esc with nothing typed leaves it. search.mjs checks the rest.
       await press(app, button(page, "Search"))
-      ensure(await page.getByRole("dialog", { name: "Command menu" }).isVisible(), "Search did not open the command menu")
-      await leave(app)
+      ensure(await page.getByRole("searchbox", { name: /^Search / }).isVisible(), "Search did not open")
+      await page.keyboard.press("Escape")
+      await app.settle()
+      ensure(!(await page.getByRole("searchbox", { name: /^Search / }).count()), "Esc did not leave Search")
       // A header control carried into the page head still works: Mail's account choice.
       // Mail's account choice, now a radio group in Mail's folders (ADR-0084): the sidebar, or the page head's layer.
       await press(app, (await groups(app)).getByRole("radio", { name: "Work", exact: true }))

@@ -32,7 +32,8 @@ const lane = (id: MailTab) => LANES.find((l) => l.id === id)!
  */
 export function MailNav({ layer = false, more = false }: { layer?: boolean; more?: boolean }) {
   const { tab, account, accounts, folders, team, waiting } = useMailPlace()
-  const settings = useUi((s) => s.settings)
+  // Settings or Search stands in the section's place: then none of its rows is the current one.
+  const settings = useUi((s) => !!s.settings || !!s.search)
   const picked = useNavPicked()
   const go = (id: MailTab) => {
     useUi.getState().setMailTab(id)

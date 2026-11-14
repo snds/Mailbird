@@ -17,7 +17,8 @@ import { useContactsPlace } from "./use-contacts-place"
 export function ContactsNav({ layer = false }: { layer?: boolean }) {
   const at = useContactsPlace()
   const { place, labels, groups } = at
-  const settings = useUi((s) => s.settings)
+  // Settings or Search stands in the section's place: then none of its rows is the current one.
+  const settings = useUi((s) => !!s.settings || !!s.search)
   const picked = useNavPicked()
   // The whole list's length: the same read the list makes with nothing narrowing it.
   const { data: everyone } = useContacts("", null, null)

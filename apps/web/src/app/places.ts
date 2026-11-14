@@ -5,7 +5,9 @@ import type { Category } from "@/core/types"
 import { calendarViewPrefs, setCalendarRange, subscribeCalendarViewPrefs, type CalendarRange } from "@/features/calendar/view-prefs"
 import type { MailTab } from "@/features/mail/lanes"
 
-import { useUi, type SettingsSection } from "./ui-store"
+import type { SettingsSection } from "@/features/settings/sections"
+
+import { useUi } from "./ui-store"
 import type { VerticalId } from "./verticals"
 
 /**
@@ -42,9 +44,17 @@ export interface NotesPlace {
   tag: string | null
 }
 
-/** Search, once it is a place (brief X2): what it looks through, the words, and the section it was opened from. */
+/** What Search looks through (ADR-0085): one mail lane, every lane, one of the other three kinds, or all four. */
+export type SearchScope = "lane" | VerticalId | "all"
+
+/**
+ * Search as a place (ADR-0085; brief X2): what it looks through, the words,
+ * and the section it was opened from. `lane` is the mail lane it was opened
+ * from, if any: the lane chip shows only then, and keeps the search inside it.
+ */
 export interface SearchPlace {
-  scope: VerticalId | "all"
+  scope: SearchScope
+  lane: MailTab | null
   query: string
   from: VerticalId
 }
@@ -178,6 +188,12 @@ export function watchPlaces() {
     if (restoring || !here) return
     const now = snapshot()
     if (same(now, here.place)) return
+    // Typing in Search, or another of its chips, is still Search: the entry is kept in step, so Back from a
+    // result returns to the words as they were, and no keystroke is a step of its own (ADR-0085).
+    if (now.search && here.place.search && here.pushed === undefined && same({ ...now, search: null }, { ...here.place, search: null })) {
+      write({ n: here.n, place: now }, "replace")
+      return
+    }
     behind.push(here.place)
     write({ n: ++count, place: now }, "push")
   }
@@ -217,11 +233,11 @@ export function watchPlaces() {
 }
 
 /**
- * A control's own way back (Settings' back button, leaving Settings): when
+ * A control's own way back (Settings' back button, leaving Settings, leaving Search): when
  * the entry behind is the place it would go to, it is the browser's Back, so
  * the two never disagree. Otherwise `otherwise` goes there by hand.
  */
-export function stepBack(wanted: (behind: Pick<Snapshot, "vertical" | "settings">) => boolean, otherwise: () => void) {
+export function stepBack(wanted: (behind: Pick<Snapshot, "vertical" | "settings" | "search">) => boolean, otherwise: () => void) {
   const last = behind.at(-1)
   if (last && here?.pushed === undefined && wanted(last)) history.back()
   else otherwise()

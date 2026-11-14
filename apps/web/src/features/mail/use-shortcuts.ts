@@ -22,7 +22,6 @@ export function useMailShortcuts(opts: {
   selected: MessageSummary | undefined
   select: (id: string | null) => void
   compose: () => void
-  focusSearch: () => void
   triage: ReturnType<typeof useTriage>
   /** The swipe vocabulary, for the actions that began as swipes. */
   verb: ReturnType<typeof useMailVerbs>
@@ -46,7 +45,6 @@ export function useMailShortcuts(opts: {
       "mail.next": () => move(index < 0 ? 0 : 1),
       "mail.previous": () => move(-1),
       "mail.compose": opts.compose,
-      "mail.search": opts.focusSearch,
       "mail.archive": () => selected && triage.toggleArchive(selected),
       "mail.star": () => selected && triage.toggleFlag(selected),
       "mail.unread": () => selected && triage.markSeen(selected, false),

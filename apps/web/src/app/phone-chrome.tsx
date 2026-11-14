@@ -11,6 +11,9 @@ interface PhoneChromeProps {
   onNavigate: (id: VerticalId) => void
   /** Settings is the screen: a pushed one, with no bottom row. */
   settingsOpen: boolean
+  /** Search is the screen (ADR-0085): back in the top row, the search button current, no tab marked. */
+  searchOpen: boolean
+  onLeaveSearch: () => void
   onSettings: () => void
   onCloseSettings: () => void
   onSearch: () => void
@@ -25,7 +28,7 @@ interface PhoneChromeProps {
  * small centred title and a hairline. A pushed screen (an open item,
  * Settings) gets the top bar instead: back, then what its lane adds.
  */
-export function PhoneTopRow({ settingsOpen, onSettings, onCloseSettings }: Pick<PhoneChromeProps, "settingsOpen" | "onSettings" | "onCloseSettings">) {
+export function PhoneTopRow({ settingsOpen, searchOpen, onSettings, onCloseSettings, onLeaveSearch }: Pick<PhoneChromeProps, "settingsOpen" | "searchOpen" | "onSettings" | "onCloseSettings" | "onLeaveSearch">) {
   const frame = useAppFrame()
   const mark = useUpdateMark()
   const place = useScreen((s) => s.place)
@@ -35,6 +38,14 @@ export function PhoneTopRow({ settingsOpen, onSettings, onCloseSettings }: Pick<
       <AppFrameTopRow>
         {/* An open settings section goes back to the list of sections; the list goes back to the app. */}
         <TopBar onBack={frame.back?.onBack ?? (settingsOpen ? onCloseSettings : undefined)} backLabel={frame.back?.label} actions={frame.detailOpen ? pushed?.actions : undefined} />
+      </AppFrameTopRow>
+    )
+  }
+  if (searchOpen) {
+    // Search (Mobile / 04): the way back alone; the field under it is the screen's focal point.
+    return (
+      <AppFrameTopRow>
+        <TopBar onBack={onLeaveSearch} />
       </AppFrameTopRow>
     )
   }
@@ -55,8 +66,9 @@ export function PhoneTopRow({ settingsOpen, onSettings, onCloseSettings }: Pick<
  * shrinks the bar to the active tab and the place strip joins the row
  * (States / 02). A pushed item gets the detail row its lane fills; Settings
  * has no row. A team member's one section draws no tab bar (brief X10).
+ * Search keeps the row (ADR-0085).
  */
-export function PhoneBottomRow({ sections, active, onNavigate, settingsOpen, onSearch, onCreate, handlers }: Omit<PhoneChromeProps, "onSettings" | "onCloseSettings">) {
+export function PhoneBottomRow({ sections, active, onNavigate, settingsOpen, searchOpen, onSearch, onCreate, handlers }: Omit<PhoneChromeProps, "onSettings" | "onCloseSettings" | "onLeaveSearch">) {
   const frame = useAppFrame()
   const strip = useScreen((s) => s.strip)
   const pushed = useScreen((s) => s.pushed)
@@ -70,9 +82,10 @@ export function PhoneBottomRow({ sections, active, onNavigate, settingsOpen, onS
       {strip && <AppFrameAccessory scrolledOnly meta={strip.meta} title={strip.title} />}
       <AppFrameBottomRow
         variant="tabs"
-        start={<FloatButton label="Search" icon="search" size="l" onClick={onSearch} />}
+        // On Search the button is the current place, and no tab is (cross-app decisions §6).
+        start={<FloatButton label="Search" icon="search" size="l" current={searchOpen ? "page" : undefined} onClick={onSearch} />}
         tabs={
-          <TabBar label="Sections" value={active.id} onValueChange={(id) => onNavigate(id as VerticalId)} onReselect={returnToRoot}>
+          <TabBar label="Sections" value={searchOpen ? undefined : active.id} onValueChange={(id) => onNavigate(id as VerticalId)} onReselect={returnToRoot}>
             {sections.map((v) => (
               <TabBarItem key={v.id} value={v.id} icon={v.icon} label={v.label} />
             ))}

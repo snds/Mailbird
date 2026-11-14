@@ -1,11 +1,11 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { factTime, usePlaceStrip, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
 import { useSectionSwitcher } from "@/app/places"
 import { SectionSwitcher } from "@/app/section-switcher"
 import { pendingJump, useUi } from "@/app/ui-store"
 import { vertical } from "@/app/verticals"
-import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, Skeleton, type PageHeadSwipe } from "@unicron/ui"
+import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, Skeleton, type PageHeadSwipe } from "@unicron/ui"
 import { EntryRow } from "@/components/list-row"
 import { MasterDetail } from "@/components/master-detail"
 import { ScreenHead } from "@/components/page"
@@ -48,8 +48,6 @@ export function MailView() {
   const split = useUi((s) => s.mailSplit)
   const senderActions = useSenderActions()
   const now = useNowSecs()
-  const search = useUi((s) => s.mailSearch)
-  const setSearch = useUi((s) => s.setMailSearch)
   // Selection is a conversation. The row is remembered so the reader stays
   // open when the row leaves the current lane (e.g. read mail in "Unread").
   const [selected, setSelected] = useState<MessageSummary | null>(() => pendingJump("thread")?.row ?? null)
@@ -62,16 +60,14 @@ export function MailView() {
     setSelected(null)
   }
   const selectedId = selected?.threadId ?? null
-  const searchRef = useRef<HTMLInputElement>(null)
-  const deferredSearch = useDeferredValue(search.trim())
 
   const { data: core } = useCore()
-  // All of the inbox (no chip, no search) folds newsletters into the bundle row.
-  const bundling = tab === "inbox" && !category && !split && !deferredSearch
+  // All of the inbox (no chip) folds newsletters into the bundle row. Searching a lane is Search's (ADR-0085).
+  const bundling = tab === "inbox" && !category && !split
   const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage, refetch } = useMessagePages({
     lane,
     accountId,
-    search: deferredSearch || null,
+    search: null,
     category: tab === "inbox" ? category : null,
     split: tab === "inbox" ? split : null,
     bundle: bundling,
@@ -142,7 +138,6 @@ export function MailView() {
     selectedId,
     select,
     compose: () => openComposer({ accountId: accountId ?? accounts[0]?.id }),
-    focusSearch: () => searchRef.current?.focus(),
     triage,
     selected: row,
     verb,
@@ -178,26 +173,6 @@ export function MailView() {
               <SectionSwitcher state={switching} overline={["Mail", accountName].filter(Boolean).join(" // ")} title="Folders">
                 <MailNav layer more={switching.sheet} />
               </SectionSwitcher>
-              <InputGroup className="h-10 rounded-xl bg-background">
-                <InputGroupAddon>
-                  <Icon name="search" />
-                </InputGroupAddon>
-                <InputGroupInput
-                  ref={searchRef}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === "Escape" && (setSearch(""), e.currentTarget.blur())}
-                  placeholder="Search mail"
-                  aria-label="Search mail"
-                />
-                {search && (
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton size="icon-xs" aria-label="Clear search" onClick={() => setSearch("")}>
-                      <Icon name="close" />
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                )}
-              </InputGroup>
               {tab === "inbox" && (
                 <div role="group" aria-label="Show" className="no-scrollbar flex gap-1.5 overflow-x-auto">
                   {[{ id: null, label: "All" } as const, ...CATEGORIES].map((c) => (
@@ -248,10 +223,9 @@ export function MailView() {
           <Empty size="sm" className="py-16">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Icon name={deferredSearch ? "search" : "checkmark--double"} />
+                <Icon name="checkmark--double" />
               </EmptyMedia>
-              <EmptyTitle>{deferredSearch ? "No matches" : emptyText}</EmptyTitle>
-              {deferredSearch && <EmptyDescription>Nothing in {laneInfo.label} matches “{deferredSearch}”.</EmptyDescription>}
+              <EmptyTitle>{emptyText}</EmptyTitle>
             </EmptyHeader>
           </Empty>
         ) : (
