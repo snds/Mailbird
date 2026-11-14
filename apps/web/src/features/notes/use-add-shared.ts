@@ -1,4 +1,4 @@
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useUi } from "@/app/ui-store"
 

@@ -1,11 +1,12 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Item, ItemMain, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions } from "@unicron/ui"
+import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Item, ItemMain, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useInboxOverview, useMailAction, useSplits } from "@/core/queries"
 import type { Split, SplitInput } from "@/core/types"
+import { useLeaveGuard } from "@/lib/leave-guard"
 
 const fail = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e))
 
@@ -37,7 +38,7 @@ export function SplitChips({ accountId, onPick }: { accountId: string | null; on
       })}
       {active && splits.some((s) => s.id === active) ? (
         <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit split" onClick={() => open({ id: active, initial: splits.find((s) => s.id === active)! })}>
-          <Icon name="tune" />
+          <Icon name="settings--adjust" />
         </Button>
       ) : (
         <Button size="icon-xs" variant="ghost" shape="pill" aria-label="New split" onClick={() => open({ initial: {} })}>
@@ -53,9 +54,9 @@ export function SplitEditor() {
   const state = useUi((s) => s.splitEditor)
   const open = useUi((s) => s.openSplitEditor)
   return (
-    <Dialog open={state !== null} onOpenChange={(o) => !o && open(null)}>
-      <DialogContent size="md">{state && <SplitForm key={state.id ?? "new"} id={state.id} initial={state.initial} onDone={() => open(null)} />}</DialogContent>
-    </Dialog>
+    <FormLayer open={state !== null} onClose={() => open(null)}>
+      {state && <SplitForm key={state.id ?? "new"} id={state.id} initial={state.initial} onDone={() => open(null)} />}
+    </FormLayer>
   )
 }
 
@@ -71,7 +72,13 @@ function SplitForm({ id, initial, onDone }: { id?: string; initial: Partial<Spli
   const [exclusive, setExclusive] = useState(initial.exclusive ?? true)
   const save = useMailAction((c, input: SplitInput) => c.saveSplit(id ?? null, input))
   const remove = useMailAction((c) => c.deleteSplit(id!))
+  // Closing asks first once a value differs from when the form opened (ADR-0087).
+  const values = JSON.stringify([name, senders, subject, attachments, account, exclusive])
+  const [opened] = useState(values)
+  useLeaveGuard(values !== opened)
+  const [error, setError] = useState<string | null>(null)
   const submit = async () => {
+    setError(null)
     const input: SplitInput = {
       name,
       senders: senders.split(/[,\s]+/).filter(Boolean),
@@ -86,7 +93,8 @@ function SplitForm({ id, initial, onDone }: { id?: string; initial: Partial<Spli
       setSplit(split.id)
       onDone()
     } catch (e) {
-      fail(e)
+      // The form stays open with the server's words above its actions.
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
   const del = async () => {
@@ -101,14 +109,24 @@ function SplitForm({ id, initial, onDone }: { id?: string; initial: Partial<Spli
   }
   const field = "h-9 w-full rounded-lg border bg-transparent px-2.5 text-sm dark:bg-input/30"
   return (
-    <form className="flex flex-col gap-4" onSubmit={(e) => (e.preventDefault(), void submit())}>
-      <DialogHeader>
-        <DialogTitle>{id ? "Edit split" : "New split"}</DialogTitle>
-        <DialogDescription>A tab for mail that matches. Fill in what applies: mail must match all of it.</DialogDescription>
-      </DialogHeader>
+    <FormLayerForm
+      overline={id ? "Edit split" : "New split"}
+      title={name.trim() || (id ? "Edit split" : "New split")}
+      primary={{ label: id ? "Save" : "Add split", loading: save.isPending }}
+      error={error}
+      onSubmit={() => void submit()}
+      footerStart={
+        id && (
+          <Button type="button" variant="ghost-destructive" onClick={() => void del()}>
+            Delete split
+          </Button>
+        )
+      }
+    >
+      <p className="text-sm text-muted-foreground">A tab for mail that matches. Fill in what applies: mail must match all of it.</p>
       <label className="flex flex-col gap-1 text-sm">
         Name
-        <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Work, Bills, Clients…" autoFocus />
+        <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Work, Bills, Clients…" data-form-focus="" />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         From
@@ -143,20 +161,7 @@ function SplitForm({ id, initial, onDone }: { id?: string; initial: Partial<Spli
         </span>
         <Switch checked={exclusive} onCheckedChange={setExclusive} aria-label="Keep out of All" />
       </label>
-      <DialogActions>
-        {id && (
-          <DialogAction kind="destructive" type="button" onClick={() => void del()}>
-            Delete split
-          </DialogAction>
-        )}
-        <DialogAction kind="cancel" type="button" onClick={onDone}>
-          Cancel
-        </DialogAction>
-        <DialogAction type="submit" disabled={save.isPending}>
-          {id ? "Save" : "Add split"}
-        </DialogAction>
-      </DialogActions>
-    </form>
+    </FormLayerForm>
   )
 }
 
@@ -183,7 +188,7 @@ export function BundleRow({ accountId, onOpen }: { accountId: string | null; onO
     <Item variant="outline" size="sm" className="mx-3 mb-1 w-auto rounded-xl bg-muted/40" render={<section aria-label="Newsletters bundle" />}>
       <ItemMain onClick={onOpen}>
         <ItemMedia variant="icon">
-          <Icon name="newspaper" tone="muted" />
+          <Icon name="blog" tone="muted" />
         </ItemMedia>
         <ItemContent>
           <ItemTitle className={b.unread ? "font-semibold" : undefined}>
@@ -195,7 +200,7 @@ export function BundleRow({ accountId, onOpen }: { accountId: string | null; onO
       <ItemActions>
         {b.unread > 0 && (
           <Button size="icon-sm" variant="ghost" aria-label="Mark all newsletters read" disabled={read.isPending} onClick={() => read.mutate(undefined, { onError: fail })}>
-            <Icon name="done_all" />
+            <Icon name="checkmark--double" />
           </Button>
         )}
         <Button size="icon-sm" variant="ghost" aria-label="Archive all newsletters" disabled={archive.isPending} onClick={() => void clear()}>

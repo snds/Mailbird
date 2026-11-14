@@ -1,0 +1,71 @@
+/*
+ * Vale's app-extension layer, over the shared core (@unicron/tokens): what
+ * every area shares. The other files in this folder hold one area each
+ * (mail, calendar, contacts, notes, settings), so an area's owner edits only
+ * its own file. index.css imports them all, this one first.
+ *
+ * The app's theme is not set here. index.html sets it once
+ * (<html data-theme="vale">), and next-themes sets the ground: the `dark`
+ * class is graphite, no class is stone (ADR-0082).
+ *
+ * Rules (unicron docs/05-consuming.md):
+ *   - Alias a core role, never a raw value and never the old --g-neutral-*
+ *     or accent ramps: those are not themed, so they do not follow Vale's tint.
+ *   - A role or knob that only points at core roles is the same on both
+ *     grounds. Declare it once, on the four selectors used below.
+ *   - A value that differs by ground swaps on the core's own two ground
+ *     selectors (notes.css has the one case, the note-card tint).
+ *   - Expose a role to Tailwind through the file's own @theme inline block.
+ *
+ * Vale has one identity color, the core's primary. There is no hue per area
+ * any more, and no pane roles of Vale's own: every pane is surface-ground, as
+ * the frame draws it, and a selected row is primary-soft.
+ *
+ * The shell itself has no rules here: it is unicron's frame parts (ADR-0083).
+ */
+
+/* ── Tier 2 · App roles ──────────────────────────────────────────────────── */
+:root,
+.light,
+.dark,
+[data-theme] {
+  /* The unread mark: ink, as unicron's own marks are. */
+  --unread: var(--text-body);
+}
+
+/* ── Tier 3 · Knobs for parts every area uses ────────────────────────────── */
+:root,
+.light,
+.dark,
+[data-theme] {
+  /* The calendar's own side list, until its lane rebuilds that screen. The
+     shell's widths are unicron's now (sidebar 204, rail 48, list 432). */
+  --c-shell-list-width: 22rem;
+
+  /* List row (message, contact, note) */
+  --c-list-row-padding-x: 1rem;
+  --c-list-row-padding-y: 0.75rem;
+  --c-list-row-gap: 0.75rem;
+  --c-list-row-selected: var(--primary-soft);
+  --c-list-row-unread-dot: var(--unread);
+
+  /* Rich text, in a message being written and in a note (the two share one
+     editor). The names say "composer" because the composer had them first. */
+  --c-composer-quote-border: var(--border);
+  --c-composer-quote-text: var(--muted-foreground);
+  --c-composer-link: var(--primary-text);
+  --c-composer-placeholder: var(--muted-foreground);
+}
+
+/* Vale's roles as Tailwind utilities (bg-unread…). */
+@theme inline {
+  --color-unread: var(--unread);
+}
+
+/* ── Until unicron's fix ─────────────────────────────────────────────────── */
+/* A breadcrumb that is a press (a button, since Vale's places have no
+   addresses) does not take the status line's capitals: a button resets
+   text-transform. Reported as a unicron gap; delete this rule with the fix. */
+[data-slot="app-frame-crumbs"] button {
+  text-transform: inherit;
+}

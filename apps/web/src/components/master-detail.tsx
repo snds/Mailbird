@@ -1,82 +1,83 @@
-import type { ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 
-import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, type IconName } from "@unicron/ui"
-import { cn } from "@/lib/utils"
+import { AppFrameDetail, AppFrameInset, AppFrameList, Button, EmptyState, Icon, useAppFrame } from "@unicron/ui"
+import { DemoBar } from "@/app/demo-bar"
+import { usePushedScreen } from "@/app/places"
+import { SectionNotice } from "@/app/section-notice"
+import { useScreen, useScreenRoot } from "@/app/screen"
 
 interface MasterDetailProps {
-  /** Header for the list pane: title, search, filters. */
+  /** The section, as the list column's name and the overline of an empty detail ("Mail"). */
+  section: string
+  /** The list column's head: the page head, then search and filters. It scrolls away with the list. */
   header: ReactNode
   list: ReactNode
   detail: ReactNode | null
   onBack: () => void
-  emptyIcon: IconName
-  emptyLabel: string
+  /** Back to the section's first screen, when that is more than closing what is open (Mail returns to the Inbox). */
+  onRoot?: () => void
+  /** What to pick, under "Nothing open.": "Pick a conversation to see it here." */
+  pick: string
   /** The list takes the whole width while nothing is open (a card grid);
    * then Back shows at every size, to return to it. */
   listFills?: boolean
   /** A background for the detail pane, edge to edge (a note's color). */
   detailTint?: string
+  /** What opens in the detail is a place of its own (a Settings section), so its history entry is the place's. */
+  detailIsPlace?: boolean
 }
 
 /**
- * The list → detail pattern every vertical shares.
- * Phone: one pane at a time; selecting an item pushes the detail, Back pops it.
- * Tablet and up: both panes side by side; the detail shows an empty state.
+ * The list → detail pattern every section shares, on the frame's own columns
+ * (ADR-0083). Expanded: the list (432) beside the detail, which says "Nothing
+ * open." until something is picked. Narrower: one column; picking an item
+ * pushes the detail over the list, which keeps its place. The way back is the
+ * phone's top bar, or the status line's leading slot at medium width.
  * With `listFills`, the list has the room until something opens.
  */
-export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLabel, listFills = false, detailTint }: MasterDetailProps) {
-  const hasDetail = detail !== null
+export function MasterDetail({ section, header, list, detail, onBack, onRoot, pick, listFills = false, detailTint, detailIsPlace = false }: MasterDetailProps) {
+  const frame = useAppFrame()
+  const hasDetail = !!detail
+  // Pushed over the list (compact and medium): Back closes it and returns to the list where it was (ADR-0084).
+  usePushedScreen(hasDetail && !detailIsPlace, onBack)
   const wide = listFills && !hasDetail
+  const refresh = useScreen((s) => s.refresh)
+  const body = useRef<HTMLDivElement>(null)
+  useScreenRoot(() => {
+    ;(onRoot ?? onBack)()
+    body.current?.closest("[data-scroll-root]")?.scrollTo({ top: 0 })
+  })
   return (
-    <div className="flex min-h-0 flex-1">
-      <section
-        className={cn(
-          "flex min-w-0 flex-1 flex-col bg-surface-chrome",
-          !wide && "md:w-(--c-shell-list-width) md:flex-none md:border-r",
-          hasDetail && "hidden md:flex"
-        )}
-      >
+    <>
+      <AppFrameList aria-label={section} data-scroll-root="" size={wide ? "fill" : "default"} onRefresh={refresh ?? undefined}>
+        <DemoBar in="column" />
         {header}
-        <div data-scroll-root className="min-h-0 flex-1 overflow-y-auto">
-          {list}
-        </div>
-      </section>
-      <section
-        className={cn("min-w-0 flex-1 flex-col transition-colors", hasDetail ? "flex" : wide ? "hidden" : "hidden md:flex")}
-        style={hasDetail && detailTint ? { background: detailTint } : undefined}
-      >
-        {hasDetail ? (
-          <>
-            <div className={cn("flex h-14 shrink-0 items-center gap-1 px-2", !listFills && "md:hidden")}>
-              <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
-                <Icon name="arrow_back" className="size-5" />
-              </Button>
+        {/* A phone shows the section's banner under the page head (Mobile / 07); wider, the shell does (ADR-0086). */}
+        <SectionNotice in="column" />
+        <div ref={body}>{list}</div>
+      </AppFrameList>
+      {!wide && (
+        <AppFrameDetail open={hasDetail} onBack={onBack} aria-label={hasDetail ? `${section}: what is open` : `${section}: nothing open`}>
+          <DemoBar in="column" />
+          {hasDetail ? (
+            // The tint reaches the pane's edges: its spread is cut by the column's own clip.
+            <div className="flex min-h-full flex-col" style={detailTint ? { background: detailTint, boxShadow: `0 0 0 100vmax ${detailTint}` } : undefined}>
+              {listFills && frame.split && (
+                <div className="flex shrink-0 items-center">
+                  <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
+                    <Icon name="arrow--left" />
+                  </Button>
+                </div>
+              )}
+              {detail}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">{detail}</div>
-          </>
-        ) : (
-          <Empty className="flex-1">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Icon name={emptyIcon} />
-              </EmptyMedia>
-              <EmptyTitle>Nothing selected</EmptyTitle>
-              <EmptyDescription>{emptyLabel}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
-      </section>
-    </div>
-  )
-}
-
-export function PaneHeader({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <header className="flex shrink-0 flex-col gap-3 px-4 pt-4 pb-3">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <div className="flex items-center gap-1">{children}</div>
-      </div>
-    </header>
+          ) : (
+            <AppFrameInset>
+              <EmptyState size="sm" overline={section} title="Nothing open." body={pick} />
+            </AppFrameInset>
+          )}
+        </AppFrameDetail>
+      )}
+    </>
   )
 }

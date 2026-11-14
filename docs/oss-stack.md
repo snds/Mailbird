@@ -17,9 +17,10 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | vite | Build | 8.3 | MIT | ✅ | v8 runs on Rolldown. |
 | typescript | Language | 6.0 (7.0 available) | Apache-2.0 | ✅ | TS 7 is the Go-native compiler. Upgrade once the tooling catches up. |
 | tailwindcss | Styling | 4.3 | MIT | ✅ | CSS-first config. All tokens live in `src/styles/tokens.css`. |
-| shadcn (CLI) | Component source | 4.21 | MIT | ✅ | Base UI base + Nova style. Icons swapped to Material Symbols by unicron's `tools/shadcn-material` (see [ADR-0003](decisions/0003-material-symbols.md)). |
+| shadcn (CLI) | Component source | 4.21 | MIT | ✅ | Base UI base, restyled and owned in unicron (`@unicron/ui`). |
 | @base-ui/react | Headless primitives | 1.9 | MIT | ✅ | Replaces the deprecated `@base-ui-components/react`. |
-| material-symbols | Icon font | 0.48 | Apache-2.0 | ✅ | Variable font with FILL, wght, GRAD, and opsz axes. |
+| @carbon/icons (through `@unicron/ui`) | Icons | 11.92 | Apache-2.0 | ✅ | IBM Carbon drawings, inline SVG, a curated set inside `@unicron/ui`. No icon font. Replaced Material Symbols in [ADR-0082](decisions/0082-unicron-1-0.md). |
+| @fontsource-variable/geist, geist-mono (through `@unicron/ui`) | Typefaces | 5.3 | OFL-1.1 | ✅ | Geist and Geist Mono, as font files. Replaced Inter (also OFL-1.1). |
 | class-variance-authority, clsx, tailwind-merge | Variant plumbing | latest | MIT / Apache-2.0 | ✅ | Standard shadcn utilities. |
 | @tanstack/react-router | Routing | 1.170 | MIT | 🟦 | Typed routes and deep links across shells. |
 | @tanstack/react-query | Server-state cache | 5.104 | MIT | ✅ | Wraps calls to the core. |
@@ -39,7 +40,7 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 | dompurify | Sanitize email HTML (web) | 3.4 | Apache-2.0 option | ✅ | Elect Apache-2.0. Rendered inside a sandboxed iframe. |
 | temporal-polyfill | Dates and time zones | 1.0 | MIT | 🟦 | Prefer Temporal over date-fns for time-zone-correct calendar math. |
 | cmdk | Command palette | 1.1 | MIT | 🟦 | shadcn Command. |
-| sonner | Toasts / undo | 2.0 | MIT | 🟦 | — |
+| sonner (through `@unicron/ui`) | Toasts / undo | 2.0 | MIT | ✅ | unicron's Toaster runs its own copy of sonner; Vale raises toasts with `toast` from `@unicron/ui` and no longer depends on sonner itself ([ADR-0082](decisions/0082-unicron-1-0.md)). |
 | cmdk | ⌘K command menu (shadcn Command) | 1.1 | MIT | ✅ | Uses four small Radix packages (dialog, id, primitive, compose-refs), all MIT. |
 | uqr | QR codes in the web demo only (the apps get theirs from the core) | 0.1.3 | MIT | ✅ | No dependencies; loaded only when a demo QR code is shown. |
 | react-hook-form + zod | Forms | 7.90 / 4.6 | MIT | 🟦 | — |
@@ -111,4 +112,4 @@ _Versions and licenses verified 2026-10-13 against the npm registry and crates.i
 2. **MPL-2.0 files** (ical.js, uniffi, BlockNote core) are fine if we never patch them. Send fixes upstream.
 3. **Stalwart:** the *server* is AGPL, but its *libraries* (mail-parser, calcard, jmap-client) are permissive.
 4. **Dead or deprecated:** `@base-ui-components/react`, `vaul`, `rrule` (stale, time-zone bugs; do recurrence in Rust with calcard), the `wa-sqlite` npm package, and `tauri-plugin-keyring`.
-5. **Font weight:** the full Material Symbols Rounded variable font is about 5.4 MB of woff2. Subset it before shipping (see [ADR-0003](decisions/0003-material-symbols.md)).
+5. **Font weight:** no longer a concern. The 5.4 MB Material Symbols font is gone ([ADR-0082](decisions/0082-unicron-1-0.md)): icons are inline SVG, and Geist and Geist Mono are about 150 kB of woff2 for every script they cover.

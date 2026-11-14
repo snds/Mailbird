@@ -46,7 +46,7 @@ function PreviewBody({ file, kind }: { file: AttachmentInfo; kind: PreviewKind }
       )}
       {loaded?.kind === "error" && (
         <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-          <Icon name="error" className="size-4" /> {loaded.message}
+          <Icon name="warning" size="sm" /> {loaded.message}
         </p>
       )}
     </div>

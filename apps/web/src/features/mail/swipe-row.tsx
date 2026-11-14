@@ -27,7 +27,7 @@ const SLOP = 10
  * action also exists as a button and a shortcut, so nothing is gesture-only.
  * A side set to null doesn't swipe; a missing long action repeats the short one.
  */
-export function SwipeRow({ start, end, startLong, endLong, children }: { start: Side; end: Side; startLong?: Side; endLong?: Side; children: ReactNode }) {
+export function RowSwipe({ start, end, startLong, endLong, children }: { start: Side; end: Side; startLong?: Side; endLong?: Side; children: ReactNode }) {
   const [dx, setDx] = useState(0)
   const [settling, setSettling] = useState(false)
   // Row width, measured when a gesture starts (render must not read refs).
@@ -120,7 +120,7 @@ export function SwipeRow({ start, end, startLong, endLong, children }: { start: 
     >
       {dx !== 0 && actionAt(dx, w) && <Reveal action={actionAt(dx, w)!} side={dx > 0 ? "start" : "end"} armed={Math.abs(dx) > w * COMMIT_AT} />}
       <div
-        className={cn("relative bg-surface-chrome", settling && "transition-transform duration-150 ease-out motion-reduce:transition-none")}
+        className={cn("relative bg-surface-ground", settling && "transition-transform duration-150 ease-out motion-reduce:transition-none")}
         style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
       >
         {children}
@@ -134,13 +134,13 @@ function Reveal({ action, side, armed }: { action: SwipeAction; side: "start" | 
     <div
       aria-hidden
       className={cn(
-        "absolute inset-0 flex items-center gap-2 px-6 text-sm font-medium text-white transition-opacity",
+        "absolute inset-0 flex items-center gap-2 px-6 text-sm font-medium transition-opacity",
         action.tone,
         side === "start" ? "justify-start" : "justify-end",
         armed ? "opacity-100" : "opacity-70",
       )}
     >
-      <Icon name={action.icon} fill={armed} className="size-6" opticalSize={24} />
+      <Icon name={action.icon} size={24} />
       {action.label}
     </div>
   )

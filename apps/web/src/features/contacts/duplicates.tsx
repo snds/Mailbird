@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, toast } from "@unicron/ui"
 import { useDuplicates, usePimAction } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 
@@ -29,7 +28,7 @@ function Group({ group }: { group: ContactSummary[] }) {
         <legend className="sr-only">Keep which card?</legend>
         {group.map((c) => (
           <label key={c.id} className="flex cursor-pointer items-center gap-3 border-b px-4 py-3 last:border-0 has-checked:bg-muted/50">
-            <input type="radio" name={`keep-${group[0]!.id}`} checked={primary === c.id} onChange={() => setPrimary(c.id)} className="accent-(--primary)" aria-label={`Keep ${c.fullName}`} />
+            <input type="radio" name={`keep-${group[0]!.id}`} checked={primary === c.id} onChange={() => setPrimary(c.id)} className="accent-(--foreground)" aria-label={`Keep ${c.fullName}`} />
             <PersonAvatar contact={c} size="sm" />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-medium">{c.fullName}</span>
@@ -52,14 +51,12 @@ function Group({ group }: { group: ContactSummary[] }) {
 export function DuplicatesPane() {
   const { data: groups = [], isPending } = useDuplicates()
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-10 md:px-8 md:pt-8">
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Possible duplicates</h2>
-        <p className="text-sm text-muted-foreground">Cards that share an email, a phone number, or a full name. Pick the one to keep; nothing merges without you.</p>
-      </header>
+    <div className="flex max-w-2xl flex-col gap-4 pb-10">
+      {/* The place's own head names it (ADR-0084). */}
+      <p className="text-sm text-muted-foreground">Cards that share an email, a phone number, or a full name. Pick the one to keep; nothing merges without you.</p>
       {!isPending && groups.length === 0 && (
         <p className="flex items-center gap-2 rounded-xl border p-4 text-sm text-muted-foreground">
-          <Icon name="check_circle" className="size-5" /> No duplicates left.
+          <Icon name="checkmark--outline" /> No duplicates left.
         </p>
       )}
       {groups.map((g) => (

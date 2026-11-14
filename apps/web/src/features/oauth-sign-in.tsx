@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, type IconName, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input, Spinner, DialogAction, DialogActions } from "@unicron/ui"
-import { SectionHeader } from "./settings/section-header"
+import { Icon, type IconName, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input, Spinner, DialogAction, DialogActions, toast } from "@unicron/ui"
+import { SettingsHeading } from "./settings/section-header"
 import { getCoreClient } from "@/core/client"
 import type { OAuthClientInfo, OAuthIssuer } from "@/core/types"
 
@@ -35,9 +34,9 @@ const COPY: Record<OAuthIssuer, ProviderCopy> = {
     title: "Add Gmail",
     company: "Google",
     grants: [
-      { icon: "mail", text: "Read, organize, and send your Gmail" },
-      { icon: "calendar_month", text: "See and edit your Google Calendar" },
-      { icon: "contacts", text: "See and edit your Google Contacts" },
+      { icon: "email", text: "Read, organize, and send your Gmail" },
+      { icon: "calendar", text: "See and edit your Google Calendar" },
+      { icon: "user--multiple", text: "See and edit your Google Contacts" },
     ],
     stays: "Everything stays on this device. Revoke access any time in your Google Account, or by removing the account here.",
     hintLabel: "Gmail address (optional)",
@@ -57,9 +56,9 @@ const COPY: Record<OAuthIssuer, ProviderCopy> = {
     title: "Add Outlook",
     company: "Microsoft",
     grants: [
-      { icon: "mail", text: "Read, organize, and send your Outlook mail" },
-      { icon: "calendar_month", text: "See and edit your Outlook calendars" },
-      { icon: "contacts", text: "See and edit your Outlook contacts" },
+      { icon: "email", text: "Read, organize, and send your Outlook mail" },
+      { icon: "calendar", text: "See and edit your Outlook calendars" },
+      { icon: "user--multiple", text: "See and edit your Outlook contacts" },
     ],
     // Microsoft has no way for an app to revoke its own sign-in.
     stays: "Everything stays on this device. Removing the account here deletes its sign-in from this device; to revoke access everywhere, use the app permissions page of your Microsoft account.",
@@ -103,7 +102,7 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionHeader
+      <SettingsHeading
         title={copy.title}
         description={`You'll sign in on ${copy.company}'s page in your browser. This app never sees your ${copy.company} password.`}
         onBack={() => (signIn.isPending && cancel(), onBack())}
@@ -111,7 +110,8 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
 
       {signIn.isPending ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border bg-muted/40 px-4 py-6 text-center" role="status" aria-live="polite">
-          <Spinner className="size-6" />
+          {/* The status around it says what's happening; the spinner would add "Loading". */}
+          <Spinner className="size-6" aria-hidden />
           <p className="text-sm font-medium">Finish signing in in your browser</p>
           <p className="max-w-xs text-xs text-muted-foreground">When {copy.company} says you're signed in, come back here. The tab can be closed.</p>
           <Button variant="outline" size="sm" onClick={cancel}>
@@ -127,7 +127,7 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
             <ul className="flex flex-col gap-1.5">
               {copy.grants.map((g) => (
                 <li key={g.text} className="flex items-center gap-2 text-sm">
-                  <Icon name={g.icon} tone="muted" className="size-4" /> {g.text}
+                  <Icon name={g.icon} tone="muted" size="sm" /> {g.text}
                 </li>
               ))}
             </ul>
@@ -144,7 +144,7 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
             </p>
           )}
           <p className="flex gap-2 text-xs text-muted-foreground">
-            <Icon name="info" className="mt-0.5 size-4" />
+            <Icon name="information" size="sm" className="mt-0.5" />
             {client?.builtIn ? copy.builtInWarning : copy.ownWarning}
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -152,7 +152,7 @@ export function OAuthSignIn({ issuer, onBack, onDone }: { issuer: OAuthIssuer; o
               {client?.builtIn ? `Use your own ${copy.clientNoun}` : `Change ${copy.clientNoun}`}
             </Button>
             <Button onClick={() => signIn.mutate()}>
-              <Icon name="open_in_new" data-icon="inline-start" /> Continue in browser
+              <Icon name="launch" data-icon="inline-start" /> Continue in browser
             </Button>
           </div>
         </>
@@ -177,7 +177,7 @@ function ClientForm({ issuer, copy, current, onClose }: { issuer: OAuthIssuer; c
     <form className="flex flex-col gap-4" onSubmit={(e) => (e.preventDefault(), save.mutate({ clientId: clientId.trim(), clientSecret: secret.trim() || null }))}>
       {!current && (
         <p className="flex gap-2 rounded-lg bg-muted px-3 py-2 text-sm" role="status">
-          <Icon name="key" className="mt-0.5 size-4" />
+          <Icon name="password" size="sm" className="mt-0.5" />
           {copy.noClient}
         </p>
       )}

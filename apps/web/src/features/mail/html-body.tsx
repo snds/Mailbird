@@ -61,7 +61,7 @@ export function HtmlBody({ html, from }: { html: string; from?: string }) {
     <div className="flex flex-col gap-2">
       {hasRemote && !remote && (
         <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-          <Icon name="shield" className="size-4" />
+          <Icon name="security" size="sm" />
           <span className="flex-1">Remote images are blocked to stop tracking.</span>
           <Button size="sm" variant="ghost" onClick={() => setRemote(true)}>
             Load images

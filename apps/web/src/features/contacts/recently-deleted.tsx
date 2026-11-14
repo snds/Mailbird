@@ -1,6 +1,5 @@
-import { toast } from "sonner"
 
-import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@unicron/ui"
+import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, toast } from "@unicron/ui"
 import { useCollections, useDeletedContacts, usePimAction } from "@/core/queries"
 import { shortTime } from "@/lib/time"
 
@@ -20,16 +19,14 @@ export function RecentlyDeletedPane({ onRestored }: { onRestored: (id: string) =
   }
   if (isPending) return null
   return (
-    <section className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-10 md:px-8 md:pt-8" aria-label="Recently deleted">
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Recently deleted</h2>
-        <p className="text-sm text-muted-foreground">Deleted contacts and cards merged into another stay here for 30 days.</p>
-      </header>
+    <section className="flex max-w-2xl flex-col gap-4 pb-10" aria-label="Recently deleted">
+      {/* The place's own head names it (ADR-0084). */}
+      <p className="text-sm text-muted-foreground">Deleted contacts and cards merged into another stay here for 30 days.</p>
       {gone.length === 0 ? (
-        <Empty className="py-12">
+        <Empty size="sm" className="py-12">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Icon name="restore_from_trash" />
+              <Icon name="reset" />
             </EmptyMedia>
             <EmptyTitle>Nothing deleted</EmptyTitle>
             <EmptyDescription>Contacts you delete show up here.</EmptyDescription>
@@ -48,7 +45,7 @@ export function RecentlyDeletedPane({ onRestored }: { onRestored: (id: string) =
                   </span>
                 </span>
                 <Button variant="outline" size="sm" disabled={restore.isPending} onClick={() => void run(g.id)} aria-label={`Restore ${g.fullName}`}>
-                  <Icon name="settings_backup_restore" data-icon="inline-start" /> Restore
+                  <Icon name="reset" data-icon="inline-start" /> Restore
                 </Button>
               </li>
             )

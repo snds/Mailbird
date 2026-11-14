@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Kbd, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Button, Kbd, NativeSelect, NativeSelectOption, toast } from "@unicron/ui"
 import { useKeyBindings, useSetKeyBindings, useSetSwipeActions, useSwipeActions } from "@/core/queries"
 import type { SwipeActionId, SwipeActions } from "@/core/types"
 import { DEFAULT_KEYS, FIXED_KEYS, KEY_COMMANDS, type KeyArea, type KeyBindings, keyLabel, keyProblem, rebind } from "@/lib/keys"
@@ -68,7 +67,9 @@ export function ShortcutSettings() {
             <span className={slot.long ? "pl-4 text-muted-foreground" : ""}>{slot.label}</span>
             <NativeSelect
               aria-label={slot.label}
-              className="w-56"
+              // The row size: unicron 1.0's full-size select pads wider and cut "Same as a short swipe" on a phone.
+              size="sm"
+              className="w-56 shrink-0"
               value={swipes?.[slot.key] ?? "none"}
               disabled={!swipes}
               onChange={(e) => set(slot.key, e.target.value as SwipeActionId)}

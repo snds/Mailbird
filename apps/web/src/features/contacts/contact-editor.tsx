@@ -1,12 +1,12 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi, type ContactEditorState } from "@/app/ui-store"
-import { EditorFrame, EditorHeader } from "@/components/editor-frame"
-import { Icon, Button, NativeSelect, NativeSelectOption, Chip, ChipRemove } from "@unicron/ui"
+import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { Icon, Button, NativeSelect, NativeSelectOption, Chip, ChipRemove, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContactLabels, usePimAction } from "@/core/queries"
 import type { ContactField, ContactInput } from "@/core/types"
+import { useLeaveGuard } from "@/lib/leave-guard"
 
 import { PersonAvatar } from "./person"
 
@@ -17,9 +17,9 @@ export function ContactEditor() {
   const state = useUi((s) => s.contactEditor)
   const close = useUi((s) => s.closeContactEditor)
   return (
-    <EditorFrame open={state !== null} onClose={close} title={state?.contactId ? "Edit contact" : "New contact"}>
+    <FormLayer open={state !== null} onClose={close}>
       {state && <ContactForm key={JSON.stringify(state)} state={state} onDone={close} />}
-    </EditorFrame>
+    </FormLayer>
   )
 }
 
@@ -48,11 +48,11 @@ function PhotoField({ name, value, onChange }: { name: string; value: string | n
     if (f) void toPhoto(f).then(onChange, (e: Error) => toast.error(e.message))
   }
   return (
-    <div className="flex items-center gap-4 border-b px-4 py-3" role="group" aria-label="Photo">
+    <div className="flex items-center gap-4 border-b py-3" role="group" aria-label="Photo">
       <PersonAvatar contact={{ fullName: name || "?", photo: value }} className="size-16 text-lg" />
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" render={<label />}>
-          <Icon name="add_a_photo" data-icon="inline-start" /> {value ? "Change photo" : "Add photo"}
+          <Icon name="camera" data-icon="inline-start" /> {value ? "Change photo" : "Add photo"}
           <input type="file" accept="image/*" aria-label={value ? "Change photo" : "Add photo"} className="sr-only" onChange={(e) => (pick(e.target.files), (e.target.value = ""))} />
         </Button>
         {value && (
@@ -77,7 +77,7 @@ function LabelField({ values, onChange }: { values: string[]; onChange: (v: stri
     setDraft("")
   }
   return (
-    <div className="flex min-h-12 flex-wrap items-center gap-1.5 border-b px-4 py-2" role="group" aria-label="Labels">
+    <div className="flex min-h-12 flex-wrap items-center gap-1.5 border-b py-2" role="group" aria-label="Labels">
       <span className="w-24 shrink-0 text-sm text-muted-foreground">Labels</span>
       {values.map((l) => (
         <Chip key={l}>
@@ -119,7 +119,7 @@ function FieldList({ kind, values, onChange, labels }: { kind: "email" | "phone"
   return (
     <div className="border-b" role="group" aria-label={kind === "email" ? "Emails" : "Phone numbers"}>
       {rows.map((f, i) => (
-        <div key={i} className="flex items-center gap-2 px-4">
+        <div key={i} className="flex items-center gap-2">
           <NativeSelect size="sm" value={f.label ?? ""} onChange={(e) => set(i, { label: e.target.value || null })} aria-label={`${noun} ${i + 1} label`} className="w-24 shrink-0">
             {[...new Set([...labels, ...(f.label ? [f.label] : [])])].map((l) => (
               <NativeSelectOption key={l} value={l}>
@@ -138,13 +138,13 @@ function FieldList({ kind, values, onChange, labels }: { kind: "email" | "phone"
           />
           {rows.length > 1 && (
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${noun} ${i + 1}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
-              <Icon name="do_not_disturb_on" />
+              <Icon name="subtract--alt" />
             </Button>
           )}
         </div>
       ))}
-      <button type="button" className="flex h-10 w-full items-center gap-2 px-4 text-sm text-primary hover:bg-muted/50" onClick={() => onChange([...rows, { label: labels[0]!, value: "" }])}>
-        <Icon name="add_circle" className="size-4" /> Add {noun}
+      <button type="button" className="flex h-10 w-full items-center gap-2 px-2 text-sm text-foreground hover:bg-state-hover" onClick={() => onChange([...rows, { label: labels[0]!, value: "" }])}>
+        <Icon name="add--alt" size="sm" /> Add {noun}
       </button>
     </div>
   )
@@ -187,6 +187,10 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
   const [chosen, setBook] = useState(initial.bookId ?? "")
   const bookId = chosen || writable[0]?.id || ""
   const [error, setError] = useState<string | null>(null)
+  // Closing asks first once a value differs from when the form opened (ADR-0087). Text pasted to fill it in counts.
+  const values = JSON.stringify([fullName, org, title, emails, phones, birthday, note, labels, photo, chosen, pasted])
+  const [opened] = useState(values)
+  useLeaveGuard(values !== opened)
 
   const submit = async () => {
     setError(null)
@@ -217,20 +221,17 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
 
   const name = (id: string | null) => (id ? accounts.find((a) => a.id === id)?.displayName ?? "Account" : "On this device")
   return (
-    <form className="flex min-h-0 flex-1 flex-col" onSubmit={(e) => (e.preventDefault(), void submit())}>
-      <EditorHeader
-        title={contactId ? "Edit contact" : "New contact"}
-        onCancel={onDone}
-        action={
-          <Button type="submit" disabled={save.isPending}>
-            {contactId ? "Save" : "Add"}
-          </Button>
-        }
-      />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+    <FormLayerForm
+      overline={contactId ? "Edit contact" : "New contact"}
+      title={fullName.trim() || (contactId ? "Edit contact" : "New contact")}
+      primary={{ label: contactId ? "Save" : "Add", loading: save.isPending }}
+      error={error}
+      onSubmit={() => void submit()}
+    >
+      <div>
         {!contactId &&
           (pasting ? (
-            <div className="flex flex-col gap-2 border-b bg-muted/40 px-4 py-3">
+            <div className="flex flex-col gap-2 border-b bg-muted/40 px-3 py-3">
               <textarea
                 aria-label="Signature"
                 placeholder={"Paste an email signature, like:\nPriya Raman\nDesign systems lead | Studio\nm: +1 555 010 4410"}
@@ -249,24 +250,24 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
               </div>
             </div>
           ) : (
-            <button type="button" className="flex h-11 w-full items-center gap-2 border-b px-4 text-sm text-primary hover:bg-muted/50" onClick={() => setPasting(true)}>
-              <Icon name="content_paste" className="size-4" /> Paste a signature to fill this in
+            <button type="button" className="flex h-11 w-full items-center gap-2 border-b px-2 text-sm text-foreground hover:bg-state-hover" onClick={() => setPasting(true)}>
+              <Icon name="paste" size="sm" /> Paste a signature to fill this in
             </button>
           ))}
         <PhotoField name={fullName} value={photo} onChange={setPhoto} />
-        <div className="border-b px-4 py-2">
-          <input aria-label="Name" placeholder="Name" autoComplete="name" className="h-11 w-full bg-transparent text-lg font-medium outline-none placeholder:text-muted-foreground" value={fullName} onChange={(e) => setFullName(e.target.value)} data-editor-focus="" />
+        <div className="border-b py-2">
+          <input aria-label="Name" placeholder="Name" autoComplete="name" className="h-11 w-full bg-transparent text-lg font-medium outline-none placeholder:text-muted-foreground" value={fullName} onChange={(e) => setFullName(e.target.value)} data-form-focus="" />
           <input aria-label="Company" placeholder="Company" autoComplete="organization" className={`${bare} w-full`} value={org} onChange={(e) => setOrg(e.target.value)} />
           <input aria-label="Job title" placeholder="Job title" className={`${bare} w-full`} value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <FieldList kind="email" values={emails} onChange={setEmails} labels={EMAIL_LABELS} />
         <FieldList kind="phone" values={phones} onChange={setPhones} labels={PHONE_LABELS} />
         <LabelField values={labels} onChange={setLabels} />
-        <label className="flex min-h-12 items-center gap-3 border-b px-4">
+        <label className="flex min-h-12 items-center gap-3 border-b">
           <span className="w-24 shrink-0 text-sm text-muted-foreground">Birthday</span>
           <input type="date" aria-label="Birthday" className="ml-auto h-9 rounded-lg border bg-transparent px-2 text-sm dark:bg-input/30" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
         </label>
-        <div className="flex min-h-12 items-center gap-3 border-b px-4">
+        <div className="flex min-h-12 items-center gap-3 border-b">
           <label htmlFor="contact-book" className="w-24 shrink-0 text-sm text-muted-foreground">
             Save to
           </label>
@@ -278,13 +279,8 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
             ))}
           </NativeSelect>
         </div>
-        <textarea aria-label="Note" placeholder="Note" className="min-h-28 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground" value={note} onChange={(e) => setNote(e.target.value)} />
+        <textarea aria-label="Note" placeholder="Note" className="min-h-28 w-full resize-none bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
-      {error && (
-        <p role="alert" className="flex items-center gap-2 border-t bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          <Icon name="error" className="size-4" /> {error}
-        </p>
-      )}
-    </form>
+    </FormLayerForm>
   )
 }

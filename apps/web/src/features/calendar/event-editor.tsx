@@ -1,11 +1,13 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi, type EventEditorState } from "@/app/ui-store"
-import { EditorFrame, EditorHeader } from "@/components/editor-frame"
-import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove } from "@unicron/ui"
+import { DatePicker } from "@/components/date-picker"
+import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { ZonePicker } from "@/components/zone-picker"
+import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove, toast } from "@unicron/ui"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
 import type { EventInput, Repeat } from "@/core/types"
+import { useLeaveGuard } from "@/lib/leave-guard"
 import { meetingInfo, meetingLink } from "@/lib/meeting-info"
 
 import { formatRecipients, parseRecipients } from "../mail/format"
@@ -14,7 +16,7 @@ import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dat
 import { FindATime } from "./find-a-time"
 import { REMINDER_PRESETS, reminderLabel, travelLabel } from "./reminders"
 import { meetingService } from "./meeting"
-import { deviceZone, zoneAbbr, zoneCity, zonedDate, zonedInput, zones } from "./zones"
+import { deviceZone, zoneCity, zoneLabel, zonedDate, zonedInput } from "./zones"
 
 /** A fresh Jitsi room: unguessable, readable in a link. */
 function jitsiRoom() {
@@ -39,9 +41,9 @@ export function EventEditor() {
   const state = useUi((s) => s.eventEditor)
   const close = useUi((s) => s.closeEventEditor)
   return (
-    <EditorFrame open={state !== null} onClose={close} title={state?.eventId ? "Edit event" : "New event"}>
+    <FormLayer open={state !== null} onClose={close}>
       {state && <EventForm key={JSON.stringify(state)} state={state} onDone={close} />}
-    </EditorFrame>
+    </FormLayer>
   )
 }
 
@@ -59,9 +61,30 @@ function nextHalfHour() {
 }
 
 const label = "w-20 shrink-0 text-sm text-muted-foreground"
-const row = "flex min-h-12 items-center gap-3 border-b px-4"
+const row = "flex min-h-12 items-center gap-3 border-b"
 const bare = "h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-const picker = "h-9 rounded-lg border bg-transparent px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+// The platform's time input, as tall as the date button beside it.
+const picker = "h-10 rounded-lg border bg-transparent px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+
+/** A date field (brief C3): a button that shows "Fri 11.20", is named "Start date, Friday, November 20, 2026", and opens the month grid. */
+function EventDay({ name, value, onPick, min }: { name: string; value: string; onPick: (date: string) => void; min?: string }) {
+  const d = fromInputs(value)
+  const two = (n: number) => String(n).padStart(2, "0")
+  return (
+    <DatePicker
+      title={name}
+      value={value}
+      onPick={onPick}
+      min={min}
+      align="end"
+      trigger={
+        <Button type="button" variant="outline" aria-label={`${name}, ${d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}`}>
+          {`${d.toLocaleDateString(undefined, { weekday: "short" })} ${two(d.getMonth() + 1)}.${two(d.getDate())}`}
+        </Button>
+      }
+    />
+  )
+}
 
 function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => void }) {
   const { initial, eventId, guestOf } = state
@@ -92,6 +115,10 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
   const [chosen, setCalendarId] = useState(initial.calendarId ?? "")
   const calendarId = chosen || writable[0]?.id || ""
   const [error, setError] = useState<string | null>(null)
+  // Closing asks first once a value differs from when the form opened (ADR-0087).
+  const values = JSON.stringify([title, location, notes, allDay, startDate, startTime, endDate, endTime, repeat, zone, travel, chosen, reminders, guests])
+  const [opened] = useState(values)
+  useLeaveGuard(values !== opened)
   // A call link pasted into the location or notes (an invitation's text, say).
   const found = meetingLink(location, notes)
   const foundId = found ? meetingInfo(location, notes)?.meetingId : null
@@ -140,52 +167,40 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
   const groups = [...new Set(writable.map((c) => c.accountId))]
 
   return (
-    <form
-      className="flex min-h-0 flex-1 flex-col"
-      onSubmit={(ev) => (ev.preventDefault(), void submit())}
-      onKeyDown={(ev) => {
-        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
-          ev.preventDefault()
-          void submit()
-        }
-      }}
+    <FormLayerForm
+      overline={eventId ? "Edit event" : "New event"}
+      title={title.trim() || (eventId ? "Edit event" : "New event")}
+      primary={{ label: eventId ? "Save" : "Add", loading: save.isPending }}
+      error={error}
+      onSubmit={() => void submit()}
     >
-      <EditorHeader
-        title={eventId ? "Edit event" : "New event"}
-        onCancel={onDone}
-        action={
-          <Button type="submit" disabled={save.isPending}>
-            {eventId ? "Save" : "Add"}
-          </Button>
-        }
-      />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="border-b px-4 py-2">
-          <input aria-label="Title" placeholder="Title" className="h-11 w-full bg-transparent text-lg font-medium outline-none placeholder:text-muted-foreground" value={title} onChange={(ev) => setTitle(ev.target.value)} data-editor-focus="" />
+      <div>
+        <div className="border-b py-2">
+          <input aria-label="Title" placeholder="Title" className="h-11 w-full bg-transparent text-lg font-medium outline-none placeholder:text-muted-foreground" value={title} onChange={(ev) => setTitle(ev.target.value)} data-form-focus="" />
           <div className="flex items-center gap-2">
             <input aria-label="Location" placeholder="Location" className={`${bare} w-full`} value={location} onChange={(ev) => setLocation(ev.target.value)} />
             {!found && (
               // A Jitsi room needs no account and no sign-up: anyone with the link joins (ADR-0030).
               <Button type="button" variant="ghost-muted" size="sm" onClick={() => setLocation(location.trim() ? `${location.trim()} · ${jitsiRoom()}` : jitsiRoom())}>
-                <Icon name="video_call" data-icon="inline-start" /> Add video call
+                <Icon name="video--add" data-icon="inline-start" /> Add video call
               </Button>
             )}
           </div>
           {found && (
             <p className="flex items-center gap-1.5 pb-1 text-xs text-muted-foreground" data-slot="meeting-found">
-              <Icon name="videocam" className="size-3.5" /> {meetingService(found)} call · Join shows on the event{foundId ? ` · Meeting ID ${foundId}` : ""}
+              <Icon name="video" size={14} /> {meetingService(found)} call · Join shows on the event{foundId ? ` · Meeting ID ${foundId}` : ""}
             </p>
           )}
         </div>
         {eventId && initial.repeat && initial.repeat !== "none" && (
-          <p className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground" data-slot="scope-note">
-            <Icon name="repeat" className="size-4" />
+          <p className="flex items-center gap-2 border-b bg-muted/50 px-2 py-2 text-xs text-muted-foreground" data-slot="scope-note">
+            <Icon name="repeat" size="sm" />
             {scope === "this" ? "Changes apply to this event only." : scope === "following" ? "Changes apply to this and following events." : "Changes apply to every event in this series."}
           </p>
         )}
         {guestOf && (
-          <p className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
-            <Icon name="info" className="size-4" /> {guestOf} organizes this event. Your changes stay on your calendar.
+          <p className="flex items-center gap-2 border-b bg-muted/50 px-2 py-2 text-xs text-muted-foreground">
+            <Icon name="information" size="sm" /> {guestOf} organizes this event. Your changes stay on your calendar.
           </p>
         )}
         <label className={row}>
@@ -195,14 +210,14 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
         <div className={row}>
           <span className={label}>Starts</span>
           <div className="ml-auto flex flex-wrap justify-end gap-2 py-1.5">
-            <input type="date" aria-label="Start date" className={picker} value={startDate} onChange={(ev) => ev.target.value && moveStart(ev.target.value, startTime)} />
+            <EventDay name="Start date" value={startDate} onPick={(date) => moveStart(date, startTime)} />
             {!allDay && <input type="time" aria-label="Start time" className={picker} value={startTime} onChange={(ev) => ev.target.value && moveStart(startDate, ev.target.value)} />}
           </div>
         </div>
         <div className={row}>
           <span className={label}>Ends</span>
           <div className="ml-auto flex flex-wrap justify-end gap-2 py-1.5">
-            <input type="date" aria-label="End date" className={picker} value={endDate} min={startDate} onChange={(ev) => setEndDate(ev.target.value)} />
+            <EventDay name="End date" value={endDate} min={startDate} onPick={setEndDate} />
             {!allDay && <input type="time" aria-label="End time" className={picker} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} />}
           </div>
         </div>
@@ -240,7 +255,7 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
           </div>
         )}
         {!allDay && travel > 0 && (
-          <p className="border-b px-4 py-2 text-xs text-muted-foreground" data-slot="travel-note">
+          <p className="border-b py-2 text-xs text-muted-foreground" data-slot="travel-note">
             Blocked out before it starts, so nothing gets booked over it. You'll get a “time to leave” alert at {new Date(zonedDate(startDate, startTime, zone).getTime() - travel * 60_000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             {zone !== deviceZone() ? " your time" : ""}.
           </p>
@@ -276,7 +291,7 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
             ))}
           </NativeSelect>
         </div>
-        <div className="flex min-h-12 flex-wrap items-center gap-2 border-b px-4 py-2" role="group" aria-label="Reminders">
+        <div className="flex min-h-12 flex-wrap items-center gap-2 border-b py-2" role="group" aria-label="Reminders">
           <span className={label}>Remind me</span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
             {reminders.map((m) => (
@@ -309,7 +324,7 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
           </div>
         )}
         {!guestOf && !single && parseRecipients(guests).length > 0 && (
-          <p className="border-b px-4 py-2 text-xs text-muted-foreground" data-slot="invite-note">
+          <p className="border-b py-2 text-xs text-muted-foreground" data-slot="invite-note">
             {calendars.find((c) => c.id === calendarId)?.accountId
               ? calendars.find((c) => c.id === calendarId)?.scheduling
                 ? "Your calendar server will send the invitations."
@@ -317,14 +332,9 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
               : "Invitations need a calendar on a mail account."}
           </p>
         )}
-        <textarea aria-label="Notes" placeholder="Notes" className="min-h-32 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground" value={notes} onChange={(ev) => setNotes(ev.target.value)} />
+        <textarea aria-label="Notes" placeholder="Notes" className="min-h-32 w-full resize-none bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground" value={notes} onChange={(ev) => setNotes(ev.target.value)} />
       </div>
-      {error && (
-        <p role="alert" className="flex items-center gap-2 border-t bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          <Icon name="error" className="size-4" /> {error}
-        </p>
-      )}
-    </form>
+    </FormLayerForm>
   )
 }
 
@@ -337,30 +347,30 @@ function ZoneRow({ zone, onZone, start, end }: { zone: string; onZone: (z: strin
   const mine = deviceZone()
   const at = zonedDate(start[0], start[1], zone)
   const until = zonedDate(end[0], end[1], zone)
-  const name = (z: string) => `${zoneCity(z)} (${zoneAbbr(z, at)})`
-  const rest = zones().filter((z) => z !== mine && z !== zone)
   const time = (d: Date) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
   const sameDay = at.toDateString() === until.toDateString()
+  const valid = !Number.isNaN(at.getTime())
   return (
     <>
       <div className={row}>
-        <label htmlFor="event-zone" className={label}>
-          Time zone
-        </label>
-        <NativeSelect id="event-zone" value={zone} onChange={(ev) => onZone(ev.target.value)} className="ml-auto max-w-[60%]">
-          <NativeSelectOption value={mine}>{`Yours · ${name(mine)}`}</NativeSelectOption>
-          {zone !== mine && <NativeSelectOption value={zone}>{name(zone)}</NativeSelectOption>}
-          <optgroup label="Other zones">
-            {rest.map((z) => (
-              <NativeSelectOption key={z} value={z}>
-                {`${z.replace(/_/g, " ")} (${zoneAbbr(z, at)})`}
-              </NativeSelectOption>
-            ))}
-          </optgroup>
-        </NativeSelect>
+        <span className={label}>Time zone</span>
+        <span className="ml-auto min-w-0 truncate text-sm" data-slot="event-zone">
+          {zoneLabel(zone, valid ? at : undefined)}
+        </span>
+        {/* Every zone, found by typing (brief C3): "Yours" first. */}
+        <ZonePicker
+          value={zone}
+          onPick={(z) => onZone(z ?? mine)}
+          at={valid ? at : undefined}
+          trigger={
+            <Button type="button" variant="ghost" size="sm" aria-label="Change time zone">
+              Change
+            </Button>
+          }
+        />
       </div>
-      {zone !== mine && !Number.isNaN(at.getTime()) && (
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground" data-slot="zone-note">
+      {zone !== mine && valid && (
+        <p className="border-b py-2 text-xs text-muted-foreground" data-slot="zone-note">
           {`That's ${at.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${time(at)}–${sameDay ? "" : `${until.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, `}${time(until)} your time (${zoneCity(mine)}).`}
         </p>
       )}

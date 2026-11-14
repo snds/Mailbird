@@ -1,9 +1,8 @@
-import { useState } from "react"
-import { toast } from "sonner"
-
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch } from "@unicron/ui"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, toast } from "@unicron/ui"
 import { useInterestingCalendars, usePimAction } from "@/core/queries"
 import type { InterestingCalendar } from "@/core/types"
+
+import { closeAddCalendars, useAddCalendars } from "./open-add-calendars"
 
 const fail = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e))
 
@@ -30,17 +29,13 @@ const countryName = (code: string) => {
  * no feed to fetch (ADR-0024). The country your device's language suggests
  * comes first.
  */
-export function InterestingCalendarsPicker() {
-  const [open, setOpen] = useState(false)
+export function AddCalendarsDialog() {
+  // Opened by its intent (ADR-0084): the calendars list's "Add calendars", and the command menu.
+  const open = useAddCalendars((s) => s.open)
   return (
-    <>
-      <Button variant="ghost-muted" size="sm" className="justify-start px-1" onClick={() => setOpen(true)}>
-        <Icon name="add" data-icon="inline-start" /> Add holidays and more
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent size="md">{open && <Catalog />}</DialogContent>
-      </Dialog>
-    </>
+    <Dialog open={open} onOpenChange={(o) => !o && closeAddCalendars()}>
+      <DialogContent size="md">{open && <Catalog />}</DialogContent>
+    </Dialog>
   )
 }
 

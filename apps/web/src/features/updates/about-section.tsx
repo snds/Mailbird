@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Icon, Switch } from "@unicron/ui"
+import { Button, Icon, Switch, toast } from "@unicron/ui"
 
 import { withUpdates } from "./update-client"
 import { canCheck, channelName, updateLine } from "./update-model"
@@ -30,24 +29,24 @@ export function AboutSection() {
         Vale {status.version} · {channelName(status)}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={!canCheck(status)} onClick={() => run(withUpdates((c) => c.check()))}>
-          <Icon name={busy ? "progress_activity" : "refresh"} data-icon="inline-start" />
+        <Button size="sm" variant="outline" loading={busy} disabled={!canCheck(status)} onClick={() => run(withUpdates((c) => c.check()))}>
+          <Icon name="renew" data-icon="inline-start" />
           Check for updates
         </Button>
         {status.state === "ready" ? (
           <Button size="sm" onClick={() => run(withUpdates((c) => c.restart()))}>
-            <Icon name="restart_alt" data-icon="inline-start" />
+            <Icon name="restart" data-icon="inline-start" />
             Restart to update
           </Button>
         ) : (
           <Button size="sm" variant="ghost" onClick={() => run(withUpdates((c) => c.reload()))}>
-            <Icon name="replay" data-icon="inline-start" />
+            <Icon name="restart" data-icon="inline-start" />
             Reload app
           </Button>
         )}
         {status.state === "available" && status.link && (
           <Button size="sm" variant="outline" onClick={() => run(withUpdates((c) => c.openPage()))}>
-            <Icon name="open_in_new" data-icon="inline-start" />
+            <Icon name="launch" data-icon="inline-start" />
             Get it from GitHub
           </Button>
         )}

@@ -1,6 +1,5 @@
-import { toast } from "sonner"
 
-import { Switch } from "@unicron/ui"
+import { Switch, toast } from "@unicron/ui"
 import { useMenuBarPrefs, usePimAction } from "@/core/queries"
 import type { MenuBarPrefs } from "@/core/types"
 

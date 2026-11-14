@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useEffect } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import {
   Avatar,
@@ -91,16 +91,16 @@ export function InboxTeamPanel({ threadId }: { threadId: string }) {
     <section aria-label="Team" className="flex flex-col gap-4 rounded-2xl border px-4 py-4" data-role="inbox-team">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-sm font-medium [&_svg]:size-4 [&_svg]:text-muted-foreground">
-          <Icon name="group" /> Team
+          <Icon name="user--multiple" /> Team
         </h3>
         <div className="flex flex-wrap items-center gap-3">
           <InboxHere threadId={threadId} />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-              <Icon name={assignee ? "assignment_ind" : "person_add"} data-icon="inline-start" />
+              <Icon name={assignee ? "task--user" : "user--follow"} data-icon="inline-start" />
               {assignee ? (assignee.id === me.id ? "Assigned to you" : `Assigned to ${assignee.name}`) : "Assign"}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" width="fit">
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Who handles this</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={assignee?.id ?? ""} onValueChange={(v) => assign(String(v))}>

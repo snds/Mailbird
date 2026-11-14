@@ -1,9 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldError, FieldLabel, Icon, Input, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldError, FieldLabel, Icon, Input, ToggleGroup, ToggleGroupItem, toast } from "@unicron/ui"
 import { useAccounts, useNoteAction, useNotesRelay } from "@/core/queries"
 import type { NoteSummary, ShareMode } from "@/core/types"
 
@@ -118,17 +117,17 @@ function ShareForm({ note, onSetUpSync, onDone }: { note: NoteSummary; onSetUpSy
           </Field>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => void copy()} disabled={!link}>
-              <Icon name="content_copy" data-icon="inline-start" /> Copy link
+              <Icon name="copy" data-icon="inline-start" /> Copy link
             </Button>
             <Button variant="outline" onClick={email} disabled={!link}>
-              <Icon name="mail" data-icon="inline-start" /> Email it
+              <Icon name="email" data-icon="inline-start" /> Email it
             </Button>
           </div>
         </>
       ) : null}
 
       <p className="flex gap-2 text-xs text-muted-foreground [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0">
-        <Icon name="info" />
+        <Icon name="information" />
         Images in the note stay with you for now. Your relay can read shared notes, as it can read the rest.
       </p>
 
@@ -208,8 +207,8 @@ function OpenSharedForm({ initial, onDone }: { initial: string; onDone: () => vo
 /** What a link is, before you add it: the note, who shared it, and what you can do. */
 export function SharedPreview({ link }: { link: ShareLink }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3 [&>svg]:mt-0.5 [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-vertical-notes-text" data-slot="shared-preview">
-      <Icon name="group" />
+    <div className="flex items-start gap-3 rounded-lg border p-3 [&>svg]:mt-0.5 [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground" data-slot="shared-preview">
+      <Icon name="user--multiple" />
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-sm font-medium">{link.title || (link.kind === "thread" ? "A shared conversation" : "A shared note")}</span>
         <span className="text-xs text-muted-foreground">

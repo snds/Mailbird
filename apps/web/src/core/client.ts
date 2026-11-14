@@ -648,11 +648,15 @@ let me: GatewayMe | null = null
 /**
  * Who's signed in to the gateway, once its session was read (before the app
  * renders). `null` off a gateway: the desktop, the phone, and the demo are
- * one person's, with everything.
+ * one person's, with everything (unless a demo scenario plays a team member).
  */
-export const gatewayMe = () => me
+export const gatewayMe = () => me ?? demoFlags.member ?? null
 /** A team member on a gateway: mail only (ADR-0063). */
-export const isMember = () => me?.role === "member"
+export const isMember = () => gatewayMe()?.role === "member"
+/** UI only the desktop app shows. A demo scenario can show it too; that never sends a call to Tauri. */
+export const isDesktopApp = () => isTauri() || !!demoFlags.desktopApp
+/** Set only by the in-memory demo's scenarios (core/demo-scenarios.ts, ADR-0081); a real core never sets them. */
+export const demoFlags: { member?: GatewayMe & { role: "member" }; gatewayOwner?: boolean; desktopApp?: boolean } = {}
 
 /** Every write carries this header, so another site can't post as you (CSRF). */
 const CSRF = { "X-Vale": "1" }

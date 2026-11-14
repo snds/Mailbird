@@ -1,12 +1,16 @@
-import { type ReactNode, useDeferredValue, useState } from "react"
-import { toast } from "sonner"
+import { type ReactNode, useState } from "react"
 
+import { factTime, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { useSectionSwitcher } from "@/app/places"
+import { SectionSwitcher } from "@/app/section-switcher"
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Toggle, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
-import { ListRow, SearchField } from "@/components/list-row"
-import { MasterDetail, PaneHeader } from "@/components/master-detail"
+import { vertical } from "@/app/verticals"
+import { Icon, Button, formatNavCount, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Toggle, Tooltip, TooltipContent, TooltipTrigger, toast } from "@unicron/ui"
+import { EntryRow } from "@/components/list-row"
+import { MasterDetail } from "@/components/master-detail"
+import { ScreenHead } from "@/components/page"
 import { getCoreClient } from "@/core/client"
-import { useNoteAction, useNoteFolders, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
+import { useNoteAction, useNotes, useNotesPrefs } from "@/core/queries"
 import type { NoteSummary, NotesPrefs } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { reminderLabel, shortTime } from "@/lib/time"
@@ -15,12 +19,16 @@ import { cn } from "@/lib/utils"
 import { ImportDialog } from "./import-dialog"
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
 import { NoteDetailPane } from "./note-detail"
-import { NoteFolderChips } from "./note-folders"
+import { NoteFolderEditor } from "./note-folders"
 import { NoteGraphView } from "./note-graph"
 import { NoteCover } from "./note-image"
+import { NotesNav } from "./notes-nav"
+import { closeSharedNote, useOpenSharedNote } from "./open-shared-note"
+import { closeSyncSetup, openSyncSetup, useSyncSetup } from "./open-sync-setup"
 import { RelayDialog } from "./relay-dialog"
 import { OpenSharedDialog } from "./share-dialog"
 import { useSyncStatus } from "./sync"
+import { useNotesPlace } from "./use-notes-place"
 
 const SYNC_LABEL = { off: "Sync is off", connecting: "Connecting to the relay…", synced: "Synced with the relay", error: "Sync problem" } as const
 
@@ -29,20 +37,21 @@ export function NotesView() {
   // calendar, or contacts) can open a note from anywhere.
   const selected = useUi((s) => s.openNote)
   const setSelected = useUi((s) => s.setOpenNote)
-  const [search, setSearch] = useState("")
-  const [tag, setTag] = useState<string | null>(null)
-  const [folder, setFolder] = useState<string | null>(null)
-  const { data: folders = [] } = useNoteFolders()
-  // A folder deleted elsewhere just stops filtering.
-  const activeFolder = folders.find((f) => f.id === folder) ?? null
-  const [archived, setArchived] = useState(false)
+  // Notes' place (ADR-0084): a folder, narrowed by one tag. A folder or a tag that is gone just stops filtering.
+  const { place, folder: activeFolder, name: placeName } = useNotesPlace()
+  const tag = place.tag
+  const archived = place.folder.kind === "archive"
+  const pinnedOnly = place.folder.kind === "pinned"
+  // Another folder or tag, picked in the nav: the note that was open stays open, as a link's note does.
   const [importing, setImporting] = useState(false)
-  const [relayOpen, setRelayOpen] = useState(false)
-  const [openingShared, setOpeningShared] = useState(false)
-  const query = useDeferredValue(search.trim())
-  const noteQuery = { search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
-  const { data: notes = [], isPending } = useNotes(noteQuery)
-  const { data: tags = [] } = useNoteTags()
+  // Opened by their intents, so the folders list and the command menu reach them too.
+  const relayOpen = useSyncSetup((s) => s.open)
+  const openingShared = useOpenSharedNote((s) => s.open)
+  // Finding a note by its words is Search's (ADR-0085); the list is the folder, narrowed by the tag.
+  const noteQuery = { search: null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
+  const { data: found = [], isPending, refetch } = useNotes(noteQuery)
+  // Pinned is a place the core has no query for: the same read, narrowed here.
+  const notes = pinnedOnly ? found.filter((n) => n.pinned) : found
   const sync = useSyncStatus()
   const { data: prefs } = useNotesPrefs()
   const setPrefs = useNoteAction((c, change: Partial<NotesPrefs>) => c.setNotesPrefs({ sortChecked: true, ...prefs, ...change }))
@@ -68,22 +77,24 @@ export function NotesView() {
   const rest = notes.filter((n) => !n.pinned && !due.includes(n))
   const empty = archived
     ? "Archived notes show up here."
-    : activeFolder && !query && !tag
+    : pinnedOnly && !tag
+      ? "Nothing pinned. Pin a note from its menu to keep it here."
+    : activeFolder && !tag
       ? "No notes in this folder yet. They join by themselves when they match."
-      : query || tag || activeFolder
+      : tag || activeFolder
         ? "No notes match."
         : "No notes yet. Start one, or import from Apple Notes, Keep, or a Markdown folder."
 
   const open = (n: NoteSummary) => setSelected({ id: n.id, fresh: false })
   const row = (n: NoteSummary) => (
     <div role="listitem" key={n.id}>
-      <ListRow
+      <EntryRow
         selected={n.id === selected?.id}
         onSelect={() => open(n)}
         title={
           <span className="flex items-center gap-1.5">
-            {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes-text" label="Pinned" />}
-            {(n.locked || isShared(n)) && <Icon name={n.locked ? "lock" : "group"} tone="muted" className="size-4" />}
+            {n.pinned && <Icon name="pin--filled" size="sm" label="Pinned" />}
+            {(n.locked || isShared(n)) && <Icon name={n.locked ? "locked" : "user--multiple"} tone="muted" size="sm" />}
             {n.color && (
               <span
                 aria-hidden
@@ -105,13 +116,13 @@ export function NotesView() {
             <>
               {n.remindAt && (
                 <Icon
-                  name={isDue(n) ? "notifications_active" : "schedule"}
-                  fill={isDue(n)}
-                  className={cn("mr-1 inline size-3.5 align-[-2px]", isDue(n) && "text-vertical-notes-text")}
+                  name={isDue(n) ? "notification--filled" : "time"}
+                  size={14}
+                  className="mr-1 inline align-[-2px]"
                   label={`${isDue(n) ? "Due" : "Reminder"} ${reminderLabel(n.remindAt)}`}
                 />
               )}
-              {n.links.length > 0 && <Icon name="link" className="mr-1 inline size-3.5 align-[-2px]" label={`${n.links.length} linked`} />}
+              {n.links.length > 0 && <Icon name="link" size={14} className="mr-1 inline align-[-2px]" label={`${n.links.length} linked`} />}
               {n.locked ? <span className="italic">Locked</span> : n.snippet || <span className="italic">No more text</span>}
             </>
           ) : undefined
@@ -120,32 +131,45 @@ export function NotesView() {
     </div>
   )
 
+  // What the shell says about this screen (ADR-0083): the folder as the place, and when a note here was last edited.
+  useScreenPlace(placeName)
+  const edited = notes.reduce((latest, n) => Math.max(latest, n.updated), 0)
+  useScreenFact(edited ? `Edited ${factTime(edited)}` : null)
+  useRefresh(refetch)
+  // The page head opens the folders and tags wherever the sidebar does not list them (brief X1).
+  const switching = useSectionSwitcher("Change folder or tag.")
+  const headName = place.folder.kind === "all" ? "Notes" : placeName
+
   return (
     <>
       <MasterDetail
+        section="Notes"
+        pick={vertical("notes").pick}
         listFills={grid || graph}
         detailTint={(() => {
           const c = notes.find((n) => n.id === selected?.id)?.color
           return c ? noteFill(c) : undefined
         })()}
-        emptyIcon="stylus_note"
-        emptyLabel="Open a note, or start a new one."
         onBack={() => setSelected(null)}
         header={
-          <>
-            <PaneHeader title={archived ? "Archive" : (activeFolder?.name ?? "Notes")}>
+          <ScreenHead
+            overline={`${[headName, tag ? `#${tag}` : null].filter(Boolean).join(" // ")} // ${isPending ? "" : formatNavCount(notes.length)}`}
+            title={headName}
+            switcher={switching.switcher}
+            actions={
+              <>
               <IconButton label="Map of notes" render={<Toggle pressed={graph} onPressedChange={(on) => setPrefs.mutate({ graph: on })} />}>
-                <Icon name="hub" className="size-5" />
+                <Icon name="chart--relationship" className="size-5" />
               </IconButton>
               {!graph && (
                 <IconButton label={grid ? "Show as a list" : "Show as cards"} onClick={() => setPrefs.mutate({ grid: !grid })}>
-                  <Icon name={grid ? "view_agenda" : "grid_view"} className="size-5" />
+                  <Icon name={grid ? "show-data--cards" : "grid"} className="size-5" />
                 </IconButton>
               )}
               <Tooltip>
-                <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={SYNC_LABEL[sync.status]} onClick={() => setRelayOpen(true)} />}>
+                <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={SYNC_LABEL[sync.status]} onClick={openSyncSetup} />}>
                   <Icon
-                    name={sync.status === "error" ? "sync_problem" : sync.status === "off" ? "cloud_off" : "cloud_done"}
+                    name={sync.status === "error" ? "warning--alt" : sync.status === "off" ? "cloud--offline" : "cloud"}
                     className={cn("size-5", sync.status === "error" && "text-destructive", sync.status === "connecting" && "animate-pulse")}
                   />
                 </TooltipTrigger>
@@ -153,55 +177,35 @@ export function NotesView() {
               </Tooltip>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="More" />}>
-                  <Icon name="more_vert" className="size-5" />
+                  <Icon name="overflow-menu--horizontal" className="size-5" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => (setArchived(!archived), setSelected(null))}>
-                    <Icon name={archived ? "stylus_note" : "archive"} /> {archived ? "Back to notes" : "Archived notes"}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setOpeningShared(true)}>
-                    <Icon name="group_add" /> Open a shared note…
-                  </DropdownMenuItem>
+                <DropdownMenuContent align="end" width="auto">
                   <DropdownMenuItem onClick={() => setImporting(true)}>
-                    <Icon name="upload_file" /> Import notes…
+                    <Icon name="document--import" /> Import notes…
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void exportAll()}>
                     <Icon name="download" /> Export all as Markdown
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setRelayOpen(true)}>
-                    <Icon name="sync" /> Sync between devices…
+                  <DropdownMenuItem onClick={openSyncSetup}>
+                    <Icon name="renew" /> Sync between devices…
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem checked={prefs?.sortChecked ?? true} onCheckedChange={(on) => setPrefs.mutate({ sortChecked: on })}>
-                    <Icon name="checklist" /> Move checked items down
+                    <Icon name="list--checked" /> Move checked items down
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem checked={prefs?.readImageText ?? true} onCheckedChange={(on) => setPrefs.mutate({ readImageText: on })}>
-                    <Icon name="document_scanner" /> Find text in images
+                    <Icon name="scan--alt" /> Find text in images
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </PaneHeader>
-            <div className="flex flex-col gap-2 px-4 pb-3">
-              <SearchField placeholder={activeFolder ? `Search ${activeFolder.name}` : "Search notes"} value={search} onChange={setSearch} />
-              {!archived && <NoteFolderChips active={activeFolder?.id ?? null} onPick={(id) => (setFolder(id), setSelected(null))} />}
-              {tags.length > 0 && !archived && (
-                <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4" role="group" aria-label="Filter by tag">
-                  {tags.map((t) => (
-                    <Button
-                      key={t.tag}
-                      size="xs"
-                      variant={tag === t.tag ? "secondary" : "ghost"}
-                      aria-pressed={tag === t.tag}
-                      shape="pill"
-                      onClick={() => setTag(tag === t.tag ? null : t.tag)}
-                    >
-                      #{t.tag}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
+              </>
+            }
+            below={
+              <SectionSwitcher state={switching} overline={["Notes", place.folder.kind === "all" ? null : placeName, tag ? `#${tag}` : null].filter(Boolean).join(" // ")} title="Folders">
+                <NotesNav layer more={switching.sheet} />
+              </SectionSwitcher>
+            }
+          />
         }
         list={
           graph ? (
@@ -229,8 +233,9 @@ export function NotesView() {
         detail={selected && <NoteDetailPane key={selected.id} id={selected.id} fresh={selected.fresh} onClosed={() => setSelected(null)} />}
       />
       <ImportDialog open={importing} onOpenChange={setImporting} />
-      <RelayDialog open={relayOpen} onOpenChange={setRelayOpen} />
-      <OpenSharedDialog open={openingShared} onOpenChange={setOpeningShared} />
+      <RelayDialog open={relayOpen} onOpenChange={(o) => !o && closeSyncSetup()} />
+      <OpenSharedDialog open={openingShared} onOpenChange={(o) => !o && closeSharedNote()} />
+      <NoteFolderEditor />
     </>
   )
 }
@@ -267,8 +272,8 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
         {n.cover && !n.locked && <NoteCover id={n.cover} className="-mx-3 -mt-3 mb-1 w-[calc(100%+1.5rem)] max-w-none rounded-t-[calc(var(--c-note-card-radius)-1px)]" />}
         <span className="flex items-start gap-1.5">
           <span className={cn("min-w-0 flex-1 font-semibold break-words", !n.title && "text-muted-foreground")}>{n.title || "New note"}</span>
-          {(n.locked || isShared(n)) && <Icon name={n.locked ? "lock" : "group"} className="size-4 text-foreground/60" label={n.locked ? "Locked" : sharedLabel(n)} />}
-          {n.pinned && <Icon name="keep" fill className="size-4 text-vertical-notes-text" label="Pinned" />}
+          {(n.locked || isShared(n)) && <Icon name={n.locked ? "locked" : "user--multiple"} size="sm" className="text-foreground/60" label={n.locked ? "Locked" : sharedLabel(n)} />}
+          {n.pinned && <Icon name="pin--filled" size="sm" label="Pinned" />}
         </span>
         {n.locked ? (
           <span className="text-sm text-foreground/60 italic">Locked</span>
@@ -279,11 +284,11 @@ function NoteCard({ note: n, due, selected, onOpen }: { note: NoteSummary; due: 
           <span className="flex flex-wrap items-center gap-1 pt-0.5 text-xs text-foreground/70">
             {n.remindAt && (
               <span data-role="note-reminder" className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-foreground/8 px-2 py-0.5", due && "font-medium text-foreground")}>
-                <Icon name={due ? "notifications_active" : "schedule"} fill={due} className="size-3.5" />
+                <Icon name={due ? "notification--filled" : "time"} size={14} />
                 {due ? `Due · ${reminderLabel(n.remindAt)}` : reminderLabel(n.remindAt)}
               </span>
             )}
-            {n.links.length > 0 && <Icon name="link" className="size-3.5" label={`${n.links.length} linked`} />}
+            {n.links.length > 0 && <Icon name="link" size={14} label={`${n.links.length} linked`} />}
             {n.tags.map((t) => (
               <span key={t} className="rounded-full bg-foreground/8 px-2 py-0.5">
                 #{t}

@@ -1,6 +1,5 @@
-import { toast } from "sonner"
 
-import { NativeSelect, NativeSelectOption, Switch, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
+import { NativeSelect, NativeSelectOption, Switch, ToggleGroup, ToggleGroupItem, toast } from "@unicron/ui"
 import { useMailPrefs, useSetMailPrefs } from "@/core/queries"
 import type { MailPrefs } from "@/core/types"
 
@@ -41,8 +40,8 @@ export function AdvancedMail() {
         <h3 id="replies-heading" className="text-sm font-medium">
           Replies
         </h3>
-        <Toggle id="reply-quote" title="Include the message you're replying to" hint="Quoted below an “On … wrote:” line." checked={prefs.quote} onChange={(quote) => change({ quote })} />
-        <Toggle
+        <PrefSwitch id="reply-quote" title="Include the message you're replying to" hint="Quoted below an “On … wrote:” line." checked={prefs.quote} onChange={(quote) => change({ quote })} />
+        <PrefSwitch
           id="reply-below"
           title="Write below the quote"
           hint="The way mailing lists prefer it. Off: you write above, as most mail apps do."
@@ -56,7 +55,7 @@ export function AdvancedMail() {
         <h3 id="receipts-heading" className="text-sm font-medium">
           Read receipts
         </h3>
-        <Toggle
+        <PrefSwitch
           id="request-receipts"
           title="Ask for a read receipt on everything I send"
           hint="Whether one comes back is up to the other person's app. You can still change it per message, in the composer. Vale never sends receipts for mail you read."
@@ -103,7 +102,7 @@ function Choice<T extends string>({ id, title, value, options, onChange }: { id:
   )
 }
 
-function Toggle({ id, title, hint, checked, disabled, onChange }: { id: string; title: string; hint: string; checked: boolean; disabled?: boolean; onChange: (on: boolean) => void }) {
+function PrefSwitch({ id, title, hint, checked, disabled, onChange }: { id: string; title: string; hint: string; checked: boolean; disabled?: boolean; onChange: (on: boolean) => void }) {
   return (
     <div className="flex items-start gap-3">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">

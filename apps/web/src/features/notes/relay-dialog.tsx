@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import {
   Icon,
@@ -84,7 +84,7 @@ function RelayForm({ onDone }: { onDone: () => void }) {
 
       {relay && (
         <p className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm" role="status">
-          <Icon name={status.status === "error" ? "sync_problem" : "cloud_done"} className="size-4" />
+          <Icon name={status.status === "error" ? "warning--alt" : "cloud"} size="sm" />
           {status.status === "synced" ? "Connected and up to date" : status.status === "error" ? status.error : "Connecting…"}
         </p>
       )}
@@ -128,7 +128,7 @@ function RelayForm({ onDone }: { onDone: () => void }) {
           />
           {relay && !relay.key && !needsKey && (
             <p className="flex gap-2 text-xs text-muted-foreground">
-              <Icon name="info" className="mt-0.5 size-4" />
+              <Icon name="information" size="sm" className="mt-0.5" />
               <span>
                 The relay can read your notes: they're encrypted on the way, not end to end.{" "}
                 <Button type="button" variant="link" size="inline" onClick={() => setEncrypting(true)}>
@@ -206,19 +206,19 @@ function TurnOnEncryption({ relay, onBack, save }: { relay: RelayConfig; onBack:
       <ul className="flex flex-col gap-2 text-sm">
         <li className="flex gap-2">
           <span className="mt-0.5 shrink-0 [&>svg]:size-4">
-            <Icon name="key" tone="muted" />
+            <Icon name="password" tone="muted" />
           </span>
           You'll get a key. Each of your other devices needs it to keep syncing, so copy it there.
         </li>
         <li className="flex gap-2">
           <span className="mt-0.5 shrink-0 [&>svg]:size-4">
-            <Icon name="link_off" tone="muted" />
+            <Icon name="unlink" tone="muted" />
           </span>
           Notes and conversations you've shared stop working. Share them again for a link that's encrypted too.
         </li>
         <li className="flex gap-2">
           <span className="mt-0.5 shrink-0 [&>svg]:size-4">
-            <Icon name="delete" tone="muted" />
+            <Icon name="trash-can" tone="muted" />
           </span>
           The relay deletes the readable copies it has. It can't go back to readable sync.
         </li>

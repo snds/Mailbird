@@ -1,4 +1,4 @@
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useMailAction } from "@/core/queries"
 import type { MessageSummary } from "@/core/types"
@@ -43,7 +43,8 @@ export function useTriage(onLeave: () => void) {
           onError: fail,
           onSuccess: () => {
             onLeave()
-            toast(`Snoozed until ${label.toLowerCase()}`, {
+            // A preset's name reads in lower case ("tomorrow"); a picked date and time keeps its capitals ("Fri, Nov 13, 11:00 AM").
+            toast(`Snoozed until ${/\d/.test(label) ? label : label.toLowerCase()}`, {
               action: { label: "Undo", onClick: () => unsnooze.mutate({ threadId: m.threadId }) },
             })
           },

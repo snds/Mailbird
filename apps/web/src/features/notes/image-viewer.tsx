@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
 
-import { Button, IconButton, Sheet, SheetContent, SheetDescription, SheetTitle, Spinner } from "@unicron/ui"
+import { Button, IconButton, Sheet, SheetContent, SheetDescription, SheetTitle, Spinner, toast } from "@unicron/ui"
 import { getCoreClient, isTauri } from "@/core/client"
 import { useNoteFile } from "@/core/queries"
 import { SVG_MIME } from "@/lib/sketch"
@@ -100,10 +99,10 @@ function Viewer({ images, at }: { images: ViewerImage[]; at: number }) {
         {images.length > 1 && (
           <>
             <span className="absolute top-1/2 left-2 -translate-y-1/2">
-              <IconButton icon="chevron_left" label="Previous image" variant="secondary" onClick={() => go(at - 1)} />
+              <IconButton icon="chevron--left" label="Previous image" variant="secondary" onClick={() => go(at - 1)} />
             </span>
             <span className="absolute top-1/2 right-2 -translate-y-1/2">
-              <IconButton icon="chevron_right" label="Next image" variant="secondary" onClick={() => go(at + 1)} />
+              <IconButton icon="chevron--right" label="Next image" variant="secondary" onClick={() => go(at + 1)} />
             </span>
           </>
         )}

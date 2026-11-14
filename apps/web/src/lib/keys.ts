@@ -10,6 +10,12 @@ export interface KeyCommand {
   area: KeyArea
   does: string
   default: string
+  /**
+   * The key works in every section, not only its own (ADR-0085). Its id and
+   * area stay as the core keeps them; the lists show it under "Everywhere",
+   * and no other command in any area may share its key.
+   */
+  everywhere?: boolean
 }
 
 export const KEY_COMMANDS: KeyCommand[] = [
@@ -23,7 +29,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
   { id: "mail.remind", area: "mail", does: "Remind me in 3 days if nobody replies", default: "" },
   { id: "mail.newsletters", area: "mail", does: "Always in Newsletters", default: "" },
   { id: "mail.compose", area: "mail", does: "Write a message", default: "c" },
-  { id: "mail.search", area: "mail", does: "Search mail", default: "/" },
+  { id: "mail.search", area: "mail", does: "Search", default: "/", everywhere: true },
   { id: "calendar.today", area: "calendar", does: "Go to today", default: "t" },
   { id: "calendar.day", area: "calendar", does: "Day view", default: "d" },
   { id: "calendar.week", area: "calendar", does: "Week view", default: "w" },
@@ -81,6 +87,12 @@ export function keyProblem(key: string): string | null {
   return `“${key}” can't be a shortcut: use one key (Shift is fine)`
 }
 
+/** Where a command is listed: its own area, or "everywhere" for one that works in every section. */
+export const listedUnder = (c: KeyCommand): KeyArea | "everywhere" => (c.everywhere ? "everywhere" : c.area)
+
+/** The key that opens Search from every section ("" for none). */
+export const searchKey = (bindings: KeyBindings | undefined): string => (bindings ?? DEFAULT_KEYS)["mail.search"] ?? ""
+
 /** Which command `key` does in `area`, if any. */
 export function commandFor(bindings: KeyBindings | undefined, area: KeyArea, key: string): string | undefined {
   const keys = bindings ?? DEFAULT_KEYS
@@ -99,11 +111,13 @@ export function mergedKeys(saved: KeyBindings): KeyBindings {
 
 /**
  * Sets `id` to `key`. If another command in the area has that key, it
- * takes `id`'s old one (a swap), so nothing is lost silently.
+ * takes `id`'s old one (a swap), so nothing is lost silently. A command that
+ * works everywhere shares every area, so it swaps with any of them.
  */
 export function rebind(bindings: KeyBindings, id: string, key: string): { next: KeyBindings; swapped?: KeyCommand } {
   const area = id.split(".")[0] as KeyArea
-  const other = KEY_COMMANDS.find((c) => c.id !== id && c.area === area && key !== "" && bindings[c.id] === key)
+  const everywhere = KEY_COMMANDS.find((c) => c.id === id)?.everywhere
+  const other = KEY_COMMANDS.find((c) => c.id !== id && (c.area === area || c.everywhere || everywhere) && key !== "" && bindings[c.id] === key)
   const next = { ...bindings, [id]: key }
   if (other) next[other.id] = bindings[id] ?? ""
   return { next, swapped: other }

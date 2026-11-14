@@ -29,10 +29,10 @@ export function LinkedNotes({ target, title }: { target: NoteTarget; title: stri
         <span className="flex items-center">
           {/* Stays here: a sheet, saved on close (ADR-0037). New note opens the full editor in Notes. */}
           <Button variant="ghost" size="icon-sm" aria-label="Quick note" onClick={() => openQuickNote({ ...target, label: title })}>
-            <Icon name="edit_note" />
+            <Icon name="edit" />
           </Button>
           <Button variant="ghost" size="sm" onClick={() => void start()}>
-            <Icon name="note_add" data-icon="inline-start" /> New note
+            <Icon name="notebook" data-icon="inline-start" /> New note
           </Button>
         </span>
       </div>
@@ -44,7 +44,7 @@ export function LinkedNotes({ target, title }: { target: NoteTarget; title: stri
             <li key={n.id}>
               <Item size="xs" render={<button type="button" onClick={() => jumpTo({ kind: "note", id: n.id })} />}>
                 <ItemMedia>
-                  <Icon name="stylus_note" className="text-vertical-notes-text" />
+                  <Icon name="notebook" />
                 </ItemMedia>
                 <ItemContent>
                   <span className="truncate">{n.title || "New note"}</span>

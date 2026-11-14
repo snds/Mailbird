@@ -1,11 +1,12 @@
 import { useEffect } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useUi } from "@/app/ui-store"
 import { useCore } from "@/core/queries"
 import type { DueReminder } from "@/core/types"
 
 import { fmt } from "./dates"
+import { markMissedRaised, openMissed, setMissedReminders, useMissedReminders } from "./missed-reminders"
 
 // Taken once per page load, so a remount (or React's dev double-run) can't lose them.
 let missedOnce: Promise<DueReminder[]> | null = null
@@ -29,8 +30,9 @@ export function ReminderWatcher() {
         toast(missed ? `Missed: ${title}` : title, {
           id: `reminder-note-${id}-${r.fireAt}`,
           description: "From your notes",
+          // A missed one stays until its action is pressed (or it is swiped away): unicron's
+          // toast has one action and no close button.
           duration: missed ? Infinity : 15_000,
-          closeButton: missed,
           action: { label: "Open", onClick: () => jumpTo({ kind: "note", id }) },
         })
         return
@@ -54,12 +56,24 @@ export function ReminderWatcher() {
         id: `reminder-${r.eventId}-${r.fireAt}`,
         description: r.location ? `${lead} · ${r.location}` : lead,
         duration: missed ? Infinity : 15_000,
-        closeButton: missed,
+        // A missed one stays until closed; pressing a toast's action closes it.
+        action: missed ? { label: "Dismiss", onClick: () => {} } : undefined,
       })
     }
     let live = true
-    missedOnce ??= core.takeMissedReminders().catch(() => [])
-    void missedOnce.then((list) => live && list.forEach((r) => show(r, true)))
+    // Kept for the session, for the Missed list (ADR-0086): the core hands each over once.
+    missedOnce ??= core
+      .takeMissedReminders()
+      .catch(() => [])
+      .then((list) => (setMissedReminders(list), list))
+    void missedOnce.then((list) => {
+      if (!live) return
+      // Several missed reminders are one notice and a list, not a pile of toasts (brief X5). It stays until SEE.
+      if (list.length < 2) return list.forEach((r) => show(r, true))
+      if (useMissedReminders.getState().raised) return
+      markMissedRaised()
+      toast(`${list.length} reminders came due while Vale was closed`, { id: "reminders-missed", duration: Infinity, action: { label: "See", onClick: openMissed } })
+    })
     const off = core.on("reminder", (payload) => show(payload as DueReminder))
     return () => {
       live = false

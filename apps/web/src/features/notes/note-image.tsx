@@ -1,8 +1,7 @@
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, toast } from "@unicron/ui"
 import { useNoteFile } from "@/core/queries"
 import { fromSvg, SVG_MIME } from "@/lib/sketch"
 import { cn } from "@/lib/utils"
@@ -76,12 +75,12 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
 
   let body: React.ReactNode
   if (id && file.isPending) {
-    body = <span className="block aspect-video w-72 max-w-full animate-pulse rounded-lg bg-muted" role="img" aria-label={alt || "Image"} aria-busy="true" />
+    body = <span className="block aspect-video w-72 max-w-full animate-pulse rounded-lg bg-accent" role="img" aria-label={alt || "Image"} aria-busy="true" />
   } else if (id && (file.isError || broken)) {
     const locked = file.error instanceof Error && /passphrase/i.test(file.error.message)
     body = (
       <span className={frame} role="img" aria-label={alt || "Image"}>
-        <Icon name={locked ? "lock" : "hide_image"} className="size-5" />
+        <Icon name={locked ? "locked" : "no-image"} />
         {locked ? "Unlock notes to see this image" : "This image isn't on this device yet"}
       </span>
     )
@@ -94,7 +93,7 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
     }
     body = (
       <span className={frame}>
-        <Icon name="image" className="size-5" />
+        <Icon name="image" />
         <span className="min-w-0 truncate">{alt || "Web image"}</span>
         <Button type="button" size="xs" variant="outline" onClick={() => setAllowWeb(true)}>
           Show from {host || "the web"}
@@ -119,7 +118,7 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
   } else {
     body = (
       <span className={frame} role="img" aria-label={alt || "Image"}>
-        <Icon name="hide_image" className="size-5" />
+        <Icon name="no-image" />
         {alt || "Image"}
       </span>
     )
@@ -133,17 +132,17 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
         <span className="flex flex-wrap items-center gap-1.5" contentEditable={false}>
           {id && local && (
             <Button type="button" size="xs" variant="outline" onClick={view}>
-              <Icon name="fullscreen" data-icon="inline-start" /> View
+              <Icon name="maximize" data-icon="inline-start" /> View
             </Button>
           )}
           {sketch && editor.isEditable && (
             <Button type="button" size="xs" variant="outline" onClick={() => void editSketch()}>
-              <Icon name="draw" data-icon="inline-start" /> Edit sketch
+              <Icon name="pen" data-icon="inline-start" /> Edit sketch
             </Button>
           )}
           {found && editor.isEditable && (
             <Button type="button" size="xs" variant="outline" aria-expanded={showText} onClick={() => setShowText((v) => !v)}>
-              <Icon name="document_scanner" data-icon="inline-start" /> Text in image
+              <Icon name="scan--alt" data-icon="inline-start" /> Text in image
             </Button>
           )}
         </span>
@@ -156,10 +155,10 @@ export function NoteImageView({ node, selected, updateAttributes, editor, getPos
               Close
             </Button>
             <Button type="button" size="xs" variant="outline" onClick={() => void copyText()}>
-              <Icon name="content_copy" data-icon="inline-start" /> Copy
+              <Icon name="copy" data-icon="inline-start" /> Copy
             </Button>
             <Button type="button" size="xs" variant="secondary" onClick={insertText}>
-              <Icon name="text_fields" data-icon="inline-start" /> Add to note
+              <Icon name="text--creation" data-icon="inline-start" /> Add to note
             </Button>
           </span>
         </span>

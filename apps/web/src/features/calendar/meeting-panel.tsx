@@ -1,6 +1,5 @@
-import { toast } from "sonner"
 
-import { Icon, Button, buttonVariants } from "@unicron/ui"
+import { Icon, Button, buttonVariants, toast } from "@unicron/ui"
 import { useCore } from "@/core/queries"
 import type { ManageLink, MeetingInfo } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -55,7 +54,7 @@ export function MeetingPanel({ meeting, manage, compact = false }: { meeting: Me
               <dt className="text-muted-foreground">Meeting ID</dt>
               <dd className="font-medium tabular-nums">{meeting.meetingId}</dd>
               <Button variant="ghost" size="icon-xs" aria-label="Copy meeting ID" onClick={() => void copy("Meeting ID", meeting.meetingId!.replace(/\s/g, ""))}>
-                <Icon name="content_copy" />
+                <Icon name="copy" />
               </Button>
             </div>
           )}
@@ -64,7 +63,7 @@ export function MeetingPanel({ meeting, manage, compact = false }: { meeting: Me
               <dt className="text-muted-foreground">Passcode</dt>
               <dd className="font-medium tabular-nums">{meeting.passcode}</dd>
               <Button variant="ghost" size="icon-xs" aria-label="Copy passcode" onClick={() => void copy("Passcode", meeting.passcode!)}>
-                <Icon name="content_copy" />
+                <Icon name="copy" />
               </Button>
             </div>
           )}
@@ -75,7 +74,7 @@ export function MeetingPanel({ meeting, manage, compact = false }: { meeting: Me
           <span className="text-muted-foreground">Call in</span>
           {meeting.dialIn.slice(0, compact ? 1 : 2).map((d) => (
             <a key={d.tel} href={d.tel} className={buttonVariants({ size: "xs", variant: "outline" })} aria-label={`Call in on ${pretty(d.number)}${d.label ? `, ${d.label}` : ""}`}>
-              <Icon name="call" data-icon="inline-start" /> {pretty(d.number)}
+              <Icon name="phone" data-icon="inline-start" /> {pretty(d.number)}
               {d.label && <span className="text-muted-foreground">{d.label}</span>}
             </a>
           ))}
@@ -86,7 +85,7 @@ export function MeetingPanel({ meeting, manage, compact = false }: { meeting: Me
           <span className="text-muted-foreground">Booked with {manage[0]!.tool}</span>
           {manage.map((m) => (
             <a key={m.url} href={m.url} target="_blank" rel="noreferrer" onClick={open(m.url)} className={buttonVariants({ size: "xs", variant: "outline" })}>
-              <Icon name={m.action === "cancel" ? "event_busy" : "edit_calendar"} data-icon="inline-start" /> {ACTION[m.action] ?? "Change booking"}
+              <Icon name={m.action === "cancel" ? "close--outline" : "event--schedule"} data-icon="inline-start" /> {ACTION[m.action] ?? "Change booking"}
             </a>
           ))}
         </div>

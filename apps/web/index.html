@@ -1,13 +1,14 @@
 <!doctype html>
-<html lang="en">
+<!-- data-theme picks the app's colors in unicron; next-themes adds the `dark` class for
+     graphite and leaves it off for stone (ADR-0082). -->
+<html lang="en" data-theme="vale">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!-- viewport-fit=cover lets env(safe-area-inset-*) work on notched phones;
          interactive-widget makes Android resize the page for the keyboard (iOS: see keyboard-inset.ts) -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)" />
+    <!-- theme-color is set at run time from the page's ground color (src/lib/theme-color.ts). -->
     <title>Vale</title>
   </head>
   <body>

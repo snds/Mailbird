@@ -1,7 +1,6 @@
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Avatar, AvatarFallback, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Skeleton } from "@unicron/ui"
+import { Icon, type IconName, Avatar, AvatarFallback, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Skeleton, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useEvent, usePimAction } from "@/core/queries"
 import type { Collection, EditScope, EventDetail as Detail, Repeat } from "@/core/types"
@@ -30,16 +29,16 @@ const REPEAT_TEXT: Record<Repeat, string | null> = {
 }
 
 const STATUS: Record<string, { label: string; icon: IconName }> = {
-  accepted: { label: "Going", icon: "check_circle" },
-  declined: { label: "Not going", icon: "cancel" },
+  accepted: { label: "Going", icon: "checkmark--outline" },
+  declined: { label: "Not going", icon: "close--outline" },
   tentative: { label: "Maybe", icon: "help" },
-  "needs-action": { label: "No reply", icon: "schedule" },
+  "needs-action": { label: "No reply", icon: "time" },
 }
 
 function Row({ icon, children }: { icon: IconName; children: React.ReactNode }) {
   return (
     <div className="flex gap-3 text-sm">
-      <Icon name={icon} tone="muted" className="mt-0.5 size-5" />
+      <Icon name={icon} tone="muted" className="mt-0.5" />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   )
@@ -125,7 +124,7 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
               <DropdownMenuTrigger render={<Button variant="outline" />}>
                 <Icon name="edit" data-icon="inline-start" /> Edit
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="start" width="fit">
                 <DropdownMenuItem onClick={() => void edit("this")}>This event only</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void edit("following")}>This and following events</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void edit("all")}>All events in the series</DropdownMenuItem>
@@ -139,9 +138,9 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
           {e.recurring ? (
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="outline" disabled={remove.isPending} />}>
-                <Icon name="delete" data-icon="inline-start" /> Delete
+                <Icon name="trash-can" data-icon="inline-start" /> Delete
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="start" width="fit">
                 <DropdownMenuItem onClick={() => void del("this")}>Delete this event only</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void del("following")}>Delete this and following events</DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => void del("all")}>
@@ -151,61 +150,61 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
             </DropdownMenu>
           ) : (
             <Button variant="outline" onClick={() => void del("all")} disabled={remove.isPending}>
-              <Icon name="delete" data-icon="inline-start" /> Delete
+              <Icon name="trash-can" data-icon="inline-start" /> Delete
             </Button>
           )}
         </div>
       ) : (
         <p className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
-          <Icon name="lock" className="size-4" /> “{cal?.name ?? "This calendar"}” is read-only.
+          <Icon name="locked" size="sm" /> “{cal?.name ?? "This calendar"}” is read-only.
         </p>
       )}
 
       <div className="flex flex-col gap-4">
         {repeat && <Row icon="repeat">{repeat}</Row>}
         {e.reminders.length > 0 && (
-          <Row icon="notifications">
+          <Row icon="notification">
             <span aria-label="Reminders">{e.reminders.map((m) => reminderLabel(m, e.allDay)).join(", ")}</span>
           </Row>
         )}
         {e.location && (
-          <Row icon="location_on">
+          <Row icon="location">
             <span className="break-words">{placeLabel(e)}</span>
           </Row>
         )}
         {e.travel && !e.allDay ? (
-          <Row icon="directions_car">
+          <Row icon="car">
             <span data-slot="travel">
               {travelLabel(e.travel)} travel · leave by {fmt.time(e.start - e.travel * 60)}
             </span>
           </Row>
         ) : null}
         {e.timeZone && e.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone && (
-          <Row icon="public">
+          <Row icon="earth">
             <span data-slot="zone">
               Scheduled in {zoneCity(e.timeZone)} time: {theirTime(e.start, e.timeZone)}–{theirTime(e.end, e.timeZone)} {zoneAbbr(e.timeZone, fromSecs(e.start))}
             </span>
           </Row>
         )}
-        <Row icon="calendar_month">
+        <Row icon="calendar">
           {cal?.name ?? "Calendar"}
           {account && account.displayName !== cal?.name && <span className="text-muted-foreground"> · {account.displayName}</span>}
           {!cal?.accountId && <span className="text-muted-foreground"> · not synced</span>}
         </Row>
         {safeUrl(e.url) && (
           <Row icon="link">
-            <a href={safeUrl(e.url)!} target="_blank" rel="noreferrer noopener" className="break-all text-primary hover:underline">
+            <a href={safeUrl(e.url)!} target="_blank" rel="noreferrer noopener" className="break-all text-primary-text hover:underline">
               {e.url}
             </a>
           </Row>
         )}
         {e.notes && (
-          <Row icon="notes">
+          <Row icon="text--long-paragraph">
             <p className="leading-relaxed break-words whitespace-pre-line">{e.notes}</p>
           </Row>
         )}
         {(e.attendees.length > 0 || e.organizer) && (
-          <Row icon="group">
+          <Row icon="user--multiple">
             <ul className="flex flex-col gap-2" aria-label="People">
               {e.organizer && !e.attendees.some((a) => a.email === e.organizer!.email) && (
                 <li className="flex items-center gap-2">
@@ -229,7 +228,7 @@ export function EventDetailPane({ eventId, start, calendars, onDeleted }: { even
                     </span>
                     {st && (
                       <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                        <Icon name={st.icon} className="size-3.5" /> {st.label}
+                        <Icon name={st.icon} size={14} /> {st.label}
                       </span>
                     )}
                   </li>

@@ -1,17 +1,16 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Field, FieldDescription, FieldLabel, Icon, type IconName, Input, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption, Spinner } from "@unicron/ui"
+import { Button, Field, FieldDescription, FieldLabel, Icon, type IconName, Input, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption, Spinner, toast } from "@unicron/ui"
 import { useAiModels, useAiSettings, useCore, useSetAiKey, useSetAiPrefs } from "@/core/queries"
 import type { AiEndpoint, AiPrefs, AiProvider, AiSettings } from "@/core/types"
 
 /** What each choice means, in the words the dialog uses. `remote`: the gateway, where "this computer" is the server. */
 function choices(remote: boolean): { value: AiProvider; icon: IconName; title: string; hint: string }[] {
   return [
-    { value: "off", icon: "block", title: "Off", hint: "Vale never sends your mail to a model." },
+    { value: "off", icon: "error", title: "Off", hint: "Vale never sends your mail to a model." },
     remote
-      ? { value: "local", icon: "dns", title: "On your own server", hint: "Ollama or similar, beside your gateway. Mail stays on your machines." }
-      : { value: "local", icon: "computer", title: "On this computer", hint: "Ollama, LM Studio, or similar. Your mail stays on this computer." },
+      ? { value: "local", icon: "bare-metal-server", title: "On your own server", hint: "Ollama or similar, beside your gateway. Mail stays on your machines." }
+      : { value: "local", icon: "laptop", title: "On this computer", hint: "Ollama, LM Studio, or similar. Your mail stays on this computer." },
     { value: "anthropic", icon: "cloud", title: "Claude, with your API key", hint: "Anthropic's models. What you ask about goes to Anthropic." },
     { value: "compatible", icon: "api", title: "Another service, with your API key", hint: "Any OpenAI-style API. What you ask about goes there." },
   ]
@@ -52,7 +51,7 @@ export function AiSettingsForm() {
               {/* Hover and chosen share a background, so the chosen one also carries a check. */}
               {prefs.provider === o.value && (
                 <ItemActions>
-                  <Icon name="check_circle" fill />
+                  <Icon name="checkmark--filled" />
                 </ItemActions>
               )}
             </Item>
@@ -66,7 +65,7 @@ export function AiSettingsForm() {
 
       {prefs.provider !== "off" && (
         <p className="flex gap-2 text-xs text-muted-foreground [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0">
-          <Icon name="info" />
+          <Icon name="information" />
           What's sent: the text of the one conversation you ask about, newest messages first. Never attachments, images, or other mail, and nothing is sent on its own.
         </p>
       )}
@@ -145,8 +144,8 @@ function KeyField({ provider, saved }: { provider: "anthropic" | "compatible"; s
       <Field>
         <FieldLabel>API key</FieldLabel>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm [&_svg]:size-4 [&_svg]:text-vertical-mail-text">
-            <Icon name="key" /> Saved in {where}
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm [&_svg]:size-4 [&_svg]:text-muted-foreground">
+            <Icon name="password" /> Saved in {where}
           </span>
           <Button variant="outline" size="sm" onClick={() => setReplacing(true)}>
             Replace
@@ -201,7 +200,7 @@ function ModelPicker({ provider, url, model, onPick, empty }: { provider: AiProv
   if (models.isPending) {
     return (
       <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner /> Checking the connection…
+        <Spinner aria-hidden /> Checking the connection…
       </p>
     )
   }
@@ -210,7 +209,7 @@ function ModelPicker({ provider, url, model, onPick, empty }: { provider: AiProv
     return (
       <div className="flex flex-col gap-3">
         <p role="alert" className="flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-destructive">
-          <Icon name="error" />
+          <Icon name="warning" />
           <span className="min-w-0 flex-1">{models.error.message}</span>
           <Button variant="outline" size="xs" onClick={() => void models.refetch()}>
             Try again

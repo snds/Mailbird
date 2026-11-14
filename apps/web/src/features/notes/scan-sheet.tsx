@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, IconButton, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
+import { Icon, Button, IconButton, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, ToggleGroup, ToggleGroupItem, toast } from "@unicron/ui"
 import { findPage, FULL, loadPhoto, type Pt, type Quad, type ScanLook, straighten, toJpeg } from "@/lib/scan"
 import { IMAGE_SIDE } from "@/lib/image"
 
@@ -85,7 +84,8 @@ function Scanner({ onDone }: { onDone: (pages: File[]) => void }) {
 
   return (
     <>
-      <div className="flex flex-col gap-1">
+      {/* Clear of the sheet's close button, top right (48px in unicron 1.0). */}
+      <div className="flex flex-col gap-1 pr-14">
         <SheetTitle>{pages.length ? `Scan a document · page ${pages.length + 1}` : "Scan a document"}</SheetTitle>
         <SheetDescription>
           {step === "pick" &&
@@ -99,7 +99,7 @@ function Scanner({ onDone }: { onDone: (pages: File[]) => void }) {
       {step === "pick" && pages.length > 0 && (
         <div className="mt-auto flex justify-end pt-1 max-sm:pr-14">
           <Button type="button" disabled={busy} onClick={() => void add()}>
-            <Icon name="add_photo_alternate" data-icon="inline-start" /> Add {pages.length === 1 ? "1 page" : `${pages.length} pages`} to note
+            <Icon name="image" data-icon="inline-start" /> Add {pages.length === 1 ? "1 page" : `${pages.length} pages`} to note
           </Button>
         </div>
       )}
@@ -125,7 +125,7 @@ function Scanner({ onDone }: { onDone: (pages: File[]) => void }) {
                 <Icon name="add" data-icon="inline-start" /> Next page
               </Button>
               <Button type="button" disabled={busy} onClick={() => void add()}>
-                <Icon name="add_photo_alternate" data-icon="inline-start" /> {total > 1 ? `Add ${total} pages to note` : "Add to note"}
+                <Icon name="image" data-icon="inline-start" /> {total > 1 ? `Add ${total} pages to note` : "Add to note"}
               </Button>
             </>
           )}
@@ -152,17 +152,17 @@ function PageStrip({ pages, onRemove }: { pages: Page[]; onRemove: (i: number) =
 }
 
 function PickPhoto({ onPick }: { onPick: (f: File | undefined) => void }) {
-  const tile = "flex flex-1 flex-col items-center gap-2 rounded-xl border p-5 text-sm font-medium hover:bg-muted focus-within:ring-2 focus-within:ring-ring"
+  const tile = "flex flex-1 flex-col items-center gap-2 rounded-xl border p-5 text-sm font-medium hover:bg-state-hover focus-within:ring-2 focus-within:ring-ring"
   return (
     <div className="flex gap-3">
       {/* On phones, `capture` opens the back camera; elsewhere it's an ordinary file picker. */}
       <label className={tile}>
-        <Icon name="photo_camera" className="size-7 text-vertical-notes-text" />
+        <Icon name="camera" size={28} />
         Take a photo
         <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => onPick(e.target.files?.[0])} />
       </label>
       <label className={tile}>
-        <Icon name="image" className="size-7 text-vertical-notes-text" />
+        <Icon name="image" size={28} />
         Choose an image
         <input type="file" accept="image/*" className="sr-only" onChange={(e) => onPick(e.target.files?.[0])} />
       </label>
@@ -236,7 +236,7 @@ function Preview({ photo, quad, look, onLook }: { photo: HTMLCanvasElement; quad
       {url ? (
         <img src={url} alt="The scanned page" className="max-h-[46dvh] max-w-full rounded-md border object-contain" />
       ) : (
-        <span className="block aspect-[3/4] h-[46dvh] max-w-full animate-pulse rounded-md bg-muted" aria-hidden />
+        <span className="block aspect-[3/4] h-[46dvh] max-w-full animate-pulse rounded-md bg-accent" aria-hidden />
       )}
     </div>
   )

@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, Icon, Input } from "@unicron/ui"
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, Icon, Input, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useNotesRelay, useThreadShare } from "@/core/queries"
 
@@ -81,7 +80,7 @@ function ShareThreadForm({ threadId, subject, onDone }: { threadId: string; subj
           </Field>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => void copy()} disabled={!link}>
-              <Icon name="content_copy" data-icon="inline-start" /> Copy link
+              <Icon name="copy" data-icon="inline-start" /> Copy link
             </Button>
             <Button
               variant="outline"
@@ -93,14 +92,14 @@ function ShareThreadForm({ threadId, subject, onDone }: { threadId: string; subj
                 openComposer({ subject: `Can you help with “${subject}”?`, body: `I shared a conversation with you, so we can write the reply together: “${subject}”.\n\nOpen it in Vale: ${link}\n` })
               }}
             >
-              <Icon name="mail" data-icon="inline-start" /> Email it
+              <Icon name="email" data-icon="inline-start" /> Email it
             </Button>
           </div>
         </>
       ) : null}
 
       <p className="flex gap-2 text-xs text-muted-foreground [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0">
-        <Icon name="info" />
+        <Icon name="information" />
         Teammates get the text of each message, not attachments or images. Your relay can read it, as it can read your notes.
       </p>
 

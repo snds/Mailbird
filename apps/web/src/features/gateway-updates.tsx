@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Icon, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, Switch } from "@unicron/ui"
+import { Button, Icon, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, Switch, toast } from "@unicron/ui"
+import { setServerUpdating } from "@/app/live-status"
 import { type GatewayUpdates, checkGatewayUpdates, gatewayUpdates, peekGatewayUpdates, reloadGateway, setGatewayAutoCheck, updateGateway } from "@/core/client"
 
 const KEY = ["gateway-updates"]
@@ -35,6 +35,11 @@ export function GatewayUpdatesSection() {
   const [error, setError] = useState<string | null>(null)
   const [following, setFollowing] = useState<Following | null>(null)
   const followFrom = following && !following.ended ? following.from : null
+  // While the gateway restarts, the shell's live status says so on every screen (ADR-0086).
+  useEffect(() => {
+    setServerUpdating(followFrom !== null)
+    return () => setServerUpdating(false)
+  }, [followFrom])
 
   // While an Update or Reload runs, look every two seconds. The gateway goes
   // away (a failed request), then comes back asking for a sign-in (sign-ins
@@ -123,8 +128,8 @@ export function GatewayUpdatesSection() {
       </p>
       {status.enabled && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" disabled={busy || status.state === "checking"} onClick={() => void run(checkGatewayUpdates)}>
-            <Icon name={busy ? "progress_activity" : "refresh"} data-icon="inline-start" />
+          <Button size="sm" variant="outline" loading={busy} disabled={status.state === "checking"} onClick={() => void run(checkGatewayUpdates)}>
+            <Icon name="renew" data-icon="inline-start" />
             Check for updates
           </Button>
         </div>
@@ -163,13 +168,13 @@ export function GatewayUpdatesSection() {
           <div className="flex flex-wrap items-center gap-2">
             {status.canUpdate && status.offered && (
               <Button size="sm" disabled={busy || waiting} onClick={() => void restart(() => updateGateway(status.offered as string))}>
-                <Icon name="system_update_alt" data-icon="inline-start" />
+                <Icon name="download" data-icon="inline-start" />
                 Update to {status.offered}
               </Button>
             )}
             {status.canReload && (
               <Button size="sm" variant="outline" disabled={busy || waiting} onClick={() => void restart(reloadGateway)}>
-                <Icon name="restart_alt" data-icon="inline-start" />
+                <Icon name="restart" data-icon="inline-start" />
                 Reload
               </Button>
             )}
@@ -236,7 +241,7 @@ function UpdateCommand({ status, command }: { status: GatewayUpdates; command: s
         <InputGroupInput aria-label="Update command" readOnly value={command} onFocus={(e) => e.target.select()} />
         <InputGroupAddon align="inline-end">
           <InputGroupButton size="icon-xs" aria-label="Copy command" onClick={() => void copy()}>
-            <Icon name="content_copy" />
+            <Icon name="copy" />
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
@@ -246,7 +251,7 @@ function UpdateCommand({ status, command }: { status: GatewayUpdates; command: s
       </p>
       <div>
         <Button size="sm" variant="ghost" render={<a href={status.page} target="_blank" rel="noopener noreferrer" />}>
-          <Icon name="open_in_new" data-icon="inline-start" />
+          <Icon name="launch" data-icon="inline-start" />
           See the build on GitHub
         </Button>
       </div>

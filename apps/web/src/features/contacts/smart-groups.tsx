@@ -1,57 +1,36 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Switch, DialogAction, DialogActions } from "@unicron/ui"
-import { useContactLabels, usePimAction, useSmartGroups } from "@/core/queries"
+import { useUi } from "@/app/ui-store"
+import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { Button, Switch, Toggle, toast } from "@unicron/ui"
+import { useContactLabels, usePimAction } from "@/core/queries"
 import type { SmartGroup, SmartGroupInput } from "@/core/types"
+import { useLeaveGuard } from "@/lib/leave-guard"
+
+import { useSmartGroupEditor } from "./open-smart-group"
 
 const fail = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e))
 
-/** Smart groups as chips: each keeps its own members by rule (ADR-0023). */
-export function SmartGroupChips({ active, onPick }: { active: string | null; onPick: (id: string | null) => void }) {
-  const { data: groups = [] } = useSmartGroups()
-  const [editing, setEditing] = useState<{ group?: SmartGroup } | null>(null)
-  const current = groups.find((g) => g.id === active)
+/**
+ * Smart groups keep their own members by rule (ADR-0023). Contacts mounts
+ * this; a saved group becomes the place, a deleted one gives way to everyone.
+ */
+export function SmartGroupEditor() {
+  const editing = useSmartGroupEditor((s) => s.editing)
+  const close = () => useSmartGroupEditor.setState({ editing: null })
   return (
-    <div role="group" aria-label="Smart groups" className="-mx-4 no-scrollbar mt-2 flex items-center gap-1.5 overflow-x-auto px-4">
-      {groups.map((g) => (
-        <Button
-          key={g.id}
-          size="xs"
-          variant={active === g.id ? "secondary" : "ghost"}
-          aria-pressed={active === g.id}
-          shape="pill"
-          onClick={() => onPick(active === g.id ? null : g.id)}
-        >
-          <Icon name="filter_alt" data-icon="inline-start" className="text-vertical-contacts-text" />
-          {g.name}
-          <span className="text-muted-foreground tabular-nums">{g.count}</span>
-        </Button>
-      ))}
-      {current ? (
-        <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit smart group" onClick={() => setEditing({ group: current })}>
-          <Icon name="tune" />
-        </Button>
-      ) : (
-        <Button size="xs" variant="ghost-muted" shape="pill" onClick={() => setEditing({})}>
-          <Icon name="add" data-icon="inline-start" /> Smart group
-        </Button>
+    <FormLayer open={editing !== null} onClose={close}>
+      {editing && (
+        <SmartGroupForm
+          key={editing.group?.id ?? "new"}
+          group={editing.group}
+          onDone={(id) => {
+            close()
+            if (id !== undefined) useUi.getState().setContactsPlace(id ? { kind: "group", id } : { kind: "all" })
+          }}
+        />
       )}
-      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent size="md">
-          {editing && (
-            <SmartGroupForm
-              key={editing.group?.id ?? "new"}
-              group={editing.group}
-              onDone={(id) => {
-                setEditing(null)
-                if (id !== undefined) onPick(id)
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    </FormLayer>
   )
 }
 
@@ -67,11 +46,17 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
   const [days, setDays] = useState(String(group?.inTouchDays ?? 90))
   const save = usePimAction((c, input: SmartGroupInput) => c.saveSmartGroup(group?.id ?? null, input))
   const remove = usePimAction((c) => c.deleteSmartGroup(group!.id))
+  // Closing asks first once a value differs from when the form opened (ADR-0087).
+  const values = JSON.stringify([name, picked, company, domain, hasPhone, hasBirthday, inTouch, days])
+  const [opened] = useState(values)
+  useLeaveGuard(values !== opened)
   // Labels on cards plus any this group names that no card carries right now.
   const choices = [...new Set([...labels.map((l) => l.name), ...picked])]
   const toggle = (l: string) => setPicked((p) => (p.includes(l) ? p.filter((x) => x !== l) : [...p, l]))
 
+  const [error, setError] = useState<string | null>(null)
   const submit = async () => {
+    setError(null)
     try {
       const g = await save.mutateAsync({
         name,
@@ -85,7 +70,8 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
       toast.success(group ? `Updated “${g.name}”` : `Added “${g.name}”: ${g.count} ${g.count === 1 ? "person" : "people"} so far`, { duration: 2500 })
       onDone(g.id)
     } catch (e) {
-      fail(e)
+      // The form stays open with the server's words above its actions.
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
   const del = async () => {
@@ -99,23 +85,33 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
   }
   const field = "h-9 w-full rounded-lg border bg-transparent px-2.5 text-sm dark:bg-input/30"
   return (
-    <form className="flex flex-col gap-4" onSubmit={(e) => (e.preventDefault(), void submit())}>
-      <DialogHeader>
-        <DialogTitle>{group ? "Edit smart group" : "New smart group"}</DialogTitle>
-        <DialogDescription>People join and leave by themselves as their cards change. Fill in what applies: they must match all of it.</DialogDescription>
-      </DialogHeader>
+    <FormLayerForm
+      overline={group ? "Edit smart group" : "New smart group"}
+      title={name.trim() || (group ? "Edit smart group" : "New smart group")}
+      primary={{ label: group ? "Save" : "Add group", loading: save.isPending }}
+      error={error}
+      onSubmit={() => void submit()}
+      footerStart={
+        group && (
+          <Button type="button" variant="ghost-destructive" onClick={() => void del()}>
+            Delete group
+          </Button>
+        )
+      }
+    >
+      <p className="text-sm text-muted-foreground">People join and leave by themselves as their cards change. Fill in what applies: they must match all of it.</p>
       <label className="flex flex-col gap-1 text-sm">
         Name
-        <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Studio team, Keep in touch…" autoFocus />
+        <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Studio team, Keep in touch…" data-form-focus="" />
       </label>
       {choices.length > 0 && (
         <div role="group" aria-label="Has any of these labels" className="flex flex-col gap-1.5 text-sm">
           Has any of these labels
           <div className="flex flex-wrap gap-1.5">
             {choices.map((l) => (
-              <Button key={l} type="button" size="xs" variant={picked.includes(l) ? "secondary" : "outline"} aria-pressed={picked.includes(l)} shape="pill" onClick={() => toggle(l)}>
+              <Toggle key={l} type="button" size="sm" variant="outline" pressed={picked.includes(l)} onPressedChange={() => toggle(l)}>
                 {l}
-              </Button>
+              </Toggle>
             ))}
           </div>
         </div>
@@ -153,19 +149,6 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
         </span>
         <Switch checked={inTouch} onCheckedChange={setInTouch} aria-label="In touch recently" />
       </div>
-      <DialogActions>
-        {group && (
-          <DialogAction kind="destructive" type="button" onClick={() => void del()}>
-            Delete group
-          </DialogAction>
-        )}
-        <DialogAction kind="cancel" type="button" onClick={() => onDone()}>
-          Cancel
-        </DialogAction>
-        <DialogAction type="submit" disabled={save.isPending}>
-          {group ? "Save" : "Add group"}
-        </DialogAction>
-      </DialogActions>
-    </form>
+    </FormLayerForm>
   )
 }

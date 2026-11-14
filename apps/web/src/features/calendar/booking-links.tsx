@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Item, ItemMain, ItemContent, ItemTitle, ItemDescription, ItemActions } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Item, ItemMain, ItemContent, ItemTitle, ItemDescription, ItemActions, toast } from "@unicron/ui"
 import { useBookingLinks, useCollections, useCore, usePimAction } from "@/core/queries"
 import type { BookingLink, BookingLinkInput } from "@/core/types"
 
@@ -55,7 +54,7 @@ export function BookingLinks() {
               </ItemMain>
               <ItemActions>
                 <Button size="icon-sm" variant="ghost" aria-label={`Preview ${l.title}`} onClick={() => setPreview(l)}>
-                  <Icon name="visibility" />
+                  <Icon name="view" />
                 </Button>
                 {core?.remote && (
                   <Button size="icon-sm" variant="ghost" aria-label={`Copy link to ${l.title}`} onClick={() => void copy(l)}>
@@ -75,7 +74,7 @@ export function BookingLinks() {
         <DialogContent size="md">{editing && <LinkForm key={editing.link?.id ?? "new"} link={editing.link} onDone={() => setEditing(null)} />}</DialogContent>
       </Dialog>
       <Dialog open={preview !== null} onOpenChange={(o) => !o && setPreview(null)}>
-        <DialogContent size="xl" className="p-0" aria-label="Booking page preview">
+        <DialogContent size="xl" className="[--c-dialog-padding:0]" aria-label="Booking page preview">
           {preview && (
             <>
               <p className="border-b px-4 py-2 text-xs text-muted-foreground">Preview: what visitors see. Booking here adds a real event.</p>
@@ -130,7 +129,8 @@ function LinkForm({ link, onDone }: { link?: BookingLink; onDone: () => void }) 
         Title
         <input className={field} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Intro call" autoFocus />
       </label>
-      <div className="grid grid-cols-2 gap-3">
+      {/* One column on a phone: unicron 1.0's 48px selects cut "30 minutes" and "7 days ahead" side by side. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           Length
           <NativeSelect value={String(minutes)} onChange={(e) => setMinutes(Number(e.target.value))} className="w-full">

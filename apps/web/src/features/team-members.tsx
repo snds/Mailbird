@@ -1,8 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Icon, Field, FieldLabel, IconButton, Input, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@unicron/ui"
+import { Button, Icon, Field, FieldLabel, IconButton, Input, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, toast } from "@unicron/ui"
 import { type Invitation, addTeamMember, invitationUrl, reinviteTeamMember, removeTeamMember } from "@/core/client"
 import { useTeamMembers } from "@/core/queries"
 
@@ -41,7 +40,7 @@ export function Members() {
                   New link
                 </Button>
                 <IconButton
-                  icon="person_remove"
+                  icon="user--minus"
                   label={`Remove ${m.name}`}
                   variant="ghost-destructive"
                   size="icon-sm"
@@ -109,7 +108,7 @@ function InvitationLink({ invite, onDone }: { invite: Invitation; onDone: () => 
         <InputGroupInput aria-label="Invitation link" readOnly value={url} onFocus={(e) => e.target.select()} />
         <InputGroupAddon align="inline-end">
           <InputGroupButton size="icon-xs" aria-label="Copy link" onClick={() => void copy()}>
-            <Icon name="content_copy" />
+            <Icon name="copy" />
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>

@@ -1,14 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger, IconButton, Chip, ChipAction, ChipRemove } from "@unicron/ui"
+import { Icon, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Toggle, Tooltip, TooltipContent, TooltipTrigger, IconButton, Chip, ChipAction, ChipRemove, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLockedNote, useNote, useNoteAction, useNoteBacklinks, useNotesLock, useNoteTags } from "@/core/queries"
 import type { NoteLink, NoteMeta } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { longTime, reminderLabel } from "@/lib/time"
+import { copyText } from "@/lib/copy"
 
 import { titleAndSnippet } from "@/core/demo-notes"
 
@@ -175,14 +175,8 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
       toast.error(e instanceof Error ? e.message : String(e))
     }
   }
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(markdownRef.current ?? openLocked?.markdown ?? note.markdown)
-      toast.success("Copied as Markdown", { duration: 2000 })
-    } catch {
-      toast.error("Couldn't reach the clipboard")
-    }
-  }
+  // From the note's menu, so a toast says it; a blocked clipboard shows the text to copy by hand (lib/copy.ts).
+  const copy = () => copyText(markdownRef.current ?? openLocked?.markdown ?? note.markdown, { what: "note as Markdown", label: "Note as Markdown" })
 
   return (
     // The note takes its card's tint, as an open Keep note does; the pane
@@ -196,14 +190,14 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
         <div className="flex shrink-0 items-center gap-1 px-3 pt-2 md:px-6 md:pt-4">
           <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground">
             {/* Locked and shared never go together: a shared note can't be locked. */}
-            {(note.locked || shared) && <Icon name={note.locked ? "lock" : "group"} className="mr-1 inline size-3.5 align-[-2px]" label={note.locked ? "Locked" : undefined} />}
+            {(note.locked || shared) && <Icon name={note.locked ? "locked" : "user--multiple"} size={14} className="mr-1 inline align-[-2px]" label={note.locked ? "Locked" : undefined} />}
             {guest ? `Shared by ${guest.from ?? "someone"} · ${guestMode === "edit" ? "You can edit" : "You can read"} · ` : shared ? "Shared · " : ""}
             {current.archived ? "Archived · " : ""}Edited {longTime(note.updated)}
           </span>
           {shared && <PeopleHere shareId={note.share!.id} />}
           {note.locked && unlocked && (
             <IconButton label="Lock now" tooltip="Lock now (locked notes close)" onClick={() => void lockNow()}>
-              <Icon name="lock_open" className="size-5" />
+              <Icon name="unlocked" className="size-5" />
             </IconButton>
           )}
           <IconButton
@@ -211,7 +205,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
             tooltip={current.pinned ? "Unpin" : "Pin to the top"}
             render={<Toggle size="sm" pressed={current.pinned} onPressedChange={(pinned) => void update({ pinned })} />}
           >
-            <Icon name="keep" fill={current.pinned} className={current.pinned ? "text-vertical-notes-text" : undefined} />
+            <Icon name={current.pinned ? "pin--filled" : "pin"} />
           </IconButton>
           <RemindMenu
           value={remindAt}
@@ -220,41 +214,41 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
         <NoteColorMenu value={color} onChange={(c) => void update({ color: c ?? "" })} />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Note actions" />}>
-              <Icon name="more_horiz" className="size-5" />
+              <Icon name="overflow-menu--horizontal" className="size-5" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" width="auto">
               <DropdownMenuItem onClick={() => void archive()}>
-                <Icon name={current.archived ? "unarchive" : "archive"} /> {current.archived ? "Unarchive" : "Archive"}
+                <Icon name={current.archived ? "reset" : "archive"} /> {current.archived ? "Unarchive" : "Archive"}
               </DropdownMenuItem>
               {!note.locked && !guest && (
                 <DropdownMenuItem onClick={() => setSharing(true)}>
-                  <Icon name="person_add" /> {shared ? "Sharing…" : "Share…"}
+                  <Icon name="user--follow" /> {shared ? "Sharing…" : "Share…"}
                 </DropdownMenuItem>
               )}
               {guest && (
                 <DropdownMenuItem onClick={() => void keepCopy()}>
-                  <Icon name="file_copy" /> Keep as my own note
+                  <Icon name="copy--file" /> Keep as my own note
                 </DropdownMenuItem>
               )}
               {(!note.locked || unlocked) && (
                 <DropdownMenuItem onClick={() => void copy()}>
-                  <Icon name="content_copy" /> Copy as Markdown
+                  <Icon name="copy" /> Copy as Markdown
                 </DropdownMenuItem>
               )}
               {shared ? null : !note.locked ? (
                 <DropdownMenuItem onClick={lock}>
-                  <Icon name="lock" /> Lock note
+                  <Icon name="locked" /> Lock note
                 </DropdownMenuItem>
               ) : (
                 unlocked && (
                   <DropdownMenuItem onClick={() => void unlockForGood()}>
-                    <Icon name="lock_open_right" /> Remove lock
+                    <Icon name="unlocked" /> Remove lock
                   </DropdownMenuItem>
                 )
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => void del()}>
-                <Icon name="delete" /> Delete
+                <Icon name="trash-can" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -267,7 +261,7 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
           ))}
           <TagEditor tags={current.tags} onChange={(tags) => void update({ tags })} />
           <Button variant="ghost-muted" size="sm" shape="pill" className="h-7" aria-label="Link to an event, person, or conversation" onClick={() => setPicking(true)}>
-            <Icon name="add_link" data-icon="inline-start" /> Link
+            <Icon name="link" data-icon="inline-start" /> Link
           </Button>
         </div>
         <LinkPicker
@@ -329,7 +323,7 @@ function LinkedFrom({ id }: { id: string }) {
         <span key={n.id} className="flex max-w-56">
           <Chip variant="outline">
             <ChipAction onClick={() => setOpenNote({ id: n.id, fresh: false })}>
-              <Icon name="description" />
+              <Icon name="document" />
               <span>{n.title || "New note"}</span>
             </ChipAction>
           </Chip>
@@ -375,7 +369,7 @@ function TagEditor({ tags, onChange }: { tags: string[]; onChange: (tags: string
       ))}
       {adding === null ? (
         <Button variant="ghost-muted" size="sm" shape="pill" className="h-7" onClick={() => setAdding("")}>
-          <Icon name="sell" data-icon="inline-start" /> Tag
+          <Icon name="tag" data-icon="inline-start" /> Tag
         </Button>
       ) : (
         <>
@@ -417,13 +411,13 @@ function ReminderChip({ at, onDone }: { at: number; onDone: () => void }) {
   const now = useNowSecs(30_000)
   const due = at <= now
   return (
-    // Due, it takes the notes hue (an app role, so it stays here) and offers Done.
-    <Chip variant="outline" data-role="note-reminder" data-due={due || undefined} className="data-due:border-vertical-notes data-due:bg-vertical-notes/15">
-      <Icon name={due ? "notifications_active" : "schedule"} fill={due} />
+    // Due, the bell fills, the chip says so and offers Done.
+    <Chip variant="outline" data-role="note-reminder" data-due={due || undefined}>
+      <Icon name={due ? "notification--filled" : "time"} />
       {due ? `Due · ${reminderLabel(at)}` : reminderLabel(at)}
       {due ? (
         <ChipAction aria-label="Done with this reminder" onClick={onDone}>
-          <Icon name="check" /> Done
+          <Icon name="checkmark" /> Done
         </ChipAction>
       ) : (
         <ChipRemove label="Remove reminder" onClick={onDone} />

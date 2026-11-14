@@ -1,8 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useRef, useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { ImportFile, ImportReport } from "@/core/types"
 import { toBase64 } from "@/lib/base64"
@@ -16,8 +15,8 @@ const MAX_BYTES = 2_000_000
 const BATCH_BYTES = 8_000_000
 
 const SOURCES = [
-  { icon: "laptop_mac", name: "Apple Notes", how: "Export your notes as Markdown on a Mac, then choose that folder." },
-  { icon: "lightbulb", name: "Google Keep", how: "Download Keep from Google Takeout, unzip it, and choose the Keep folder." },
+  { icon: "laptop", name: "Apple Notes", how: "Export your notes as Markdown on a Mac, then choose that folder." },
+  { icon: "idea", name: "Google Keep", how: "Download Keep from Google Takeout, unzip it, and choose the Keep folder." },
   { icon: "folder", name: "Obsidian, Bear, or any Markdown", how: "Choose a vault or export folder. Folders and #tags become tags." },
 ] as const
 
@@ -119,7 +118,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         {report ? (
           <div className="flex flex-col gap-2 text-sm" role="status">
             <p className="flex items-center gap-2 font-medium">
-              <Icon name="check_circle" className="size-5 text-vertical-notes-text" />
+              <Icon name="checkmark--outline" />
               {report.imported === 1 ? "Imported 1 note" : `Imported ${report.imported} notes`}
             </p>
             <ul className="flex flex-col gap-1 pl-7 text-muted-foreground">
@@ -133,7 +132,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <ul className="flex flex-col gap-3">
             {SOURCES.map((s) => (
               <li key={s.name} className="flex gap-3 text-sm">
-                <Icon name={s.icon} tone="muted" className="mt-0.5 size-5" />
+                <Icon name={s.icon} tone="muted" className="mt-0.5" />
                 <span>
                   <span className="font-medium">{s.name}</span>
                   <span className="block text-muted-foreground">{s.how}</span>
@@ -153,10 +152,10 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           ) : (
             <>
               <Button variant="outline" disabled={busy} onClick={() => filesRef.current?.click()}>
-                <Icon name="description" data-icon="inline-start" /> Choose files…
+                <Icon name="document" data-icon="inline-start" /> Choose files…
               </Button>
               <Button disabled={busy} onClick={() => folderRef.current?.click()}>
-                <Icon name="folder_open" data-icon="inline-start" /> {busy ? "Importing…" : "Choose a folder…"}
+                <Icon name="folder--open" data-icon="inline-start" /> {busy ? "Importing…" : "Choose a folder…"}
               </Button>
             </>
           )}

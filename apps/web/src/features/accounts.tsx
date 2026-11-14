@@ -1,15 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, type IconName, Badge, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Icon, type IconName, Badge, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle, NativeSelect, NativeSelectOption, toast } from "@unicron/ui"
 import { gatewayMe, getCoreClient, isMember, signOutOfGateway } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
 import type { Account, AccountConfig, DavConfig, JmapConfig, OAuthIssuer, Provider, Security, ServerConfig } from "@/core/types"
 import { longTime } from "@/lib/time"
 
 import { OAuthSignIn } from "./oauth-sign-in"
-import { SectionActions, SectionHeader } from "./settings/section-header"
+import { SectionActions, SettingsHeading } from "./settings/section-header"
 
 interface Preset {
   id: string
@@ -45,7 +44,7 @@ const PRESETS: Preset[] = [
     dav: { calendarUrl: "https://caldav.icloud.com/", contactsUrl: "https://contacts.icloud.com/" },
   },
   {
-    id: "fastmail", label: "Fastmail", icon: "bolt", provider: "jmap",
+    id: "fastmail", label: "Fastmail", icon: "flash", provider: "jmap",
     // Fastmail is the JMAP reference server: faster sync, no IMAP/SMTP.
     jmap: { sessionUrl: "https://api.fastmail.com/jmap/session", bearer: true },
     passwordLabel: "API token",
@@ -55,7 +54,7 @@ const PRESETS: Preset[] = [
     davPasswordHelp: { text: "Optional. In Fastmail: Settings → Privacy & Security → App passwords, with access to calendars and contacts.", href: "https://www.fastmail.help/hc/en-us/articles/1500000278342" },
   },
   {
-    id: "other", label: "Other (IMAP)", icon: "dns", provider: "generic", custom: "imap",
+    id: "other", label: "Other (IMAP)", icon: "bare-metal-server", provider: "generic", custom: "imap",
     imap: { host: "", port: 993, security: "tls" },
     smtp: { host: "", port: 465, security: "tls" },
     passwordLabel: "Password",
@@ -67,8 +66,8 @@ const PRESETS: Preset[] = [
     passwordLabel: "Password",
     dav: "ask",
   },
-  { id: "google", label: "Gmail", icon: "mail", provider: "google", passwordLabel: "", oauth: "google" },
-  { id: "microsoft", label: "Outlook / Microsoft 365", icon: "mail", provider: "microsoft", passwordLabel: "", oauth: "microsoft" },
+  { id: "google", label: "Gmail", icon: "email", provider: "google", passwordLabel: "", oauth: "google" },
+  { id: "microsoft", label: "Outlook / Microsoft 365", icon: "email", provider: "microsoft", passwordLabel: "", oauth: "microsoft" },
 ]
 
 /**
@@ -107,14 +106,14 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
 
   return (
     <>
-      <SectionHeader
+      <SettingsHeading
         title="Accounts"
         description={core?.remote ? "Mail is kept on your gateway. Passwords are sealed there with its key." : "Mail stays on this device. Passwords are kept in your system keychain."}
       />
 
       {core?.kind === "demo" && (
         <p className="flex gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-          <Icon name="info" className="mt-0.5 size-4" />
+          <Icon name="information" size="sm" className="mt-0.5" />
           You're using the web preview with sample mail. Connecting real accounts needs the desktop app for now.
         </p>
       )}
@@ -123,7 +122,7 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
         <ul className="flex flex-col divide-y rounded-xl border">
           {accounts.map((a) => (
             <li key={a.id} className="flex items-center gap-3 px-3 py-2.5">
-              <Icon name="alternate_email" tone="muted" className="size-5" />
+              <Icon name="at" tone="muted" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium">{a.displayName}</span>
                 <span className="truncate text-xs text-muted-foreground">{a.address}</span>
@@ -157,7 +156,7 @@ function AccountList({ onAdd, onConnect }: { onAdd: (p: Preset) => void; onConne
               </div>
               {core?.kind === "native" && (
                 <Button variant="ghost" size="icon-sm" aria-label={`Remove ${a.displayName}`} onClick={() => confirm(`Remove ${a.address} from this device? Mail on the server is not affected.`) && remove.mutate(a.id)}>
-                  <Icon name="delete" />
+                  <Icon name="trash-can" />
                 </Button>
               )}
             </li>
@@ -201,7 +200,7 @@ function MemberSettings() {
   const me = gatewayMe()
   return (
     <>
-      <SectionHeader title="Accounts" description={`You're signed in as ${me?.name} on a shared inbox. Its accounts and settings belong to the gateway's owner.`} />
+      <SettingsHeading title="Accounts" description={`You're signed in as ${me?.name} on a shared inbox. Its accounts and settings belong to the gateway's owner.`} />
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={() => void signOutOfGateway().then(() => location.reload())}>
           <Icon name="logout" data-icon="inline-start" /> Sign out
@@ -281,7 +280,7 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
 
   return (
     <form onSubmit={(e) => (e.preventDefault(), add.mutate())} className="flex flex-col gap-4">
-      <SectionHeader title={`Add ${preset.label}`} onBack={onBack} />
+      <SettingsHeading title={`Add ${preset.label}`} onBack={onBack} />
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="acct-address">Email address</FieldLabel>
@@ -339,19 +338,19 @@ function AddAccountForm({ preset, onBack, onDone }: { preset: Preset; onBack: ()
         {preset.dav === "ask" && <DavUrlFields calendarUrl={calendarUrl} setCalendarUrl={setCalendarUrl} contactsUrl={contactsUrl} setContactsUrl={setContactsUrl} />}
         {typeof preset.dav === "object" && !preset.dav.separateSecret && (
           <p className="flex gap-2 text-xs text-muted-foreground">
-            <Icon name="calendar_month" className="size-4" /> Calendars and contacts connect with the same password.
+            <Icon name="calendar" size="sm" /> Calendars and contacts connect with the same password.
           </p>
         )}
       </FieldGroup>
 
       {add.error && (
         <p role="alert" className="flex gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <Icon name="error" className="mt-0.5 size-4" /> {add.error.message}
+          <Icon name="warning" size="sm" className="mt-0.5" /> {add.error.message}
         </p>
       )}
       <SectionActions>
         <Badge variant="outline" className="mr-auto self-center">
-          <Icon name="lock" className="size-3" /> Checked before saving
+          <Icon name="locked" /> Checked before saving
         </Badge>
         <Button type="submit" disabled={add.isPending}>
           {add.isPending ? "Connecting…" : "Add account"}
@@ -413,7 +412,7 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
   })
   return (
     <form onSubmit={(e) => (e.preventDefault(), connect.mutate())} className="flex flex-col gap-4">
-      <SectionHeader title="Calendars and contacts" description={account.address} onBack={onDone} />
+      <SettingsHeading title="Calendars and contacts" description={account.address} onBack={onDone} />
       <FieldGroup>
         {!fixed && <DavUrlFields calendarUrl={calendarUrl} setCalendarUrl={setCalendarUrl} contactsUrl={contactsUrl} setContactsUrl={setContactsUrl} />}
         <Field>
@@ -426,7 +425,7 @@ function ConnectDavForm({ account, onDone }: { account: Account; onDone: () => v
       </FieldGroup>
       {connect.error && (
         <p role="alert" className="flex gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <Icon name="error" className="mt-0.5 size-4" /> {connect.error.message}
+          <Icon name="warning" size="sm" className="mt-0.5" /> {connect.error.message}
         </p>
       )}
       <SectionActions>

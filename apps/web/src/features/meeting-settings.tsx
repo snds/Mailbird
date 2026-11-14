@@ -1,6 +1,5 @@
-import { toast } from "sonner"
 
-import { Switch } from "@unicron/ui"
+import { Switch, toast } from "@unicron/ui"
 import { useMeetingPrefs, usePimAction } from "@/core/queries"
 
 /** How Join opens calls (ADR-0030). Lives in Accounts and settings. */

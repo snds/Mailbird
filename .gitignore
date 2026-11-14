@@ -12,3 +12,6 @@ apps/web/src-tauri/gen/schemas/
 # dsa output: scan/pattern reports are regenerated; only the ratchet baseline is tracked.
 .dsa/*
 !.dsa/baseline.json
+
+# Screenshot harness output (tools/screenshots): pictures are build output, never committed.
+tools/screenshots/out/

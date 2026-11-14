@@ -6,11 +6,11 @@ import { IconButton } from "@unicron/ui"
  * A settings section's title and what it's for (ADR-0075). With `onBack`, a
  * step inside the section (adding an account) with a way back to it.
  */
-export function SectionHeader({ title, description, onBack }: { title: ReactNode; description?: ReactNode; onBack?: () => void }) {
+export function SettingsHeading({ title, description, onBack }: { title: ReactNode; description?: ReactNode; onBack?: () => void }) {
   return (
     <header className="flex flex-col gap-1">
       <h2 className="type-section-title flex items-center gap-1">
-        {onBack && <IconButton icon="arrow_back" label="Back" variant="ghost" size="icon-sm" onClick={onBack} />}
+        {onBack && <IconButton icon="arrow--left" label="Back" variant="ghost" size="icon-sm" onClick={onBack} />}
         {title}
       </h2>
       {description && <p className="type-support">{description}</p>}

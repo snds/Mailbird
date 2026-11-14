@@ -1,6 +1,5 @@
 import type { ReactNode } from "react"
 
-import { Icon, InputGroup, InputGroupAddon, InputGroupInput } from "@unicron/ui"
 import { cn } from "@/lib/utils"
 
 /**
@@ -8,7 +7,7 @@ import { cn } from "@/lib/utils"
  * Slots: leading (avatar/icon) · title · meta (time) · supporting text · trailing.
  * Sized for a 44px+ touch target; density modes can retune the tier-3 tokens.
  */
-export function ListRow({
+export function EntryRow({
   selected,
   onSelect,
   leading,
@@ -51,16 +50,5 @@ export function ListRow({
       </span>
       {trailing}
     </button>
-  )
-}
-
-export function SearchField({ placeholder, value, onChange }: { placeholder: string; value?: string; onChange?: (v: string) => void }) {
-  return (
-    <InputGroup className="h-10 rounded-xl bg-background">
-      <InputGroupAddon>
-        <Icon name="search" />
-      </InputGroupAddon>
-      <InputGroupInput type="search" placeholder={placeholder} aria-label={placeholder} value={value} onChange={onChange && ((e) => onChange(e.target.value))} />
-    </InputGroup>
   )
 }

@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { TimeSlot } from "@/core/types"
 
@@ -30,10 +29,10 @@ export function FindATime({ date, minutes, onPick }: { date: string; minutes: nu
     }
   }
   return (
-    <div className="flex flex-col gap-2 border-b px-4 py-2" data-slot="find-a-time">
+    <div className="flex flex-col gap-2 border-b py-2" data-slot="find-a-time">
       <div className="flex items-center gap-2">
         <Button type="button" variant="ghost" size="sm" className="-ml-2" disabled={busy} onClick={() => void find()}>
-          <Icon name="event_upcoming" data-icon="inline-start" /> {slots ? "Find again" : "Find a time"}
+          <Icon name="event--schedule" data-icon="inline-start" /> {slots ? "Find again" : "Find a time"}
         </Button>
         <span className="text-xs text-muted-foreground">Free {minutes >= 60 ? `${+(minutes / 60).toFixed(1)} h` : `${minutes} min`} in your calendars, weekdays 9–6</span>
       </div>

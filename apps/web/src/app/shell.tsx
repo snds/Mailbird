@@ -1,230 +1,109 @@
-import { useState, type ComponentProps, type ReactElement, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 
-import { Icon, Button, Tooltip, TooltipContent, TooltipTrigger } from "@unicron/ui"
-import { cn } from "@/lib/utils"
+import { AppFrame, AppFrameMain, Toaster, useAppFrame } from "@unicron/ui"
+import { isMember } from "@/core/client"
 
 import { DemoBar } from "./demo-bar"
-
-import { DEMO_APP, isMember } from "@/core/client"
-
-import { VERTICALS, type Vertical, type VerticalId } from "./verticals"
-
-/** A team member on a gateway works the mail; the rest is the owner's (ADR-0063). */
-const shown = () => (isMember() ? VERTICALS.filter((v) => v.id === "mail") : VERTICALS)
+import { PhoneBottomRow, PhoneTopRow } from "./phone-chrome"
+import { stepBack, watchPlaces } from "./places"
+import { QuickCreateMenu, type CreateHandlers } from "./quick-create"
+import { returnToRoot } from "./screen"
+import { SectionNotice } from "./section-notice"
+import { Sidebar } from "./sidebar"
+import { StatusStrip } from "./status"
+import { StatusLine } from "./status-line"
+import { VERTICALS, vertical, type VerticalId } from "./verticals"
 
 interface ShellProps {
+  /** The open section. Under Settings it is still the last one, so create keeps its label. */
   active: VerticalId
   onNavigate: (id: VerticalId) => void
+  /** Makes the open section's item, where you are. */
   onCreate: () => void
-  onSettings: () => void
-  /** Settings is open in place of the area (ADR-0075). */
+  /** Each kind's create flow from anywhere, for quick create: it opens the section, then the form. */
+  handlers: CreateHandlers
+  /** Settings is open in place of the section (ADR-0075); on a phone it is a pushed screen. */
   settingsOpen: boolean
+  /** Search is open in place of the section (ADR-0085): its item is the current one, and no section is. */
+  searchOpen: boolean
+  onSearch: () => void
+  onLeaveSearch: () => void
+  onSettings: () => void
+  onCloseSettings: () => void
   children: ReactNode
 }
 
-/** The rail's open state: labels beside the icons, or a column of icons. Kept per device. */
-const RAIL_KEY = "vale.nav.expanded"
-function useRailExpanded() {
-  const [expanded, setExpanded] = useState(() => {
-    try {
-      const saved = localStorage.getItem(RAIL_KEY)
-      if (saved !== null) return saved === "1"
-    } catch {
-      // Storage can be off; fall back to the window's width.
+/**
+ * Vale's shell, as one tree of unicron's frame parts (ADR-0083). The frame
+ * picks the shell from the window's width, so nothing here is a media query:
+ *
+ *   compact  (under 600)   the phone's floating rows: lockup and Settings on
+ *                          top; Search, the tab bar and create at the foot
+ *   medium   (600 to 1023) the sidebar as its rail, one content column, a
+ *                          pushed detail with its way back in the status line
+ *   expanded (1024 up)     the sidebar, the status line, list beside detail
+ *
+ * A short screen (a phone on its side) stands the bottom row as a column at
+ * the trailing edge; that is the frame's rule too. Settings opens in place of
+ * the section, and so does Search (ADR-0085).
+ */
+export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen, searchOpen, onSearch, onLeaveSearch, onSettings, onCloseSettings, children }: ShellProps) {
+  const section = vertical(active)
+  // A team member on a gateway works the mail; the rest is the owner's (ADR-0063).
+  const sections = isMember() ? VERTICALS.filter((v) => v.id === "mail") : VERTICALS
+  const [quickOpen, setQuickOpen] = useState(false)
+
+  // A change of place is a history entry, so the browser's and the phone's Back go back one place (ADR-0084).
+  useEffect(() => watchPlaces(), [])
+  // Leaving Settings by its own Back is the same step when Settings was opened from here.
+  const leaveSettings = () => stepBack((behind) => behind.settings === null, onCloseSettings)
+
+  // ⌘, opens Settings, as it does in every app (cross-app decisions §6). ⌘\ is the sidebar's own.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "," || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return
+      e.preventDefault()
+      onSettings()
     }
-    return window.matchMedia("(min-width: 64rem)").matches
-  })
-  const toggle = () =>
-    setExpanded((was) => {
-      try {
-        localStorage.setItem(RAIL_KEY, was ? "0" : "1")
-      } catch {
-        // Not remembered this time; the rail still toggles.
-      }
-      return !was
-    })
-  return [expanded, toggle] as const
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onSettings])
+
+  return (
+    <AppFrame>
+      <Sidebar
+        sections={sections}
+        active={section}
+        current={settingsOpen ? "settings" : searchOpen ? "search" : active}
+        onNavigate={onNavigate}
+        onSettings={onSettings}
+        onSearch={onSearch}
+        onCreate={onCreate}
+        quickOpen={quickOpen}
+        onQuickCreate={() => setQuickOpen(true)}
+      />
+      <TopLine section={settingsOpen ? "Settings" : searchOpen ? "Search" : section.label} onSection={settingsOpen ? onSettings : searchOpen ? onSearch : returnToRoot} />
+      <PhoneTopRow settingsOpen={settingsOpen} searchOpen={searchOpen} onSettings={onSettings} onCloseSettings={leaveSettings} onLeaveSearch={onLeaveSearch} />
+      <AppFrameMain>{children}</AppFrameMain>
+      <PhoneBottomRow sections={sections} active={section} onNavigate={onNavigate} settingsOpen={settingsOpen} searchOpen={searchOpen} onSearch={onSearch} onCreate={onCreate} handlers={handlers} />
+      {/* What is live, on every phone screen: above the bottom row, inside it once scrolled, alone where there is no row (ADR-0086). */}
+      <StatusStrip />
+      <QuickCreateMenu open={quickOpen} onOpenChange={setQuickOpen} handlers={handlers} />
+      {/* Inside the frame, so a toast stands where the frame says: the content's bottom left, or the phone's strip slot. */}
+      <Toaster />
+    </AppFrame>
+  )
 }
 
-/**
- * Adaptive frame. One component tree, three postures:
- *   phone   (< md)  bottom tab bar + single stacked pane
- *   tablet  (md)    nav rail + list/detail split
- *   desktop (lg+)   nav rail + wider list + reading pane
- * The rail opens to labels beside its icons, or closes to a column of icons
- * (ADR-0073). "New" is a floating button at the content's bottom right that
- * makes whatever the open area makes. Settings opens as a page in place of
- * the open area (ADR-0075).
- */
-export function AppShell({ active, onNavigate, onCreate, onSettings, settingsOpen, children }: ShellProps) {
-  const current = VERTICALS.find((v) => v.id === active)!
-  const [expanded, toggleRail] = useRailExpanded()
+/** The desktop's header cell: the demo's notice, pinned above the status line (brief X10), the line itself, then the open section's banner (ADR-0086). */
+function TopLine({ section, onSection }: { section: string; onSection: () => void }) {
+  const frame = useAppFrame()
+  if (frame.phone) return null
   return (
-    <div className="flex h-dvh overflow-hidden bg-surface-canvas">
-      <NavRail active={settingsOpen ? null : active} onNavigate={onNavigate} onSettings={onSettings} settingsOpen={settingsOpen} expanded={expanded} onToggle={toggleRail} />
-      <main className="relative flex min-w-0 flex-1 flex-col pb-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0">
-        {DEMO_APP && <DemoBar />}
-        {children}
-        {!settingsOpen && <Fab vertical={current} onClick={onCreate} />}
-      </main>
-      <TabBar active={settingsOpen ? null : active} onNavigate={onNavigate} />
+    <div className="min-w-0 [grid-area:header]">
+      <DemoBar in="frame" />
+      <StatusLine section={section} onSection={onSection} />
+      <SectionNotice in="frame" />
     </div>
-  )
-}
-
-/** A rail row: a tooltip names it only while the rail shows icons alone. */
-function RailTip({ label, expanded, children }: { label: ReactNode; expanded: boolean; children: ReactElement }) {
-  if (expanded) return children
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-function NavItem({
-  vertical,
-  active,
-  onClick,
-  orientation,
-  expanded = false,
-  ...props
-}: {
-  vertical: Vertical
-  active: boolean
-  onClick: () => void
-  orientation: "rail" | "tab"
-  expanded?: boolean
-} & ComponentProps<"button">) {
-  const rail = orientation === "rail"
-  return (
-    <button
-      type="button"
-      {...props}
-      onClick={onClick}
-      data-active={active}
-      aria-current={active ? "page" : undefined}
-      aria-label={rail && !expanded ? vertical.label : undefined}
-      className={cn(
-        "group/nav flex text-xs font-medium text-muted-foreground outline-none transition-colors",
-        "focus-visible:ring-3 focus-visible:ring-ring/50 rounded-full",
-        // Tier-3 tokens drive the icon axes; @property makes them animate.
-        "[--c-icon-fill:var(--c-nav-icon-fill-rest)] [--c-icon-wght:var(--c-nav-icon-wght-rest)]",
-        "data-[active=true]:text-foreground data-[active=true]:[--c-icon-fill:var(--c-nav-icon-fill-active)] data-[active=true]:[--c-icon-wght:var(--c-nav-icon-wght-active)]",
-        rail
-          ? cn(
-              "h-12 flex-none items-center gap-3 text-sm hover:bg-accent/60 data-[active=true]:bg-accent",
-              expanded ? "w-full px-4" : "w-12 justify-center"
-            )
-          : "h-full flex-1 flex-col items-center justify-center gap-1 rounded-xl"
-      )}
-    >
-      <span
-        className={cn(
-          "flex items-center justify-center",
-          !rail && "h-8 w-14 rounded-full transition-colors group-hover/nav:bg-accent/60 group-data-[active=true]/nav:bg-accent"
-        )}
-      >
-        <Icon name={vertical.icon} className={cn("size-6", active && vertical.accent)} opticalSize={24} />
-      </span>
-      {(!rail || expanded) && <span className="truncate">{vertical.label}</span>}
-    </button>
-  )
-}
-
-function NavRail({
-  active,
-  onNavigate,
-  onSettings,
-  settingsOpen,
-  expanded,
-  onToggle,
-}: {
-  /** The open area, or null while settings is open. */
-  active: VerticalId | null
-  onNavigate: (id: VerticalId) => void
-  onSettings: () => void
-  settingsOpen: boolean
-  expanded: boolean
-  onToggle: () => void
-}) {
-  const row = cn("h-12 justify-start gap-3 rounded-full text-sm font-medium text-muted-foreground [&_svg]:size-6!", expanded ? "w-full px-4" : "w-12 justify-center px-0")
-  return (
-    <nav
-      aria-label="Apps"
-      data-expanded={expanded}
-      className={cn(
-        "hidden shrink-0 flex-col gap-1 border-r bg-surface-chrome px-3 py-3 transition-[width] duration-(--g-duration-base) ease-(--g-ease-standard) md:flex",
-        expanded ? "w-(--c-shell-rail-width-expanded)" : "w-(--c-shell-rail-width) items-center"
-      )}
-    >
-      <RailTip label="Show labels" expanded={expanded}>
-        <Button
-          variant="ghost"
-          className={cn(row, "mb-2")}
-          aria-label={expanded ? "Hide labels" : "Show labels"}
-          aria-expanded={expanded}
-          onClick={onToggle}
-        >
-          <Icon name={expanded ? "left_panel_close" : "left_panel_open"} opticalSize={24} />
-        </Button>
-      </RailTip>
-      {shown().map((v) => (
-        <RailTip key={v.id} label={v.label} expanded={expanded}>
-          <NavItem vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" expanded={expanded} />
-        </RailTip>
-      ))}
-      <div className="mt-auto flex flex-col gap-1">
-        <RailTip label="Accounts and settings" expanded={expanded}>
-          <Button
-            variant="ghost"
-            className={cn(row, "data-[active=true]:bg-accent data-[active=true]:text-foreground")}
-            aria-label="Accounts and settings"
-            data-active={settingsOpen}
-            aria-current={settingsOpen ? "page" : undefined}
-            onClick={onSettings}
-          >
-            <Icon name="settings" opticalSize={24} />
-            {expanded && "Settings"}
-          </Button>
-        </RailTip>
-      </div>
-    </nav>
-  )
-}
-
-function TabBar({ active, onNavigate }: { active: VerticalId | null; onNavigate: (id: VerticalId) => void }) {
-  return (
-    <nav
-      aria-label="Apps"
-      className="fixed inset-x-0 bottom-0 z-20 flex h-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] border-t bg-surface-chrome/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
-    >
-      {shown().map((v) => (
-        <NavItem key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="tab" />
-      ))}
-    </nav>
-  )
-}
-
-/**
- * The open area's "new" action, floating at the content's bottom right: in
- * the thumb zone above the tab bar on a phone, and with its label beside the
- * icon from a tablet up, so it says what it makes.
- */
-function Fab({ vertical, onClick }: { vertical: Vertical; onClick: () => void }) {
-  return (
-    <Button
-      onClick={onClick}
-      aria-label={vertical.create.label}
-      className={cn(
-        "z-20 size-14 rounded-2xl shadow-lg [&_svg]:size-6!",
-        "fixed right-4 bottom-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom)+1rem)]",
-        "md:absolute md:right-6 md:bottom-6 md:size-auto md:h-14 md:gap-3 md:px-5 md:text-base"
-      )}
-    >
-      <Icon name={vertical.create.icon} opticalSize={24} />
-      <span className="hidden md:inline">{vertical.create.label}</span>
-    </Button>
   )
 }

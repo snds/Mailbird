@@ -1,4 +1,4 @@
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useUi, type Jump } from "@/app/ui-store"
 import type { IconName } from "@unicron/ui"
@@ -7,9 +7,9 @@ import type { NoteLinkKind } from "@/core/types"
 
 /** The glyph for each kind of thing a note links to. */
 export const LINK_ICON: Record<NoteLinkKind, IconName> = {
-  event: "event",
-  contact: "person",
-  thread: "mail",
+  event: "calendar",
+  contact: "user",
+  thread: "email",
 }
 const LINK_JUMP: Record<NoteLinkKind, Jump["kind"]> = {
   event: "event",

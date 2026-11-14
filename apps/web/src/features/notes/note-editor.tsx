@@ -4,10 +4,9 @@ import { Placeholder } from "@tiptap/extensions"
 import { NodeSelection } from "@tiptap/pm/state"
 import { type Editor, EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import { useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 import type * as Y from "yjs"
 
-import { Icon } from "@unicron/ui"
+import { Icon, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { queryClient, useMyName, useNotesPrefs } from "@/core/queries"
 import type { NoteDetail, NotesPrefs } from "@/core/types"
@@ -213,7 +212,7 @@ export function NoteEditor({ note, autoFocus, onSaved, locked = false }: { note:
       <div className="sticky bottom-0 bg-(--note-surface,var(--background)) transition-colors">
         {readOnly ? (
           <p className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground md:px-8 [&_svg]:size-4" role="status">
-            <Icon name="visibility" />
+            <Icon name="view" />
             {guest?.from ? `${guest.from} shared this note for reading` : "Shared with you for reading"}. Their changes show up here.
           </p>
         ) : (

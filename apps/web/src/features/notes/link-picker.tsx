@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { useDeferredValue, useState } from "react"
 
-import { Icon, type IconName, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input } from "@unicron/ui"
+import { Icon, type IconName, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { NoteLink, NoteLinkKind, NoteTarget } from "@/core/types"
 import { shortTime } from "@/lib/time"
@@ -15,9 +15,9 @@ interface Found {
 }
 
 const GROUPS: { kind: NoteLinkKind; heading: string; icon: IconName }[] = [
-  { kind: "event", heading: "Events", icon: "event" },
-  { kind: "contact", heading: "People", icon: "person" },
-  { kind: "thread", heading: "Conversations", icon: "mail" },
+  { kind: "event", heading: "Events", icon: "calendar" },
+  { kind: "contact", heading: "People", icon: "user" },
+  { kind: "thread", heading: "Conversations", icon: "email" },
 ]
 
 /**
@@ -90,13 +90,17 @@ function Picker({ linked, onLink }: { linked: NoteLink[]; onLink: (link: NoteLin
             {data[g.kind].map((f) => {
               const done = already(f.target)
               return (
-                <Button key={f.target.id} variant="ghost" className="h-auto justify-start gap-2 px-2 py-1.5 text-left" disabled={done} onClick={() => void pick(f)}>
-                  <Icon name={g.icon} tone="muted" className="size-4" />
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm">{f.label}</span>
-                    <span className="truncate text-xs text-muted-foreground">{done ? "Linked already" : f.detail}</span>
-                  </span>
-                </Button>
+                // A row, not a Button: a unicron 1.0 Button sets its label in mono capitals, and these are
+                // an event's title, a person's name and an address, shown as written.
+                <Item key={f.target.id} size="xs" render={<button type="button" disabled={done} onClick={() => void pick(f)} />}>
+                  <ItemMedia variant="icon">
+                    <Icon name={g.icon} />
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle>{f.label}</ItemTitle>
+                    <ItemDescription>{done ? "Linked already" : f.detail}</ItemDescription>
+                  </ItemContent>
+                </Item>
               )
             })}
           </section>

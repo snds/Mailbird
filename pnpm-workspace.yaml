@@ -11,7 +11,11 @@ onlyBuiltDependencies:
 # release as the direct ones, and off releases younger than two weeks.
 overrides:
   # The shared design system (ADR-0052): @unicron/ui pins its tokens by
-  # version, which isn't on a registry; point it at the same release tarball.
-  "@unicron/tokens": https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.10.0/unicron-tokens-0.10.0.tgz
+  # version, which isn't on a registry; point it at the same tarball.
+  # Unicron 1.0 is not released yet, so both packages install from the
+  # pre-release tarballs in vendor/unicron/ (ADR-0082); apps/web/package.json
+  # names the same two files.
+  # Swap to the @unicron/ui@1.0.0 and @unicron/tokens@1.0.0 release URLs when Unicron 1.0 is released, and delete vendor/unicron/.
+  "@unicron/tokens": file:vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
   "@tiptap/extension-bubble-menu": 3.31.3
   "@tiptap/extension-floating-menu": 3.31.3

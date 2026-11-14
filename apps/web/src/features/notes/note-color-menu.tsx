@@ -4,13 +4,13 @@ import { cn } from "@/lib/utils"
 
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
 
-/** Keep's swatch row: tap a color, or the crossed-out one for none. */
+/** Keep's swatch row: tap a color, or the empty one for none. */
 export function NoteColorMenu({ value, onChange }: { value: NoteColor | null; onChange: (c: NoteColor | null) => void }) {
   const label = value ? `Color: ${NOTE_COLOR_LABEL[value]}` : "Color"
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<IconButton label={label} />}>
-        <Icon name="palette" className="size-5" />
+        <Icon name="color-palette" className="size-5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto p-2">
         <DropdownMenuRadioGroup
@@ -32,9 +32,7 @@ export function NoteColorMenu({ value, onChange }: { value: NoteColor | null; on
                 "data-checked:ring-2 data-checked:ring-foreground [&_[data-slot=dropdown-menu-radio-item-indicator]]:inset-0"
               )}
               style={{ background: c === "none" ? undefined : noteFill(c), borderColor: c === "none" ? undefined : noteEdge(c) }}
-            >
-              {c === "none" && <Icon name="format_color_reset" tone="muted" className="size-4 in-data-checked:hidden" />}
-            </DropdownMenuRadioItem>
+            />
           ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>

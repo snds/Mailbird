@@ -1,0 +1,152 @@
+/*
+ * Notes: what only the notes area adds to Vale's layer (see shell.css for the
+ * rules). The prose knobs a note shares with the composer are in shell.css.
+ */
+
+/* ── Tier 2 · Differs by ground ──────────────────────────────────────────── */
+/* Tinted surfaces (note cards). The two selector lists are the core's own
+   ground blocks, copied as they are (@unicron/tokens examples/app-extension.css),
+   so the tint turns with the core roles at any nesting the core reaches. */
+:root,
+.light,
+[data-theme] {
+  /* A light, soft wash behind dark text. */
+  --tint-l: 0.95;
+  --tint-c: 0.045;
+}
+.dark,
+.dark [data-theme]:not(.light):not(.dark .light *),
+.dark .light .dark [data-theme]:not(.light):not(.dark .light .dark .light *),
+.dark .light .dark .light .dark [data-theme]:not(.light):not(.dark .light .dark .light .dark .light *) {
+  /* Deep and quiet, so light text keeps its contrast. */
+  --tint-l: 0.3;
+  --tint-c: 0.05;
+}
+
+/* ── Tier 3 · Notes knobs ────────────────────────────────────────────────── */
+:root,
+.light,
+.dark,
+[data-theme] {
+  /* The first line is the title (Apple Notes convention). Checked items fade
+     instead of vanishing, so a list's progress stays visible. */
+  --c-note-title-size: 1.625rem;
+  --c-note-heading-size: 1.25rem;
+  --c-note-check-accent: var(--primary-fill);
+  --c-note-done-text: var(--muted-foreground);
+  /* The opaque highlight fill: `muted` is the raised surface itself now, and would not show on the note's pane. */
+  --c-note-code-bg: var(--accent);
+  /* [[Links]] between notes (ADR-0034): identity text on the soft tint. */
+  --c-note-wikilink-text: var(--primary-text);
+  --c-note-wikilink-bg: var(--primary-soft);
+
+  /* Note cards (ADR-0038): one tint per color, theme-aware through tier 2.
+     Brown and gray carry less chroma, as Keep's do. */
+  --c-note-card-red: oklch(var(--tint-l) var(--tint-c) var(--g-hue-red));
+  --c-note-card-orange: oklch(var(--tint-l) var(--tint-c) var(--g-hue-orange));
+  --c-note-card-yellow: oklch(var(--tint-l) calc(var(--tint-c) * 1.4) var(--g-hue-yellow));
+  --c-note-card-green: oklch(var(--tint-l) var(--tint-c) var(--g-hue-green));
+  --c-note-card-teal: oklch(var(--tint-l) var(--tint-c) var(--g-hue-teal));
+  --c-note-card-blue: oklch(var(--tint-l) var(--tint-c) var(--g-hue-blue));
+  --c-note-card-purple: oklch(var(--tint-l) var(--tint-c) var(--g-hue-purple));
+  --c-note-card-pink: oklch(var(--tint-l) var(--tint-c) var(--g-hue-pink));
+  --c-note-card-brown: oklch(var(--tint-l) calc(var(--tint-c) * 0.6) var(--g-hue-brown));
+  --c-note-card-gray: oklch(var(--tint-l) 0.008 var(--g-hue-gray));
+  --c-note-card-plain: var(--card);
+  --c-note-card-radius: 0.875rem;
+  /* Cards are at least this wide; the grid fits as many as the pane holds.
+     In a narrow pane (under 32rem) they shrink so two still fit. */
+  --c-note-card-min: 15rem;
+  --c-note-card-min-compact: 9.25rem;
+
+  /* Scan: the page outline over a photo (ADR-0045). Must read on any photo, so it's the ring color, not a neutral. */
+  --c-scan-edge: var(--ring);
+  --c-scan-fill: color-mix(in oklab, var(--ring) 14%, transparent);
+  /* Sketches (ADR-0046) are drawn on paper, light in both themes, so their
+     inks look the same everywhere. A raw value, deliberately not redefined for
+     dark mode: no core token means "paper in every theme". */
+  --c-sketch-paper: oklch(0.985 0.004 95);
+}
+
+@layer components {
+  /* Shares the composer's prose rules, plus what only notes have. */
+  .note-body {
+    & > * + * {
+      margin-top: 0.4em;
+    }
+    & > :first-child {
+      font-size: var(--c-note-title-size);
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+    }
+    & h1,
+    & h2,
+    & h3 {
+      font-size: var(--c-note-heading-size);
+      font-weight: 600;
+      margin-top: 0.9em;
+    }
+    & ul:not([data-type="taskList"]) {
+      list-style: disc;
+      padding-left: 1.5em;
+    }
+    & ol {
+      list-style: decimal;
+      padding-left: 1.5em;
+    }
+    & blockquote {
+      border-left: 2px solid var(--c-composer-quote-border);
+      color: var(--c-composer-quote-text);
+      padding-left: 0.75em;
+    }
+    & a {
+      color: var(--c-composer-link);
+      text-decoration: underline;
+    }
+    & code {
+      font-family: var(--font-mono);
+      font-size: 0.9em;
+    }
+    & pre {
+      background: var(--c-note-code-bg);
+      border-radius: var(--radius-md);
+      padding: 0.75em 1em;
+      overflow-x: auto;
+    }
+    & ul[data-type="taskList"] {
+      padding-left: 0.1em;
+      & li {
+        display: flex;
+        gap: 0.6em;
+        align-items: flex-start;
+      }
+      & li > label {
+        flex-shrink: 0;
+        margin-top: 0.2em;
+        user-select: none;
+      }
+      & li > label input {
+        width: 1.05em;
+        height: 1.05em;
+        accent-color: var(--c-note-check-accent);
+      }
+      & li > div {
+        flex: 1;
+        min-width: 0;
+      }
+      & li[data-checked="true"] > div {
+        color: var(--c-note-done-text);
+        text-decoration: line-through;
+      }
+    }
+    & .is-empty:first-child::before,
+    & p.is-empty::before {
+      content: attr(data-placeholder);
+      float: left;
+      height: 0;
+      pointer-events: none;
+      color: var(--c-composer-placeholder);
+    }
+  }
+}

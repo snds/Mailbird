@@ -1,36 +1,45 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { factTime, usePlaceStrip, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { checkMail, useStatus } from "@/app/live-status"
+import { useSectionSwitcher } from "@/app/places"
+import { useSectionBanner, type SectionBanner } from "@/app/section-banner"
+import { SectionSwitcher } from "@/app/section-switcher"
 import { pendingJump, useUi } from "@/app/ui-store"
-import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, NativeSelect, NativeSelectOption, Skeleton, Tabs, TabsList, TabsTrigger } from "@unicron/ui"
-import { ListRow } from "@/components/list-row"
-import { MasterDetail, PaneHeader } from "@/components/master-detail"
+import { vertical } from "@/app/verticals"
+import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, Skeleton, type PageHeadSwipe } from "@unicron/ui"
+import { EntryRow } from "@/components/list-row"
+import { MasterDetail } from "@/components/master-detail"
+import { ScreenHead } from "@/components/page"
 import { VirtualList } from "@/components/virtual-list"
-import { isMember } from "@/core/client"
-import { useAccounts, useCore, useInboxOverview, useMailAction, useMailPrefs, useMe, useMessagePages, useContactPhotos, useScreener, useSharedInbox, useSwipeActions, useThread } from "@/core/queries"
+import { useCore, useInboxOverview, useMailPrefs, useMe, useMessagePages, useContactPhotos, useSwipeActions, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
 import { useTriage } from "./actions"
 import { useNowSecs } from "@/hooks/use-now"
+import { startFirstRun } from "@/features/onboarding/start-add-account"
 
 import { ConversationView } from "./conversation-view"
-import { CATEGORIES, LANES, type MailTab } from "./lanes"
+import { CATEGORIES, LANES } from "./lanes"
+import { MailNav } from "./mail-nav"
 import { useSenderActions } from "./sender-actions"
 import { displayName, initials } from "./format"
 import { ScheduledList } from "./scheduled-list"
 import { TeamList, TeamThreadView } from "../team/team-view"
 import { BundleRow, SplitChips } from "./splits"
-import { SwipeRow } from "./swipe-row"
-import { useMailVerbs } from "./vocabulary"
+import { RowSwipe } from "./swipe-row"
+import { PRIMARY, useMailVerbs } from "./vocabulary"
+import { useMailPlace } from "./use-mail-place"
 import { useMailShortcuts } from "./use-shortcuts"
 
 export function MailView() {
-  // In the UI store, so the command menu can switch it.
-  const tab = useUi((s) => s.mailTab)
-  const setTab = useUi((s) => s.setMailTab)
+  // Mail's place (ADR-0084): the lane and the account, in the UI store, so the sidebar, the page head's
+  // sheet and the command menu all switch them. A lane or an account that is gone falls back to the first.
+  const { tab, account, accounts } = useMailPlace()
+  const accountId = account?.id ?? null
   const lane: Lane = tab === "scheduled" || tab === "team" || tab === "mine" ? "inbox" : tab
-  // A shared inbox (ADR-0063): "Assigned to me", and no link sharing for a team member.
-  const sharedInbox = useSharedInbox()
+  // A shared inbox (ADR-0063): "Assigned to me" lists what is yours.
   const me = useMe()
   // Mail → Team (ADR-0060): shared conversations open in their own view.
   const teamOpen = useUi((s) => s.teamOpen)
@@ -39,28 +48,28 @@ export function MailView() {
   const category = useUi((s) => s.mailCategory)
   const setCategory = useUi((s) => s.setMailCategory)
   const split = useUi((s) => s.mailSplit)
-  const { data: screener } = useScreener()
   const senderActions = useSenderActions()
   const now = useNowSecs()
-  const [accountId, setAccountId] = useState<string | null>(null)
-  const search = useUi((s) => s.mailSearch)
-  const setSearch = useUi((s) => s.setMailSearch)
   // Selection is a conversation. The row is remembered so the reader stays
   // open when the row leaves the current lane (e.g. read mail in "Unread").
   const [selected, setSelected] = useState<MessageSummary | null>(() => pendingJump("thread")?.row ?? null)
   useEffect(() => void useUi.getState().takeJump("thread"), [])
+  // Another lane or account, picked in the nav: what was open belongs to the place left behind.
+  const placeKey = `${tab}/${accountId ?? ""}`
+  const [placeSeen, setPlaceSeen] = useState(placeKey)
+  if (placeSeen !== placeKey) {
+    setPlaceSeen(placeKey)
+    setSelected(null)
+  }
   const selectedId = selected?.threadId ?? null
-  const searchRef = useRef<HTMLInputElement>(null)
-  const deferredSearch = useDeferredValue(search.trim())
 
   const { data: core } = useCore()
-  const { data: accounts = [] } = useAccounts()
-  // All of the inbox (no chip, no search) folds newsletters into the bundle row.
-  const bundling = tab === "inbox" && !category && !split && !deferredSearch
+  // All of the inbox (no chip) folds newsletters into the bundle row. Searching a lane is Search's (ADR-0085).
+  const bundling = tab === "inbox" && !category && !split
   const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessagePages({
     lane,
     accountId,
-    search: deferredSearch || null,
+    search: null,
     category: tab === "inbox" ? category : null,
     split: tab === "inbox" ? split : null,
     bundle: bundling,
@@ -69,8 +78,8 @@ export function MailView() {
   const { data: thread } = useThread(selectedId)
   const { data: overview } = useInboxOverview(accountId)
   const openComposer = useUi((s) => s.openComposer)
-  const openSettings = useUi((s) => s.openSettings)
-  const sync = useMailAction<void>((c) => c.syncNow())
+  // A check the person asks for is live status while it runs (ADR-0086).
+  const checking = useStatus((s) => s.checking > 0)
   const triage = useTriage(() => setSelected(null))
   const verb = useMailVerbs(triage, senderActions)
   const { data: swipes = { right: "read", rightLong: "none", left: "archive", leftLong: "none" } } = useSwipeActions()
@@ -100,16 +109,48 @@ export function MailView() {
 
   const multiAccount = accounts.length > 1
   const laneInfo = LANES.find((l) => l.id === tab)!
-  // The Screener tab only exists while it's on (or still holds mail).
-  const tabs = LANES.filter((l) => (l.id !== "screener" || screener?.enabled || tab === "screener") && (l.id !== "mine" || sharedInbox) && (l.id !== "team" || !isMember()))
   const emptyText = tab === "inbox" && category ? CATEGORIES.find((c) => c.id === category)!.empty : laneInfo.empty
+
+  // What the shell says about this screen (ADR-0083): the place, the newest
+  // conversation for the phone's scrolled strip, and when mail last arrived.
+  const where = [laneInfo.label, account ? account.displayName : multiAccount ? "All accounts" : null].filter(Boolean).join(" // ")
+  useScreenPlace(laneInfo.label)
+  usePlaceStrip(where, tab === "scheduled" || tab === "team" ? null : (list[0]?.subject ?? null))
+  const synced = syncedAt(account ? [account] : accounts)
+  useScreenFact(synced ? `Synced // ${synced}` : null)
+  // Pull to refresh, and a second tap on Mail's tab: the core checks the servers, and the lists are read again (app/status.tsx).
+  useRefresh(checkMail)
+
+  // The page head is the way to the folders and accounts wherever the sidebar does not list them (brief X1).
+  // A sideways swipe on it steps the account: All, then each (brief 3.6).
+  const stepAccount = useCallback(
+    (direction: PageHeadSwipe) => {
+      const ids = [null, ...accounts.map((a) => a.id)]
+      const at = ids.indexOf(accountId)
+      useUi.getState().setMailAccount(ids[(at + (direction === "next" ? 1 : -1) + ids.length) % ids.length] ?? null)
+    },
+    [accounts, accountId],
+  )
+  const accountName = account ? account.displayName : multiAccount ? "All accounts" : null
+  // After the title, which the head says first: "Today, Personal. Change folder or account." on the page head,
+  // and "Inbox, Personal. Change folder or account." on the small title it collapses to.
+  const switching = useSectionSwitcher(`${accountName ? `${accountName}. ` : ""}${multiAccount ? "Change folder or account." : "Change folder."}`, multiAccount ? stepAccount : undefined)
+
+  // An account that stopped syncing is Mail's banner (ADR-0086; Mobile / 07, Desktop / 05): the first one, in the server's words.
+  const failing = accounts.find((a) => a.lastError)
+  const failingName = failing?.displayName
+  const failingError = failing?.lastError
+  const syncBanner = useMemo<SectionBanner | null>(
+    () => (failingName && failingError ? { title: `${failingName} account stopped syncing`, body: failingError, action: { label: "Open Accounts", onClick: () => useUi.getState().openSettings("accounts") } } : null),
+    [failingName, failingError],
+  )
+  useSectionBanner("mail", syncBanner)
 
   useMailShortcuts({
     list,
     selectedId,
     select,
     compose: () => openComposer({ accountId: accountId ?? accounts[0]?.id }),
-    focusSearch: () => searchRef.current?.focus(),
     triage,
     selected: row,
     verb,
@@ -117,98 +158,57 @@ export function MailView() {
 
   return (
     <MasterDetail
-      emptyIcon="mail"
-      emptyLabel="Choose a conversation to read it here."
+      section="Mail"
+      pick={vertical("mail").pick}
       onBack={() => (tab === "team" ? setTeamOpen(null) : setSelected(null))}
+      onRoot={() => {
+        useUi.getState().showMailTab("inbox")
+        setTeamOpen(null)
+        setSelected(null)
+      }}
       header={
-        <>
-          <PaneHeader title={accountId ? (accounts.find((a) => a.id === accountId)?.displayName ?? "Inbox") : "All inboxes"}>
-            {/* Phones have no nav rail, so accounts live here. */}
-            <Button variant="ghost" size="icon" aria-label="Accounts and settings" className="md:hidden" onClick={() => openSettings()}>
-              <Icon name="manage_accounts" />
-            </Button>
-            {multiAccount && (
-              <NativeSelect
-                size="sm"
-                aria-label="Account"
-                value={accountId ?? ""}
-                onChange={(e) => (setAccountId(e.target.value || null), setSelected(null))}
-                className="w-auto"
-              >
-                <NativeSelectOption value="">All</NativeSelectOption>
-                {accounts.map((a) => (
-                  <NativeSelectOption key={a.id} value={a.id}>
-                    {a.displayName}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            )}
-            {core?.kind === "native" && (
-              <Button variant="ghost" size="icon" aria-label="Check for new mail" onClick={() => sync.mutate()} disabled={sync.isPending}>
-                <Icon name="sync" className={sync.isPending ? "animate-spin" : undefined} />
+        <ScreenHead
+          overline={where}
+          // The Inbox keeps the drawn "Today" and its date; every other lane is named.
+          title={tab === "inbox" ? "Today" : laneInfo.label}
+          short={laneInfo.label}
+          meta={tab === "inbox" ? folioDate(new Date(now * 1000)) : undefined}
+          switcher={switching.switcher}
+          actions={
+            core?.kind === "native" && (
+              <Button variant="ghost" size="icon" aria-label="Check for new mail" onClick={() => void checkMail()} disabled={checking}>
+                <Icon name="renew" className={checking ? "animate-spin" : undefined} />
               </Button>
-            )}
-          </PaneHeader>
-          <div className="flex flex-col gap-3 px-4 pb-3">
-            <InputGroup className="h-10 rounded-xl bg-background">
-              <InputGroupAddon>
-                <Icon name="search" />
-              </InputGroupAddon>
-              <InputGroupInput
-                ref={searchRef}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Escape" && (setSearch(""), e.currentTarget.blur())}
-                placeholder="Search mail"
-                aria-label="Search mail"
-              />
-              {search && (
-                <InputGroupAddon align="inline-end">
-                  <InputGroupButton size="icon-xs" aria-label="Clear search" onClick={() => setSearch("")}>
-                    <Icon name="close" />
-                  </InputGroupButton>
-                </InputGroupAddon>
-              )}
-            </InputGroup>
-            {/* Lanes scroll sideways when they don't fit; the edge fade says there's more. */}
-            <div className="-mx-4 no-scrollbar overflow-x-auto px-4 [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
-              <Tabs value={tab} onValueChange={(v) => (setTab(v as MailTab), setSelected(null))} className="w-max pr-6">
-                <TabsList>
-                  {tabs.map((l) => (
-                    <TabsTrigger key={l.id} value={l.id}>
-                      {l.label}
-                      {l.id === "screener" && !!screener?.waiting && (
-                        <span className="ml-1 rounded-full bg-vertical-mail-text px-1.5 text-[11px] leading-4 font-semibold text-background" aria-label={`${screener.waiting} waiting`}>
-                          {screener.waiting}
-                        </span>
-                      )}
-                    </TabsTrigger>
+            )
+          }
+          below={
+            <div className="flex flex-col gap-3">
+              <SectionSwitcher state={switching} overline={["Mail", accountName].filter(Boolean).join(" // ")} title="Folders">
+                <MailNav layer more={switching.sheet} />
+              </SectionSwitcher>
+              {tab === "inbox" && (
+                <div role="group" aria-label="Show" className="no-scrollbar flex gap-1.5 overflow-x-auto">
+                  {[{ id: null, label: "All" } as const, ...CATEGORIES].map((c) => (
+                    <Button
+                      key={c.label}
+                      size="xs"
+                      variant={category === c.id ? "secondary" : "ghost"}
+                      aria-pressed={category === c.id}
+                      shape="pill"
+                      onClick={() => (setCategory(c.id), setSelected(null))}
+                    >
+                      {c.label}
+                    </Button>
                   ))}
-                </TabsList>
-              </Tabs>
+                  <SplitChips accountId={accountId} onPick={() => setSelected(null)} />
+                </div>
+              )}
+              {tab === "screener" && (
+                <p className="text-xs text-muted-foreground">First-time senders wait here. Let them in and their mail goes to your inbox; screen them out and it never does.</p>
+              )}
             </div>
-            {tab === "inbox" && (
-              <div role="group" aria-label="Show" className="-mx-4 no-scrollbar flex gap-1.5 overflow-x-auto px-4">
-                {[{ id: null, label: "All" } as const, ...CATEGORIES].map((c) => (
-                  <Button
-                    key={c.label}
-                    size="xs"
-                    variant={category === c.id ? "secondary" : "ghost"}
-                    aria-pressed={category === c.id}
-                    shape="pill"
-                    onClick={() => (setCategory(c.id), setSelected(null))}
-                  >
-                    {c.label}
-                  </Button>
-                ))}
-                <SplitChips accountId={accountId} onPick={() => setSelected(null)} />
-              </div>
-            )}
-            {tab === "screener" && (
-              <p className="text-xs text-muted-foreground">First-time senders wait here. Let them in and their mail goes to your inbox; screen them out and it never does.</p>
-            )}
-          </div>
-        </>
+          }
+        />
       }
       list={
         tab === "scheduled" ? (
@@ -218,28 +218,27 @@ export function MailView() {
         ) : isPending ? (
           <ListSkeleton />
         ) : accounts.length === 0 ? (
-          <Empty className="py-16">
+          <Empty size="sm" className="py-16">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Icon name="alternate_email" />
+                <Icon name="at" />
               </EmptyMedia>
               <EmptyTitle>Add your first account</EmptyTitle>
               <EmptyDescription>Gmail, Outlook, iCloud, Fastmail, or any IMAP account.</EmptyDescription>
             </EmptyHeader>
-            <Button onClick={() => openSettings("accounts")}>
+            <Button onClick={startFirstRun}>
               <Icon name="add" data-icon="inline-start" /> Add account
             </Button>
           </Empty>
         ) : list.length === 0 && bundling && overview?.bundle ? (
           <BundleRow accountId={accountId} onOpen={() => (setCategory("newsletters"), setSelected(null))} />
         ) : list.length === 0 ? (
-          <Empty className="py-16">
+          <Empty size="sm" className="py-16">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Icon name={deferredSearch ? "search_off" : "done_all"} />
+                <Icon name="checkmark--double" />
               </EmptyMedia>
-              <EmptyTitle>{deferredSearch ? "No matches" : emptyText}</EmptyTitle>
-              {deferredSearch && <EmptyDescription>Nothing in {laneInfo.label} matches “{deferredSearch}”.</EmptyDescription>}
+              <EmptyTitle>{emptyText}</EmptyTitle>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -252,13 +251,13 @@ export function MailView() {
             onEnd={loadMore}
             label={laneInfo.label}
             render={(m) => (
-              <SwipeRow
+              <RowSwipe
                 // Your mapping (ADR-0025); Apple Mail's until changed: right toggles read, left archives.
                 // In the Screener: right lets the sender in, left screens them out.
                 {...(tab === "screener"
                   ? {
-                      start: { icon: "how_to_reg", label: "Let in", tone: "bg-vertical-mail", onCommit: () => senderActions.decide(m.from, "allowed") },
-                      end: { icon: "block", label: "Screen out", tone: "bg-destructive", onCommit: () => senderActions.decide(m.from, "screened_out") },
+                      start: { icon: "user--admin", label: "Let in", tone: PRIMARY, onCommit: () => senderActions.decide(m.from, "allowed") },
+                      end: { icon: "user--minus", label: "Screen out", tone: "bg-critical-fill text-critical-on-fill", onCommit: () => senderActions.decide(m.from, "screened_out") },
                     }
                   : {
                       start: verb(swipes.right, m),
@@ -275,7 +274,7 @@ export function MailView() {
                   onSelect={() => setSelected(m)}
                   account={multiAccount && !accountId ? accounts.find((a) => a.id === m.accountId)?.displayName : undefined}
                 />
-              </SwipeRow>
+              </RowSwipe>
             )}
           />
           </>
@@ -302,6 +301,16 @@ export function MailView() {
   )
 }
 
+/** The date as the frames write it beside a title: `THU 11.12`. */
+const folioDate = (d: Date) =>
+  `${d.toLocaleDateString(undefined, { weekday: "short" }).toUpperCase()} ${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`
+
+/** When the accounts shown last finished a sync: the oldest of them, so the line never claims more than is true. */
+function syncedAt(accounts: { lastSync: number | null }[]) {
+  if (!accounts.length || accounts.some((a) => a.lastSync === null)) return null
+  return factTime(Math.min(...accounts.map((a) => a.lastSync!)))
+}
+
 function MessageRow({
   message: m,
   lane,
@@ -326,20 +335,20 @@ function MessageRow({
   const nudged = lane === "inbox" && m.followUpAt != null && m.followUpAt <= now
   const meta =
     lane === "snoozed" && m.snoozedUntil ? (
-      <span className="inline-flex items-center gap-1 text-vertical-notes-text">
-        <Icon name="snooze" className="size-3.5" />
+      <span className="inline-flex items-center gap-1">
+        <Icon name="time" size={14} />
         {shortTime(m.snoozedUntil)}
       </span>
     ) : lane === "waiting" && m.followUpAt ? (
-      <span className="inline-flex items-center gap-1 text-vertical-mail-text">
-        <Icon name="notifications" className="size-3.5" />
+      <span className="inline-flex items-center gap-1">
+        <Icon name="notification" size={14} />
         {shortTime(m.followUpAt)}
       </span>
     ) : (
       shortTime(nudged ? Math.max(m.followUpAt!, m.sortAt) : m.sortAt)
     )
   return (
-    <ListRow
+    <EntryRow
         selected={selected}
         onSelect={onSelect}
         emphasized={!m.seen}
@@ -363,8 +372,8 @@ function MessageRow({
         supporting={
           <>
             {nudged && (
-              <span className="mr-1.5 inline-flex items-center gap-1 rounded-md bg-vertical-mail/10 px-1.5 text-xs font-medium text-vertical-mail-text">
-                <Icon name="notifications_active" className="size-3.5" /> No reply yet
+              <span className="mr-1.5 inline-flex items-center gap-1 rounded-md bg-accent px-1.5 text-xs font-medium text-foreground">
+                <Icon name="notification--filled" size={14} /> No reply yet
               </span>
             )}
             <span className="text-foreground">{m.subject || "(no subject)"}</span>
@@ -373,8 +382,8 @@ function MessageRow({
         }
         trailing={
           <span className="mt-0.5 flex shrink-0 flex-col items-end gap-1">
-            {m.flagged && <Icon name="star" fill className="size-4 text-vertical-notes-text" label="Starred" />}
-            {m.hasAttachments && <Icon name="attach_file" tone="muted" className="size-4" label="Has attachments" />}
+            {m.flagged && <Icon name="star--filled" size="sm" label="Starred" />}
+            {m.hasAttachments && <Icon name="attachment" tone="muted" size="sm" label="Has attachments" />}
             {account && <span className="text-[11px] text-muted-foreground">{account}</span>}
           </span>
         }

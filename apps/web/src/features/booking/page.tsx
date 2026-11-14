@@ -46,7 +46,7 @@ export function BookingPage({ token, preview = false }: { token: string; preview
         <p className="text-sm text-muted-foreground">{data.host}</p>
         <h1 className="text-2xl font-semibold tracking-tight">{data.title}</h1>
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Icon name="schedule" className="size-4" /> {data.minutes} minutes
+          <Icon name="time" size="sm" /> {data.minutes} minutes
         </p>
         {data.note && <p className="mt-1 text-sm whitespace-pre-line">{data.note}</p>}
       </header>
@@ -155,8 +155,8 @@ function Confirmed({ booked, token, preview }: { booked: Booked; token: string; 
   return (
     <Frame>
       <div role="status" className="flex flex-col items-start gap-2">
-        <span className="flex size-10 items-center justify-center rounded-full bg-vertical-calendar/15 text-vertical-calendar-text">
-          <Icon name="event_available" className="size-6" />
+        <span className="flex size-10 items-center justify-center rounded-full bg-muted text-foreground">
+          <Icon name="calendar" size={24} />
         </span>
         <h1 className="text-xl font-semibold">You're booked</h1>
         <p className="text-sm">
@@ -178,7 +178,7 @@ function Confirmed({ booked, token, preview }: { booked: Booked; token: string; 
         <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-4 text-sm" data-slot="manage-link">
           <p>Need to change it? This link lets you pick a new time or cancel. Keep it; it's only for you.</p>
           <div className="flex flex-wrap items-center gap-2">
-            <a href={manage} className="min-w-0 truncate font-medium text-primary hover:underline">
+            <a href={manage} className="min-w-0 truncate font-medium text-primary-text hover:underline">
               Change or cancel this booking
             </a>
             <Button
@@ -188,7 +188,7 @@ function Confirmed({ booked, token, preview }: { booked: Booked; token: string; 
                 void navigator.clipboard?.writeText(manage).then(() => setCopied(true), () => setCopied(false))
               }}
             >
-              <Icon name={copied ? "check" : "content_copy"} data-icon="inline-start" /> {copied ? "Copied" : "Copy link"}
+              <Icon name={copied ? "checkmark" : "copy"} data-icon="inline-start" /> {copied ? "Copied" : "Copy link"}
             </Button>
           </div>
         </div>
@@ -295,10 +295,10 @@ export function ManageBookingPage({ token, code }: { token: string; code: string
       ) : (
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setMode("move")} disabled={data.movesLeft === 0}>
-            <Icon name="edit_calendar" data-icon="inline-start" /> Pick a new time
+            <Icon name="event--schedule" data-icon="inline-start" /> Pick a new time
           </Button>
           <Button variant="outline" onClick={() => setMode("cancel")}>
-            <Icon name="event_busy" data-icon="inline-start" /> Cancel booking
+            <Icon name="close--outline" data-icon="inline-start" /> Cancel booking
           </Button>
           {data.movesLeft === 0 && <p className="w-full text-xs text-muted-foreground">It's moved as often as it can. Write to {data.host} to change it again.</p>}
         </div>

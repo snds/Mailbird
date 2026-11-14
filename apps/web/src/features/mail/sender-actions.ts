@@ -1,4 +1,4 @@
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useMailAction } from "@/core/queries"
 import type { Address, Category, SenderDecision } from "@/core/types"
