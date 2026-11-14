@@ -1,10 +1,13 @@
 import { useDeferredValue, useEffect, useState } from "react"
 
+import { useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
 import { pendingJump, useUi } from "@/app/ui-store"
+import { vertical } from "@/app/verticals"
 
-import { Icon, Button, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
+import { Icon, Button, formatNavCount, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
 import { EntryRow, ListSearch } from "@/components/list-row"
-import { MasterDetail, PaneHeader } from "@/components/master-detail"
+import { MasterDetail } from "@/components/master-detail"
+import { ScreenHead } from "@/components/page"
 import { useAccounts, useCollections, useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 
@@ -51,7 +54,7 @@ export function ContactsView() {
   const { data: groups = [] } = useSmartGroups()
   const activeGroup = groups.find((g) => g.id === group) ?? null
   const [restoring, setRestoring] = useState<number | null>(null)
-  const { data: contacts = [], isPending } = useContacts(query, active, activeGroup?.id ?? null)
+  const { data: contacts = [], isPending, refetch } = useContacts(query, active, activeGroup?.id ?? null)
   const { data: dupes = [] } = useDuplicates()
   // Source badges (ADR-0027): with more than one address book showing, each
   // row says where that card lives, so you edit the copy you mean.
@@ -73,23 +76,32 @@ export function ContactsView() {
     else sections.push({ letter: l, items: [c] })
   }
 
+  // What the shell says about this screen (ADR-0083): the group as the place, and how many people it lists.
+  const place = active ?? activeGroup?.name ?? "All contacts"
+  useScreenPlace(place)
+  useScreenFact(isPending ? null : `${formatNavCount(contacts.length)} people`)
+  useRefresh(refetch)
+
   return (
     <MasterDetail
-      emptyIcon="user"
-      emptyLabel="Select a person to see their details and the mail you've exchanged."
+      section="Contacts"
+      pick={vertical("contacts").pick}
       onBack={() => setSelected(null)}
       header={
         <>
-          <PaneHeader title="Contacts">
-            <Button size="icon" variant="ghost" aria-label="Restore contacts" onClick={() => setRestoring(Math.floor(Date.now() / 1000))}>
-              <Icon name="recently-viewed" />
-            </Button>
-          </PaneHeader>
-          <RestoreContactsDialog openedAt={restoring} onClose={() => setRestoring(null)} />
-          <div className="px-4 pb-3">
+          <ScreenHead
+            overline={`${active ?? activeGroup?.name ?? "Contacts"} // ${isPending ? "" : formatNavCount(contacts.length)}`}
+            title={active ?? activeGroup?.name ?? "People"}
+            actions={
+              <Button size="icon" variant="ghost" aria-label="Restore contacts" onClick={() => setRestoring(Math.floor(Date.now() / 1000))}>
+                <Icon name="recently-viewed" />
+              </Button>
+            }
+            below={
+              <>
             <ListSearch placeholder="Search people" value={search} onChange={setSearch} />
             {labels.length > 0 && (
-              <div role="group" aria-label="Labels" className="-mx-4 no-scrollbar mt-3 flex gap-1.5 overflow-x-auto px-4">
+              <div role="group" aria-label="Labels" className="no-scrollbar mt-3 flex gap-1.5 overflow-x-auto">
                 {[{ name: null, count: 0 } as const, ...labels].map((l) => (
                   <Button key={l.name ?? "all"} size="xs" variant={active === l.name ? "secondary" : "ghost"} aria-pressed={active === l.name} shape="pill" onClick={() => setLabel(l.name)}>
                     {l.name ?? "All"}
@@ -99,7 +111,10 @@ export function ContactsView() {
               </div>
             )}
             <SmartGroupChips active={activeGroup?.id ?? null} onPick={(id) => (setGroup(id), setSelected(null))} />
-          </div>
+              </>
+            }
+          />
+          <RestoreContactsDialog openedAt={restoring} onClose={() => setRestoring(null)} />
         </>
       }
       list={

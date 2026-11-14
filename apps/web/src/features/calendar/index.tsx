@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react"
 
 import { pendingJump, useUi } from "@/app/ui-store"
-import { Icon, Button, Checkbox, AdaptiveSheetContent, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem, toast } from "@unicron/ui"
+import { Icon, AppFrameColumn, Button, Checkbox, AdaptiveSheetContent, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem, toast, useAppFrame } from "@unicron/ui"
+import { DemoBar } from "@/app/demo-bar"
+import { useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { ScreenHead } from "@/components/page"
 import { useAccounts, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
 import type { Collection, Occurrence } from "@/core/types"
-import { useIsTabletUp } from "@/hooks/use-media-query"
 import { ariaKey, commandFor } from "@/lib/keys"
+import { cn } from "@/lib/utils"
 
 import { Agenda } from "./agenda"
 import { CalendarSets } from "./calendar-sets"
@@ -120,8 +123,12 @@ function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection
 }
 
 export function CalendarView() {
-  const tabletUp = useIsTabletUp()
-  const [view, setView] = useState<View>(() => (window.matchMedia("(min-width: 768px)").matches ? "week" : "agenda"))
+  // The frame's width class decides (ADR-0083): the phone's shells get the agenda and a full-screen event;
+  // from medium up the week, and an event beside the grid once list and detail have the room (expanded).
+  const frame = useAppFrame()
+  const tabletUp = !frame.phone
+  const beside = frame.split
+  const [view, setView] = useState<View>(() => (tabletUp ? "week" : "agenda"))
   // Opened from a note's link: show that event, on its day.
   const [jumped] = useState(() => pendingJump("event"))
   useEffect(() => void useUi.getState().takeJump("event"), [])
@@ -137,7 +144,7 @@ export function CalendarView() {
   const monthStart = startOfWeek(new Date(focus.getFullYear(), focus.getMonth(), 1))
   const [from, to] =
     view === "agenda" ? [focus, addDays(focus, agendaDays)] : view === "month" ? [monthStart, addDays(monthStart, 42)] : [days[0]!, addDays(days.at(-1)!, 1)]
-  const { data: occurrences = [] } = useOccurrences(secs(from), secs(to))
+  const { data: occurrences = [], refetch } = useOccurrences(secs(from), secs(to))
 
   // Busy dots for the mini month (six visible weeks).
   const gridStart = startOfWeek(new Date(month.getFullYear(), month.getMonth(), 1))
@@ -210,60 +217,66 @@ export function CalendarView() {
     setSelected({ eventId, start })
   }
 
+  // What the shell says about this screen (ADR-0083): the view as the place, its range as the fact.
+  const VIEW_NAME: Record<View, string> = { agenda: "Agenda", day: "Day", week: "Week", month: "Month" }
+  useScreenPlace(VIEW_NAME[view])
+  useScreenFact(
+    view === "day"
+      ? fmt.dayLong(focus)
+      : view === "month"
+        ? fmt.monthYear(focus)
+        : `${from.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${addDays(to, -1).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`,
+  )
+  useRefresh(refetch)
+
   const detail = selected && (
     <EventDetailPane key={selectedKey} eventId={selected.eventId} start={selected.start} calendars={calendars} onDeleted={() => setSelected(null)} />
   )
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <AppFrameColumn aria-label="Calendar">
+     {/* The calendar keeps its own panes and scrolls inside them, so it fills the column exactly. */}
+     <div className="flex h-full min-h-0 flex-col">
+     <DemoBar in="column" />
+     <div className="flex min-h-0 flex-1">
       <aside className="hidden w-(--c-shell-list-width) shrink-0 flex-col overflow-y-auto border-r bg-surface-ground md:flex" aria-label="Calendars">
-        <header className="flex items-center justify-between px-4 pt-4 pb-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
-        </header>
         <QuickAdd calendars={calendars} />
         <MiniMonth month={month} onMonth={setMonth} selected={focus} onPick={pick} busy={busy} />
         <CalendarList calendars={calendars} onOpen={openEvent} />
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col bg-surface-raised md:bg-background">
-        <header className="flex shrink-0 flex-col gap-2 px-4 pt-4 pb-2 md:border-b md:py-2">
-          <div className="flex items-center gap-2 md:hidden">
-            <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold tracking-tight" aria-live="polite">
-              {view === "agenda" ? "Calendar" : title}
-            </h1>
-            <Button variant="ghost" size="icon" aria-label="Calendars" onClick={() => setListOpen(true)}>
-              <Icon name="layers" />
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-1">
-            <Button variant="outline" size="sm" onClick={goToday} aria-keyshortcuts={ariaKey(keys?.["calendar.today"] ?? "t")}>
-              Today
-            </Button>
-            <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view === "agenda" ? "days" : view}`} onClick={() => step(-1)}>
-              <Icon name="chevron--left" />
-            </Button>
-            <Button variant="ghost" size="icon-sm" aria-label={`Next ${view === "agenda" ? "days" : view}`} onClick={() => step(1)}>
-              <Icon name="chevron--right" />
-            </Button>
-            <h2 className="ml-2 hidden min-w-0 flex-1 truncate text-base font-semibold md:block" aria-live="polite">
-              {title}
-            </h2>
-            <ToggleGroup
-              value={[view]}
-              onValueChange={(v) => v[0] && setView(v[0] as View)}
-              variant="outline"
-              size="sm"
-              // Phones: its own full-width row, so four views fit without scrolling.
-              className="order-last mt-1 w-full *:flex-1 md:order-none md:mt-0 md:ml-auto md:w-auto md:*:flex-none"
-              aria-label="View"
-            >
-              <ToggleGroupItem value="agenda" aria-keyshortcuts={ariaKey(keys?.["calendar.agenda"] ?? "a")}>Agenda</ToggleGroupItem>
-              <ToggleGroupItem value="day" aria-keyshortcuts={ariaKey(keys?.["calendar.day"] ?? "d")}>Day</ToggleGroupItem>
-              <ToggleGroupItem value="week" aria-keyshortcuts={ariaKey(keys?.["calendar.week"] ?? "w")}>Week</ToggleGroupItem>
-              <ToggleGroupItem value="month" aria-keyshortcuts={ariaKey(keys?.["calendar.month"] ?? "m")}>Month</ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-        </header>
+      <section className={cn("flex min-w-0 flex-1 flex-col", tabletUp && "pl-6")}>
+        <ScreenHead
+          overline="Calendar"
+          size="sm"
+          gap="sm"
+          title={title}
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={goToday} aria-keyshortcuts={ariaKey(keys?.["calendar.today"] ?? "t")}>
+                Today
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view === "agenda" ? "days" : view}`} onClick={() => step(-1)}>
+                <Icon name="chevron--left" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label={`Next ${view === "agenda" ? "days" : view}`} onClick={() => step(1)}>
+                <Icon name="chevron--right" />
+              </Button>
+              <ToggleGroup value={[view]} onValueChange={(v) => v[0] && setView(v[0] as View)} variant="outline" size="sm" aria-label="View">
+                <ToggleGroupItem value="agenda" aria-keyshortcuts={ariaKey(keys?.["calendar.agenda"] ?? "a")}>Agenda</ToggleGroupItem>
+                <ToggleGroupItem value="day" aria-keyshortcuts={ariaKey(keys?.["calendar.day"] ?? "d")}>Day</ToggleGroupItem>
+                <ToggleGroupItem value="week" aria-keyshortcuts={ariaKey(keys?.["calendar.week"] ?? "w")}>Week</ToggleGroupItem>
+                <ToggleGroupItem value="month" aria-keyshortcuts={ariaKey(keys?.["calendar.month"] ?? "m")}>Month</ToggleGroupItem>
+              </ToggleGroup>
+              {/* Where the calendars list is not beside the grid, it opens from here. */}
+              <span className="md:hidden">
+                <Button variant="ghost" size="icon" aria-label="Calendars" onClick={() => setListOpen(true)}>
+                  <Icon name="layers" />
+                </Button>
+              </span>
+            </>
+          }
+        />
         <div className="md:hidden">
           <QuickAdd calendars={calendars} />
         </div>
@@ -289,8 +302,8 @@ export function CalendarView() {
         )}
       </section>
 
-      {/* Detail: a side panel beside the grid from tablet up, a full screen on phones. */}
-      {tabletUp ? (
+      {/* Detail: a side panel beside the grid where there is room, a full screen otherwise. */}
+      {beside ? (
         selected && (
           <aside className="flex w-96 shrink-0 flex-col border-l bg-background" aria-label="Event">
             <div className="flex h-12 shrink-0 items-center justify-end px-2">
@@ -323,6 +336,8 @@ export function CalendarView() {
           </div>
         </AdaptiveSheetContent>
       </Sheet>
-    </div>
+     </div>
+     </div>
+    </AppFrameColumn>
   )
 }

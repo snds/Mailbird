@@ -1,3 +1,4 @@
+import { isExpandedWidth, viewportWidthFor } from "@unicron/ui"
 import { create } from "zustand"
 
 import type { Category, ContactInput, Draft, EditScope, EventInput, MessageSummary, SplitInput } from "@/core/types"
@@ -73,7 +74,7 @@ interface UiState {
    * shown, "index" for the list of sections alone (a phone), or null.
    */
   settings: SettingsSection | "index" | null
-  /** Open settings, at a section; with none, the first one (or the list, on a phone). */
+  /** Open settings, at a section; with none, the first one (or the list, where a section is a pushed screen). */
   openSettings: (section?: SettingsSection) => void
   closeSettings: () => void
   /** The keyboard shortcuts list (?), read-only; keys change in settings. */
@@ -146,7 +147,16 @@ export const useUi = create<UiState>((set, get) => ({
   openContactEditor: (state = { initial: {} }) => set({ contactEditor: state }),
   closeContactEditor: () => set({ contactEditor: null }),
   settings: null,
-  openSettings: (section) => set({ settings: section ?? (window.matchMedia("(min-width: 48rem)").matches ? "accounts" : "index"), paletteOpen: false }),
+  openSettings: (section) =>
+    set((s) => ({
+      // With none asked for: the first section where the list and the section stand side by side
+      // (the expanded width and up), the list of sections alone where a section is a pushed screen.
+      settings: section ?? (isExpandedWidth(viewportWidthFor(window.innerWidth)) ? "accounts" : "index"),
+      paletteOpen: false,
+      // Settings hides the area and lets go of its effects (ADR-0083). A note just made is closed
+      // first, as leaving Notes does: empty, it is thrown away; written in, it is in the list.
+      openNote: s.openNote?.fresh ? null : s.openNote,
+    })),
   closeSettings: () => set({ settings: null }),
   shortcutsOpen: false,
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen, paletteOpen: false }),

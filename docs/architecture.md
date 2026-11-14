@@ -36,13 +36,13 @@
 
 ## Layout postures
 
-| Posture | Width | Frame |
+| Width class | Width | Frame |
 |---|---|---|
-| Phone | < 768 px | Bottom tab bar, stacked list → detail, FAB in the thumb zone |
-| Tablet | 768–1279 px | Nav rail with create button, list + detail split |
-| Desktop | ≥ 1280 px | Nav rail, list, and reading pane, plus a context panel (planned) |
+| Compact | under 600 px | The phone's floating rows: lockup and Settings on top; Search, an icon tab bar and create at the foot. Stacked list → detail, a pushed screen with a top bar |
+| Medium | 600–1023 px | The sidebar as its rail, the status line, one content column; a pushed detail with its way back in the status line |
+| Expanded | 1024 px and up | The sidebar (204), the status line, the list (432) beside the detail |
 
-All three come from `AppShell` + `MasterDetail` (`apps/web/src/app/shell.tsx`, `apps/web/src/components/master-detail.tsx`). Breakpoints are Tailwind `md` and `lg`. Safe-area insets are respected for notches and home indicators.
+All three are one tree of unicron's frame parts ([ADR-0083](decisions/0083-shell.md)): `AppShell` (`apps/web/src/app/shell.tsx`, with `sidebar.tsx`, `status-line.tsx`, `phone-chrome.tsx` and `quick-create.tsx` beside it) and `MasterDetail` (`apps/web/src/components/master-detail.tsx`), under page heads from `components/page.tsx`. The frame picks the shell from the window's width, so the shell has no media query and no CSS of its own. A short screen (a phone on its side) stands the bottom row as a column at the trailing edge. A view tells the shell where it is and what to say through the hooks in `app/screen.ts`. Safe-area insets are the frame's.
 
 ## Design system
 
@@ -52,7 +52,7 @@ All three come from `AppShell` + `MasterDetail` (`apps/web/src/app/shell.tsx`, `
 - **Tokens,** in three tiers:
   - **Global** (`--g-*`): the theme slots per app and ground, the older ramps, radius, motion, and note-card hues (unicron core).
   - **Semantic**: the roles named as in Figma (`--surface-ground`, `--text-body`, `--primary-fill`, …) and shadcn's contract as aliases of them (`--background`, `--primary`, …), in the core. Vale adds one role of its own, `--unread`. Vale has one identity color, the core's primary: no hue per area, and no pane roles of its own.
-  - **Component** (`--c-*`): unicron's knobs in the core; shell sizes, list-row anatomy, notes, and calendar in Vale's layer.
+  - **Component** (`--c-*`): unicron's knobs in the core; list-row anatomy, notes, and calendar in Vale's layer. The shell's sizes are unicron's own.
 - **Vale's layer** is `apps/web/src/styles/`, one file per area so each area's owner edits its own: `shell.css` (the rules for the layer, and what every area shares), `mail.css`, `calendar.css`, `contacts.css`, `notes.css`, `settings.css`. `index.css` imports unicron's stylesheet, then these.
 - **Type:** Geist and Geist Mono, loaded by unicron's stylesheet as font files.
 - **Measured:** `dsa` (design-system analytics) scans `apps/web/src`, and CI's ratchet fails if `className`/style overrides, spread props, or look-alikes of unicron components grow.
@@ -164,3 +164,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0080](decisions/0080-unicron-0-24.md) | `@unicron/ui` 0.24.0 / `@unicron/tokens` 0.16.0 (adds `react-resizable-panels`); three `p-0` dialogs → `[--c-dialog-padding:0]`; `Spinner aria-hidden` inside a status that speaks; selects 16 px on touch, so the swipe selects are `shrink-0` and the time zone select `max-w-[70%] pointer-fine:max-w-[60%]`; ratchet flat |
 | [0081](decisions/0081-harness-and-scenarios.md) | `tools/screenshots/scenes/` one file per lane (a scene lives with the lane that owns its screen; shared steps in `helpers.mjs`); sizes medium 768 × 1024 and landscape 844 × 390 (touch), per-scene `sizes`/`viewport`; scene `scenario`, `offline`, `loading`, `assert`; `-g` repeats; `--demo`; `--sean` (2×, `<kind>/<area>--<screen>__<size>__<graphite\|stone>.png`); `core/demo-scenarios.ts` registry, one file per area, read once by the demo client from `sessionStorage["vale.demo.scenario"]`; `demoFlags` in `client.ts` (`member`, `gatewayOwner`, `desktopApp` → `isDesktopApp()`); first scenario `member` |
 | [0082](decisions/0082-unicron-1-0.md) | `@unicron/ui` and `@unicron/tokens` 1.0.0-pre.2 from `vendor/unicron/` (`file:` paths; swap to the release URLs and delete the folder when 1.0 is out; the gateway `Dockerfile` copies `vendor/`); `data-theme="vale"`, `dark` class = graphite; `theme-color` at run time from `--surface-ground`; Settings → Appearance: THEME chips System · Stone · Graphite on `next-themes`' store, and three "Theme: …" commands; Carbon icons by codemod, one registered glyph (`vale--forward`); one identity color (`--vertical-*`, `--surface-chrome/canvas/selected` removed); `toast` from `@unicron/ui`; chosen states as `Toggle` / `FilterChip`; `styles/` split per area; local names that collide with 1.0 exports renamed; Inter, `material-symbols`, `sonner` dropped; the 2026-10-15 baton rules superseded (proposal, DC8); ratchet 208 → 137, style 2 → 1 |
+| [0083](decisions/0083-shell.md) | The shell as one tree of unicron's frame parts, no shell media query: `AppFrameSidebar` (lockup, the section's create button, Search, APPS // 04, a slot for the section's groups in `app/section-groups.tsx`, Settings pinned, collapse kept as `vale.nav.expanded`; ADR-0073's rail and floating "new" replaced), `AppFrameStatusLine` (SECTION // PLACE and the screen's fact), the phone's top row (lockup, Settings) and bottom row (Search, icon tab bar with reselect, create), scrolled state and place strip; width classes compact / medium / expanded from the frame (`useIsTabletUp` and `hooks/use-media-query.ts` removed); `app/screen.ts` hooks (`useScreenPlace`, `useScreenFact`, `usePlaceStrip`, `useRefresh`, `useScreenRoot`, `usePushedChrome`); `MasterDetail` on `AppFrameList` / `AppFrameDetail` with "Nothing open."; `components/page.tsx` `ScreenHead` in place of `PaneHeader`; quick create (long press, swipe up, right-click, Shift+F10; five rows, one for a team member); a team member's shell without APPS or a tab bar; the demo's notice as a compact Banner, "Reset the demo"; the update mark on the way into Settings (`app/update-mark.ts`; DC12, proposal); ⌘, and ⌘\ (DC14, proposal); Settings hides the section with React `Activity`; `features/onboarding/` (`FirstRunGate`, `startAddAccount`, `startFirstRun`); scenario `update-ready`; scene option `demo`; ratchet 137 → 131, plain buttons 16 → 15 |

@@ -16,9 +16,10 @@ interface VirtualListProps<T> {
 /**
  * A long list that only renders the rows on screen (plus a few either side),
  * so ten thousand conversations scroll as smoothly as ten. It scrolls with
- * the nearest `data-scroll-root` ancestor, which keeps the pane's own
- * scrolling (and the header above it) unchanged. Rows keep list semantics:
- * each says where it sits in the whole list for screen readers.
+ * the nearest `data-scroll-root` ancestor (the frame's list column), under
+ * whatever stands above it there: the page head, a search field, chips. Rows
+ * keep list semantics: each says where it sits in the whole list for screen
+ * readers.
  */
 export function VirtualList<T>({ items, itemKey, render, estimate, onEnd, label }: VirtualListProps<T>) {
   // The virtualizer hands back fresh functions every render, which the React
@@ -27,6 +28,22 @@ export function VirtualList<T>({ items, itemKey, render, estimate, onEnd, label 
   const ref = useRef<HTMLDivElement>(null)
   const [root, setRoot] = useState<HTMLElement | null>(null)
   useLayoutEffect(() => setRoot(ref.current?.closest<HTMLElement>("[data-scroll-root]") ?? null), [])
+  // How far down its scroller the list starts. Measured, since the scroller
+  // is not the list's offset parent; and again whenever something above the
+  // list changes height (chips arrive, a banner shows).
+  const [margin, setMargin] = useState(0)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || !root) return
+    const measure = () => setMargin(Math.round(el.getBoundingClientRect().top - root.getBoundingClientRect().top - root.clientTop + root.scrollTop))
+    measure()
+    if (typeof ResizeObserver !== "function") return
+    const above = new ResizeObserver(measure)
+    for (let node: Element | null = el; node && node !== root; node = node.parentElement) {
+      for (let prev = node.previousElementSibling; prev; prev = prev.previousElementSibling) above.observe(prev)
+    }
+    return () => above.disconnect()
+  }, [root, items.length])
   // eslint-disable-next-line react/incompatible-library -- opted out of memoization above
   const v = useVirtualizer({
     count: items.length,
@@ -34,8 +51,8 @@ export function VirtualList<T>({ items, itemKey, render, estimate, onEnd, label 
     estimateSize: () => estimate,
     overscan: 8,
     getItemKey: (i) => itemKey(items[i]!),
-    // The list may start below other content in the scroll root.
-    scrollMargin: ref.current?.offsetTop ?? 0,
+    // The list starts below other content in the scroll root.
+    scrollMargin: margin,
   })
   const rows = v.getVirtualItems()
   const last = rows.at(-1)?.index ?? -1

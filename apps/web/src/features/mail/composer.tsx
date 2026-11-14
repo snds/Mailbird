@@ -1,11 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { useUi, type ComposerDraft } from "@/app/ui-store"
-import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions, toast } from "@unicron/ui"
+import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions, toast, useAppFrame } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore, useLocalTimes, useMailPrefs, useSignatures, useTemplates } from "@/core/queries"
 import type { Draft, LocalTime, OutgoingAttachment, Template } from "@/core/types"
-import { useIsTabletUp } from "@/hooks/use-media-query"
 import { useNowSecs } from "@/hooks/use-now"
 import { FOLLOW_UP_OPTIONS, longTime, nextLocalHour, partOfDay, timeThere, utcLabel } from "@/lib/time"
 
@@ -71,7 +70,8 @@ const returnFocus = () => useUi.getState().composer === null
 export function ComposeMail() {
   const draft = useUi((s) => s.composer)
   const close = useUi((s) => s.closeComposer)
-  const tabletUp = useIsTabletUp()
+  // A dialog from medium width up; a full-screen sheet in the phone's shells (the frame's width class, ADR-0083).
+  const tabletUp = !useAppFrame().phone
   const open = draft !== null
   // Loaded while closed, so a new message opens with its signature in place.
   useSignatures()

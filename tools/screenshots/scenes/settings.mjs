@@ -1,9 +1,9 @@
 // Settings: the page and each section the demo shows.
-import { button, ensure, press } from "./helpers.mjs"
+import { ensure, press, settingsButton } from "./helpers.mjs"
 
 /** Opens Settings, and one section of it when given. Mail's scenes use it too. */
 export const settings = async (app, section) => {
-  await press(app, button(app.page, "Accounts and settings"))
+  await press(app, settingsButton(app.page))
   if (section) await press(app, app.page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: section, exact: true }))
 }
 

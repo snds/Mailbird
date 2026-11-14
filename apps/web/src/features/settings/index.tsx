@@ -1,8 +1,10 @@
 import type { ReactNode } from "react"
 
+import { useScreenPlace } from "@/app/screen"
 import { useUi, type SettingsSection } from "@/app/ui-store"
 import { Button, Icon, type IconName, Item, ItemContent, ItemMedia, ItemTitle } from "@unicron/ui"
-import { MasterDetail, PaneHeader } from "@/components/master-detail"
+import { MasterDetail } from "@/components/master-detail"
+import { ScreenHead } from "@/components/page"
 import { isMember, isTauri, signOutOfGateway } from "@/core/client"
 import { useAccounts, useCore } from "@/core/queries"
 import { AccountsSection } from "@/features/accounts"
@@ -40,14 +42,17 @@ export function SettingsView() {
   const current = sections.find((s) => s.id === settings) ?? null
   const remote = useCore().data?.remote
 
+  // The breadcrumb's last part (ADR-0083): SETTINGS // MAIL.
+  useScreenPlace(current?.title ?? null)
+
   return (
     <MasterDetail
-      emptyIcon="settings"
-      emptyLabel="Choose a section to see its settings."
+      section="Settings"
+      pick="Pick a section to see its settings here."
       onBack={() => useUi.setState({ settings: "index" })}
-      header={<PaneHeader title="Settings" />}
+      header={<ScreenHead overline="Settings" title="Settings" />}
       list={
-        <nav aria-label="Settings sections" className="flex flex-col gap-1 px-2 pb-4">
+        <nav aria-label="Settings sections" className="flex flex-col gap-1 pb-4">
           {sections.map((s) => (
             <Item
               key={s.id}

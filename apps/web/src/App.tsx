@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query"
-import { useEffect } from "react"
+import { Activity, useEffect } from "react"
 import { ThemeProvider } from "next-themes"
 
 import { AppShell } from "@/app/shell"
@@ -20,6 +20,7 @@ import { EventEditor } from "@/features/calendar/event-editor"
 import { MiniCalendar } from "@/features/calendar/mini-calendar"
 import { ReminderWatcher } from "@/features/calendar/reminder-watcher"
 import { ContactEditor } from "@/features/contacts/contact-editor"
+import { FirstRunGate } from "@/features/onboarding/first-run-gate"
 import { QuickNote } from "@/features/notes/quick-note"
 import { SplitEditor } from "@/features/mail/splits"
 import { MailView } from "@/features/mail"
@@ -51,6 +52,13 @@ function Root() {
   useCoreEvents()
   useAppJumps()
   const View = VIEWS[active]
+  // Each kind's create flow from anywhere: the command menu's CREATE group and quick create run the same ones.
+  const create = {
+    mail: () => (setActive("mail"), openComposer()),
+    calendar: () => (setActive("calendar"), openEventEditor()),
+    contacts: () => (setActive("contacts"), openContactEditor()),
+    notes: () => (setActive("notes"), newNote()),
+  }
 
   return (
     <>
@@ -60,20 +68,27 @@ function Root() {
         onNavigate={(id) => (settings && id === active ? closeSettings() : setActive(id))}
         settingsOpen={!!settings}
         onSettings={() => openSettings()}
+        onCloseSettings={closeSettings}
         onCreate={() => {
           if (active === "mail") openComposer()
           else if (active === "calendar") openEventEditor()
           else if (active === "contacts") openContactEditor()
           else newNote()
         }}
+        handlers={create}
       >
-        {settings && <SettingsView />}
         {/* key resets each vertical's selection when switching apps. Settings
             hides the area instead of unmounting it, so coming back finds it as
-            you left it (ADR-0075). */}
-        <div className={settings ? "hidden" : "contents"}>
-          <View key={active} />
+            you left it (ADR-0075). Hidden, it also lets go of the frame: its
+            columns, its page head and its way back are Settings' meanwhile
+            (ADR-0083). Its own box keeps its columns from standing next to
+            Settings' in the frame's eyes. */}
+        <div className="contents">
+          <Activity mode={settings ? "hidden" : "visible"}>
+            <View key={active} />
+          </Activity>
         </div>
+        {settings && <SettingsView />}
       </AppShell>
       <ComposeMail />
       <EventEditor />
@@ -82,14 +97,7 @@ function Root() {
       <KeyboardShortcuts />
       <QuickNote />
       <ImageViewer />
-      <CommandPalette
-        onCreate={{
-          mail: () => (setActive("mail"), openComposer()),
-          calendar: () => (setActive("calendar"), openEventEditor()),
-          contacts: () => (setActive("contacts"), openContactEditor()),
-          notes: () => (setActive("notes"), newNote()),
-        }}
-      />
+      <CommandPalette onCreate={create} />
       <OutboxWatcher />
       {/* Reminders, notes, and shared links are the owner's; a team member has mail (ADR-0063). */}
       {!isMember() && (
@@ -150,14 +158,29 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <TooltipProvider>
+          {/* The public booking pages, the gateway's door and the menu-bar window stand outside the shell,
+              each with its own Toaster; inside the shell the frame holds it and places its toasts. */}
           {bookingToken ? (
-            <div className="min-h-dvh bg-background">
-              {bookingCode ? <ManageBookingPage token={bookingToken} code={bookingCode} /> : <BookingPage token={bookingToken} />}
-            </div>
+            <>
+              <div className="min-h-dvh bg-background">
+                {bookingCode ? <ManageBookingPage token={bookingToken} code={bookingCode} /> : <BookingPage token={bookingToken} />}
+              </div>
+              <Toaster />
+            </>
           ) : (
-            <GatewayGate>{mini ? <MiniCalendar /> : <Root />}</GatewayGate>
+            <GatewayGate>
+              {mini ? (
+                <>
+                  <MiniCalendar />
+                  <Toaster />
+                </>
+              ) : (
+                <FirstRunGate>
+                  <Root />
+                </FirstRunGate>
+              )}
+            </GatewayGate>
           )}
-          <Toaster position="top-center" />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

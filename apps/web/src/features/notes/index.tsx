@@ -1,9 +1,12 @@
 import { type ReactNode, useDeferredValue, useState } from "react"
 
+import { factTime, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Toggle, Tooltip, TooltipContent, TooltipTrigger, toast } from "@unicron/ui"
+import { vertical } from "@/app/verticals"
+import { Icon, Button, formatNavCount, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Toggle, Tooltip, TooltipContent, TooltipTrigger, toast } from "@unicron/ui"
 import { EntryRow, ListSearch } from "@/components/list-row"
-import { MasterDetail, PaneHeader } from "@/components/master-detail"
+import { MasterDetail } from "@/components/master-detail"
+import { ScreenHead } from "@/components/page"
 import { getCoreClient } from "@/core/client"
 import { useNoteAction, useNoteFolders, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
 import type { NoteSummary, NotesPrefs } from "@/core/types"
@@ -40,7 +43,7 @@ export function NotesView() {
   const [openingShared, setOpeningShared] = useState(false)
   const query = useDeferredValue(search.trim())
   const noteQuery = { search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
-  const { data: notes = [], isPending } = useNotes(noteQuery)
+  const { data: notes = [], isPending, refetch } = useNotes(noteQuery)
   const { data: tags = [] } = useNoteTags()
   const sync = useSyncStatus()
   const { data: prefs } = useNotesPrefs()
@@ -119,20 +122,30 @@ export function NotesView() {
     </div>
   )
 
+  // What the shell says about this screen (ADR-0083): the folder as the place, and when a note here was last edited.
+  const place = archived ? "Archive" : (activeFolder?.name ?? "All notes")
+  useScreenPlace(place)
+  const edited = notes.reduce((latest, n) => Math.max(latest, n.updated), 0)
+  useScreenFact(edited ? `Edited ${factTime(edited)}` : null)
+  useRefresh(refetch)
+
   return (
     <>
       <MasterDetail
+        section="Notes"
+        pick={vertical("notes").pick}
         listFills={grid || graph}
         detailTint={(() => {
           const c = notes.find((n) => n.id === selected?.id)?.color
           return c ? noteFill(c) : undefined
         })()}
-        emptyIcon="notebook"
-        emptyLabel="Open a note, or start a new one."
         onBack={() => setSelected(null)}
         header={
-          <>
-            <PaneHeader title={archived ? "Archive" : (activeFolder?.name ?? "Notes")}>
+          <ScreenHead
+            overline={`${[archived ? "Archive" : (activeFolder?.name ?? "Notes"), tag ? `#${tag}` : null].filter(Boolean).join(" // ")} // ${isPending ? "" : formatNavCount(notes.length)}`}
+            title={archived ? "Archive" : (activeFolder?.name ?? "Notes")}
+            actions={
+              <>
               <IconButton label="Map of notes" render={<Toggle pressed={graph} onPressedChange={(on) => setPrefs.mutate({ graph: on })} />}>
                 <Icon name="chart--relationship" className="size-5" />
               </IconButton>
@@ -179,12 +192,14 @@ export function NotesView() {
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </PaneHeader>
-            <div className="flex flex-col gap-2 px-4 pb-3">
+              </>
+            }
+            below={
+            <div className="flex flex-col gap-2">
               <ListSearch placeholder={activeFolder ? `Search ${activeFolder.name}` : "Search notes"} value={search} onChange={setSearch} />
               {!archived && <NoteFolderChips active={activeFolder?.id ?? null} onPick={(id) => (setFolder(id), setSelected(null))} />}
               {tags.length > 0 && !archived && (
-                <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4" role="group" aria-label="Filter by tag">
+                <div className="flex gap-1.5 overflow-x-auto" role="group" aria-label="Filter by tag">
                   {tags.map((t) => (
                     <Button
                       key={t.tag}
@@ -200,7 +215,8 @@ export function NotesView() {
                 </div>
               )}
             </div>
-          </>
+            }
+          />
         }
         list={
           graph ? (

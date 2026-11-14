@@ -5,7 +5,7 @@
 // the names things have on screen. When a screen changes, fix its scene; keep
 // its name, so before and after pictures pair up by file name.
 //
-// A scene is { name, run?, path?, sizes?, viewport?, scenario?, offline?, loading?, assert?, sean? }:
+// A scene is { name, run?, path?, sizes?, viewport?, scenario?, offline?, loading?, assert?, sean?, demo? }:
 //   run(app)    steps from the app's first screen (Mail's inbox). app is
 //               { page, size, phone, touch, viewport, theme, settle }:
 //               Playwright's page, the size's name, whether this is the phone
@@ -26,6 +26,8 @@
 //               the picture (helpers.mjs has `ensure`)
 //   sean        { kind: "drawn" | "undrawn", area, screen }: --sean exports it
 //               as <area>--<screen>__<size>__<graphite|stone>.png
+//   demo        true for a screen only the demo app has (its notice): the
+//               scene runs only with --demo
 //
 // Text a scene types is the scene's own. Sample data stays in
 // apps/web/src/core/demo*.ts and its scenarios, never in a scene.

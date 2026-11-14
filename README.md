@@ -81,6 +81,8 @@ Primitives and core tokens come from [unicron](https://github.com/snds/unicron),
 
 Vale's theme is `data-theme="vale"` on `<html>`, on the graphite (dark) or stone (light) ground. Vale's own layer is `apps/web/src/styles/`, one file per area. A new or changed primitive goes to unicron first: it ships in a release, and Vale moves to it.
 
+The shell is unicron's frame, in `apps/web/src/app/` ([ADR-0083](docs/decisions/0083-shell.md)): `shell.tsx` composes the sidebar (`sidebar.tsx`), the status line (`status-line.tsx`), the phone's floating rows (`phone-chrome.tsx`) and quick create (`quick-create.tsx`). The frame picks the layout from the window's width: the phone's rows under 600 px, the sidebar's rail with one column from 600, the sidebar with list beside detail from 1024. A view sits in the frame's columns through `components/master-detail.tsx`, heads its list with `components/page.tsx`, and tells the shell its place through `app/screen.ts`.
+
 Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratchet` (CI fails if misuse of unicron components grows past `.dsa/baseline.json`). The ratchet also counts plain `<button>`s, which bypass the system (dsa's `rawElements`, [ADR-0058](docs/decisions/0058-ds-additions-adopted.md)). The ones left are whole surfaces, like calendar cells and cards, and the ADR says why each stays.
 
 ## Roadmap

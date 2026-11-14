@@ -101,7 +101,7 @@ function parseArgs(argv) {
 function checkScenes(list) {
   const names = new Set()
   const seanNames = new Map()
-  const OPTIONS = new Set(["name", "run", "path", "sizes", "viewport", "scenario", "offline", "loading", "assert", "sean"])
+  const OPTIONS = new Set(["name", "run", "path", "sizes", "viewport", "scenario", "offline", "loading", "assert", "sean", "demo"])
   for (const s of list) {
     if (typeof s.name !== "string" || !s.name) throw new Error(`a scene has no name: ${JSON.stringify(s)}`)
     if (names.has(s.name)) throw new Error(`two scenes are named ${s.name}`)
@@ -267,7 +267,8 @@ function offsetOf(timeZone, wall) {
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   checkScenes(scenes)
-  const picked = scenes.filter((s) => (!args.grep.length || args.grep.some((g) => s.name.includes(g))) && (!args.sean || s.sean))
+  // A scene of the demo app itself (`demo: true`) only runs with --demo: its screen isn't in the plain build.
+  const picked = scenes.filter((s) => (!args.grep.length || args.grep.some((g) => s.name.includes(g))) && (!args.sean || s.sean) && (!s.demo || args.demo))
   if (args.list) return void console.log(picked.map((s) => s.name).join("\n"))
   const asked = [args.grep.length ? `whose name contains ${args.grep.map((g) => `"${g}"`).join(" or ")}` : "", args.sean ? "with sean metadata" : ""].filter(Boolean).join(" and ")
   if (!picked.length) throw new Error(`no scene ${asked}`)

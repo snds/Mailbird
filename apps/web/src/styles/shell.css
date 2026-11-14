@@ -18,9 +18,10 @@
  *   - Expose a role to Tailwind through the file's own @theme inline block.
  *
  * Vale has one identity color, the core's primary. There is no hue per area
- * any more, and no pane roles of Vale's own: the list pane and the rail are
- * surface-ground, the reading pane is surface-raised, a selected row is
- * primary-soft.
+ * any more, and no pane roles of Vale's own: every pane is surface-ground, as
+ * the frame draws it, and a selected row is primary-soft.
+ *
+ * The shell itself has no rules here: it is unicron's frame parts (ADR-0083).
  */
 
 /* ── Tier 2 · App roles ──────────────────────────────────────────────────── */
@@ -37,14 +38,9 @@
 .light,
 .dark,
 [data-theme] {
-  /* App shell */
-  --c-shell-rail-width: 4.5rem;
-  /* The rail with labels beside its icons (ADR-0073). At 11rem a 1440px
-     window still fits the list, the conversation and its sender panel. */
-  --c-shell-rail-width-expanded: 11rem;
-  --c-shell-tabbar-height: 4rem;
+  /* The calendar's own side list, until its lane rebuilds that screen. The
+     shell's widths are unicron's now (sidebar 204, rail 48, list 432). */
   --c-shell-list-width: 22rem;
-  --c-shell-active-indicator: var(--primary-soft);
 
   /* List row (message, contact, note) */
   --c-list-row-padding-x: 1rem;
@@ -64,4 +60,12 @@
 /* Vale's roles as Tailwind utilities (bg-unread…). */
 @theme inline {
   --color-unread: var(--unread);
+}
+
+/* ── Until unicron's fix ─────────────────────────────────────────────────── */
+/* A breadcrumb that is a press (a button, since Vale's places have no
+   addresses) does not take the status line's capitals: a button resets
+   text-transform. Reported as a unicron gap; delete this rule with the fix. */
+[data-slot="app-frame-crumbs"] button {
+  text-transform: inherit;
 }
