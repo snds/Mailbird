@@ -1,60 +1,40 @@
 import { useState } from "react"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
-import { useNoteAction, useNoteFolders, useNoteTags } from "@/core/queries"
+import { useUi } from "@/app/ui-store"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
+import { useNoteAction, useNoteTags } from "@/core/queries"
 import { NOTE_COLORS, type NoteColor, type NoteFolder, type NoteFolderInput } from "@/core/types"
 import { cn } from "@/lib/utils"
 
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
+import { useNoteFolderEditor } from "./open-note-folder"
 
 const fail = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e))
 const noteCount = (n: number) => `${n} ${n === 1 ? "note" : "notes"}`
 
-/** Smart folders as chips (ADR-0042): saved searches that fill themselves. */
-export function NoteFolderChips({ active, onPick }: { active: string | null; onPick: (id: string | null) => void }) {
-  const { data: folders = [] } = useNoteFolders()
-  const [editing, setEditing] = useState<{ folder?: NoteFolder } | null>(null)
-  const current = folders.find((f) => f.id === active)
+/**
+ * Smart folders are saved searches that fill themselves (ADR-0042). Notes
+ * mounts this; a saved folder becomes the place, a deleted one gives way to
+ * all notes.
+ */
+export function NoteFolderEditor() {
+  const editing = useNoteFolderEditor((s) => s.editing)
+  const close = () => useNoteFolderEditor.setState({ editing: null })
   return (
-    <div role="group" aria-label="Smart folders" className="-mx-4 no-scrollbar flex items-center gap-1.5 overflow-x-auto px-4">
-      {folders.map((f) => (
-        <Button
-          key={f.id}
-          size="xs"
-          variant={active === f.id ? "secondary" : "ghost"}
-          aria-pressed={active === f.id}
-          shape="pill"
-          onClick={() => onPick(active === f.id ? null : f.id)}
-        >
-          <Icon name="folder" data-icon="inline-start" />
-          {f.name}
-          <span className="text-muted-foreground tabular-nums">{f.count}</span>
-        </Button>
-      ))}
-      {current ? (
-        <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit smart folder" onClick={() => setEditing({ folder: current })}>
-          <Icon name="settings--adjust" />
-        </Button>
-      ) : (
-        <Button size="xs" variant="ghost-muted" shape="pill" onClick={() => setEditing({})}>
-          <Icon name="add" data-icon="inline-start" /> Smart folder
-        </Button>
-      )}
-      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent size="md">
-          {editing && (
-            <NoteFolderForm
-              key={editing.folder?.id ?? "new"}
-              folder={editing.folder}
-              onDone={(id) => {
-                setEditing(null)
-                if (id !== undefined) onPick(id)
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    <Dialog open={editing !== null} onOpenChange={(o) => !o && close()}>
+      <DialogContent size="md">
+        {editing && (
+          <NoteFolderForm
+            key={editing.folder?.id ?? "new"}
+            folder={editing.folder}
+            onDone={(id) => {
+              close()
+              if (id !== undefined) useUi.getState().setNotesFolder(id ? { kind: "folder", id } : { kind: "all" })
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -1,15 +1,16 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 
 import { factTime, usePlaceStrip, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { useSectionSwitcher } from "@/app/places"
+import { SectionSwitcher } from "@/app/section-switcher"
 import { pendingJump, useUi } from "@/app/ui-store"
 import { vertical } from "@/app/verticals"
-import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, NativeSelect, NativeSelectOption, Skeleton, Tabs, TabsList, TabsTrigger } from "@unicron/ui"
+import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, Skeleton, type PageHeadSwipe } from "@unicron/ui"
 import { EntryRow } from "@/components/list-row"
 import { MasterDetail } from "@/components/master-detail"
 import { ScreenHead } from "@/components/page"
 import { VirtualList } from "@/components/virtual-list"
-import { isMember } from "@/core/client"
-import { useAccounts, useCore, useInboxOverview, useMailAction, useMailPrefs, useMe, useMessagePages, useContactPhotos, useScreener, useSharedInbox, useSwipeActions, useThread } from "@/core/queries"
+import { useCore, useInboxOverview, useMailAction, useMailPrefs, useMe, useMessagePages, useContactPhotos, useSwipeActions, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -18,7 +19,8 @@ import { useNowSecs } from "@/hooks/use-now"
 import { startFirstRun } from "@/features/onboarding/start-add-account"
 
 import { ConversationView } from "./conversation-view"
-import { CATEGORIES, LANES, type MailTab } from "./lanes"
+import { CATEGORIES, LANES } from "./lanes"
+import { MailNav } from "./mail-nav"
 import { useSenderActions } from "./sender-actions"
 import { displayName, initials } from "./format"
 import { ScheduledList } from "./scheduled-list"
@@ -26,15 +28,16 @@ import { TeamList, TeamThreadView } from "../team/team-view"
 import { BundleRow, SplitChips } from "./splits"
 import { RowSwipe } from "./swipe-row"
 import { PRIMARY, useMailVerbs } from "./vocabulary"
+import { useMailPlace } from "./use-mail-place"
 import { useMailShortcuts } from "./use-shortcuts"
 
 export function MailView() {
-  // In the UI store, so the command menu can switch it.
-  const tab = useUi((s) => s.mailTab)
-  const setTab = useUi((s) => s.setMailTab)
+  // Mail's place (ADR-0084): the lane and the account, in the UI store, so the sidebar, the page head's
+  // sheet and the command menu all switch them. A lane or an account that is gone falls back to the first.
+  const { tab, account, accounts } = useMailPlace()
+  const accountId = account?.id ?? null
   const lane: Lane = tab === "scheduled" || tab === "team" || tab === "mine" ? "inbox" : tab
-  // A shared inbox (ADR-0063): "Assigned to me", and no link sharing for a team member.
-  const sharedInbox = useSharedInbox()
+  // A shared inbox (ADR-0063): "Assigned to me" lists what is yours.
   const me = useMe()
   // Mail → Team (ADR-0060): shared conversations open in their own view.
   const teamOpen = useUi((s) => s.teamOpen)
@@ -43,22 +46,26 @@ export function MailView() {
   const category = useUi((s) => s.mailCategory)
   const setCategory = useUi((s) => s.setMailCategory)
   const split = useUi((s) => s.mailSplit)
-  const { data: screener } = useScreener()
   const senderActions = useSenderActions()
   const now = useNowSecs()
-  const [accountId, setAccountId] = useState<string | null>(null)
   const search = useUi((s) => s.mailSearch)
   const setSearch = useUi((s) => s.setMailSearch)
   // Selection is a conversation. The row is remembered so the reader stays
   // open when the row leaves the current lane (e.g. read mail in "Unread").
   const [selected, setSelected] = useState<MessageSummary | null>(() => pendingJump("thread")?.row ?? null)
   useEffect(() => void useUi.getState().takeJump("thread"), [])
+  // Another lane or account, picked in the nav: what was open belongs to the place left behind.
+  const placeKey = `${tab}/${accountId ?? ""}`
+  const [placeSeen, setPlaceSeen] = useState(placeKey)
+  if (placeSeen !== placeKey) {
+    setPlaceSeen(placeKey)
+    setSelected(null)
+  }
   const selectedId = selected?.threadId ?? null
   const searchRef = useRef<HTMLInputElement>(null)
   const deferredSearch = useDeferredValue(search.trim())
 
   const { data: core } = useCore()
-  const { data: accounts = [] } = useAccounts()
   // All of the inbox (no chip, no search) folds newsletters into the bundle row.
   const bundling = tab === "inbox" && !category && !split && !deferredSearch
   const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage, refetch } = useMessagePages({
@@ -103,13 +110,10 @@ export function MailView() {
 
   const multiAccount = accounts.length > 1
   const laneInfo = LANES.find((l) => l.id === tab)!
-  // The Screener tab only exists while it's on (or still holds mail).
-  const tabs = LANES.filter((l) => (l.id !== "screener" || screener?.enabled || tab === "screener") && (l.id !== "mine" || sharedInbox) && (l.id !== "team" || !isMember()))
   const emptyText = tab === "inbox" && category ? CATEGORIES.find((c) => c.id === category)!.empty : laneInfo.empty
 
   // What the shell says about this screen (ADR-0083): the place, the newest
   // conversation for the phone's scrolled strip, and when mail last arrived.
-  const account = accounts.find((a) => a.id === accountId)
   const where = [laneInfo.label, account ? account.displayName : multiAccount ? "All accounts" : null].filter(Boolean).join(" // ")
   useScreenPlace(laneInfo.label)
   usePlaceStrip(where, tab === "scheduled" || tab === "team" ? null : (list[0]?.subject ?? null))
@@ -117,6 +121,21 @@ export function MailView() {
   useScreenFact(synced ? `Synced // ${synced}` : null)
   // Pull to refresh, and a second tap on Mail's tab: the desktop core checks the servers; a gateway's list is read again.
   useRefresh(() => (core?.kind === "native" ? sync.mutateAsync() : refetch()))
+
+  // The page head is the way to the folders and accounts wherever the sidebar does not list them (brief X1).
+  // A sideways swipe on it steps the account: All, then each (brief 3.6).
+  const stepAccount = useCallback(
+    (direction: PageHeadSwipe) => {
+      const ids = [null, ...accounts.map((a) => a.id)]
+      const at = ids.indexOf(accountId)
+      useUi.getState().setMailAccount(ids[(at + (direction === "next" ? 1 : -1) + ids.length) % ids.length] ?? null)
+    },
+    [accounts, accountId],
+  )
+  const accountName = account ? account.displayName : multiAccount ? "All accounts" : null
+  // After the title, which the head says first: "Today, Personal. Change folder or account." on the page head,
+  // and "Inbox, Personal. Change folder or account." on the small title it collapses to.
+  const switching = useSectionSwitcher(`${accountName ? `${accountName}. ` : ""}${multiAccount ? "Change folder or account." : "Change folder."}`, multiAccount ? stepAccount : undefined)
 
   useMailShortcuts({
     list,
@@ -146,29 +165,19 @@ export function MailView() {
           title={tab === "inbox" ? "Today" : laneInfo.label}
           short={laneInfo.label}
           meta={tab === "inbox" ? folioDate(new Date(now * 1000)) : undefined}
+          switcher={switching.switcher}
           actions={
-            (multiAccount || core?.kind === "native") && (
-              <>
-                {multiAccount && (
-                  <NativeSelect size="sm" aria-label="Account" value={accountId ?? ""} onChange={(e) => (setAccountId(e.target.value || null), setSelected(null))}>
-                    <NativeSelectOption value="">All</NativeSelectOption>
-                    {accounts.map((a) => (
-                      <NativeSelectOption key={a.id} value={a.id}>
-                        {a.displayName}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                )}
-                {core?.kind === "native" && (
-                  <Button variant="ghost" size="icon" aria-label="Check for new mail" onClick={() => sync.mutate()} disabled={sync.isPending}>
-                    <Icon name="renew" className={sync.isPending ? "animate-spin" : undefined} />
-                  </Button>
-                )}
-              </>
+            core?.kind === "native" && (
+              <Button variant="ghost" size="icon" aria-label="Check for new mail" onClick={() => sync.mutate()} disabled={sync.isPending}>
+                <Icon name="renew" className={sync.isPending ? "animate-spin" : undefined} />
+              </Button>
             )
           }
           below={
             <div className="flex flex-col gap-3">
+              <SectionSwitcher state={switching} overline={["Mail", accountName].filter(Boolean).join(" // ")} title="Folders">
+                <MailNav layer more={switching.sheet} />
+              </SectionSwitcher>
               <InputGroup className="h-10 rounded-xl bg-background">
                 <InputGroupAddon>
                   <Icon name="search" />
@@ -189,23 +198,6 @@ export function MailView() {
                   </InputGroupAddon>
                 )}
               </InputGroup>
-              {/* Lanes scroll sideways when they don't fit; the edge fade says there's more. */}
-              <div className="no-scrollbar overflow-x-auto [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
-                <Tabs value={tab} onValueChange={(v) => (setTab(v as MailTab), setSelected(null))} className="w-max pr-6">
-                  <TabsList>
-                    {tabs.map((l) => (
-                      <TabsTrigger key={l.id} value={l.id}>
-                        {l.label}
-                        {l.id === "screener" && !!screener?.waiting && (
-                          <span className="ml-1 rounded-full bg-foreground px-1.5 text-[11px] leading-4 font-semibold text-background" aria-label={`${screener.waiting} waiting`}>
-                            {screener.waiting}
-                          </span>
-                        )}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-              </div>
               {tab === "inbox" && (
                 <div role="group" aria-label="Show" className="no-scrollbar flex gap-1.5 overflow-x-auto">
                   {[{ id: null, label: "All" } as const, ...CATEGORIES].map((c) => (

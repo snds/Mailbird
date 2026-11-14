@@ -5,6 +5,7 @@ import type { Category, ContactInput, Draft, EditScope, EventInput, MessageSumma
 
 import type { MailTab } from "@/features/mail/lanes"
 
+import type { CalendarPlace, ContactsPlace, NotesPlace, SearchPlace } from "./places"
 import type { VerticalId } from "./verticals"
 
 /** What the event editor is working on: a new event, or one being edited. */
@@ -48,10 +49,29 @@ export interface QuickContext {
   label: string
 }
 
-/** App-level UI state that crosses views (composer, editors, settings). */
+/** The sidebar by choice: full, or its rail (ADR-0073, kept per device). At medium width it is always the rail. */
+const SIDEBAR_KEY = "vale.nav.expanded"
+const sidebarCollapsed = () => {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "0"
+  } catch {
+    // Storage can be off: the sidebar starts full.
+    return false
+  }
+}
+
+/**
+ * App-level UI state that crosses views: where you are (ADR-0084: one place
+ * per section, plus Search and Settings; `places.ts` names them and keeps the
+ * browser's history in step), and what is open over it (composer, editors).
+ */
 interface UiState {
   vertical: VerticalId
+  /** Opens a section at its first place. */
   setVertical: (v: VerticalId) => void
+  /** The sidebar is its rail by choice. Then the page head opens the section's groups, as at medium width. */
+  sidebarCollapsed: boolean
+  setSidebarCollapsed: (collapsed: boolean) => void
   jump: Jump | null
   jumpTo: (j: Jump) => void
   /** The pending jump for this kind, cleared once read (each view reads it on mount). */
@@ -90,8 +110,11 @@ interface UiState {
   quickNote: { target: QuickContext | null } | null
   openQuickNote: (target?: QuickContext | null) => void
   closeQuickNote: () => void
-  /** The mail tab: a lane, or "scheduled". Back to the inbox when you leave Mail. */
+  /** Mail's place, part one: a lane, "scheduled", or the team's two lists. Back to the inbox when you leave Mail. */
   mailTab: MailTab
+  /** Mail's place, part two: one account, or null for all of them. A filter with a radio's role, not a nav place. */
+  mailAccount: string | null
+  setMailAccount: (id: string | null) => void
   /** The shared conversation open in Mail's Team tab (ADR-0060). */
   teamOpen: string | null
   setTeamOpen: (id: string | null) => void
@@ -109,6 +132,21 @@ interface UiState {
   /** A split tab in the inbox; null for none. Exclusive with the category. */
   mailSplit: string | null
   setMailSplit: (split: string | null) => void
+  /** Calendar's place: the calendar in this device's range (`view-prefs.ts`), Tasks, or Booking links. */
+  calendarPlace: CalendarPlace
+  setCalendarPlace: (place: CalendarPlace) => void
+  /** Contacts' place: everyone, a label, a smart group, Duplicates, or Recently deleted. */
+  contactsPlace: ContactsPlace
+  setContactsPlace: (place: ContactsPlace) => void
+  /** Notes' place: a folder, narrowed by one tag. */
+  notesPlace: NotesPlace
+  /** Opens a folder. The tag in force stays, except in the Archive, which has none. */
+  setNotesFolder: (folder: NotesPlace["folder"]) => void
+  /** Narrows the open folder by a tag; null, or the tag in force again, clears it. */
+  setNotesTag: (tag: string | null) => void
+  /** Search as a place (brief X2), or null. The search lane opens and fills it; until then Search is the command menu. */
+  search: SearchPlace | null
+  setSearch: (search: SearchPlace | null) => void
   /** The split editor: a new split (no id) or one being changed. */
   splitEditor: { id?: string; initial: Partial<SplitInput> } | null
   openSplitEditor: (state: { id?: string; initial: Partial<SplitInput> } | null) => void
@@ -121,14 +159,44 @@ export type ComposerDraft = Partial<Draft> & {
   cursorAfterQuote?: boolean
 }
 
+/** Every section's first place: where a section opens, and where it falls back when its place is gone. */
+const FIRST_PLACES = {
+  mailTab: "inbox",
+  mailAccount: null,
+  mailSearch: "",
+  mailCategory: null,
+  mailSplit: null,
+  calendarPlace: "calendar",
+  contactsPlace: { kind: "all" },
+  notesPlace: { folder: { kind: "all" }, tag: null },
+} satisfies Partial<UiState>
+
 export const useUi = create<UiState>((set, get) => ({
   vertical: "mail",
-  setVertical: (vertical) => set({ vertical, settings: null, jump: null, openNote: null, mailTab: "inbox", mailSearch: "", mailCategory: null, mailSplit: null }),
+  setVertical: (vertical) => set({ vertical, settings: null, search: null, jump: null, openNote: null, ...FIRST_PLACES }),
+  sidebarCollapsed: sidebarCollapsed(),
+  setSidebarCollapsed: (collapsed) => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, collapsed ? "0" : "1")
+    } catch {
+      // Not remembered this time; it still collapses.
+    }
+    set({ sidebarCollapsed: collapsed })
+  },
   jump: null,
   jumpTo: (jump) =>
     jump.kind === "note"
-      ? set({ vertical: "notes", settings: null, jump: null, openNote: { id: jump.id, fresh: !!jump.fresh } })
-      : set({ vertical: VERTICAL_OF[jump.kind], settings: null, jump, openNote: null }),
+      ? set({ vertical: "notes", settings: null, search: null, jump: null, openNote: { id: jump.id, fresh: !!jump.fresh } })
+      : set((s) => ({
+          vertical: VERTICAL_OF[jump.kind],
+          settings: null,
+          search: null,
+          jump,
+          openNote: null,
+          // An event shows on the calendar and a person in the list of people, not in one of their tools.
+          calendarPlace: jump.kind === "event" ? "calendar" : s.calendarPlace,
+          contactsPlace: jump.kind === "contact" && (s.contactsPlace.kind === "duplicates" || s.contactsPlace.kind === "deleted") ? { kind: "all" } : s.contactsPlace,
+        })),
   openNote: null,
   setOpenNote: (openNote) => set({ openNote }),
   takeJump: (kind) => {
@@ -170,9 +238,20 @@ export const useUi = create<UiState>((set, get) => ({
   mailTab: "inbox",
   teamOpen: null,
   setTeamOpen: (teamOpen) => set({ teamOpen }),
-  showTeam: (teamOpen) => set({ vertical: "mail", settings: null, mailTab: "team", teamOpen, mailSearch: "", mailCategory: null, mailSplit: null, jump: null, openNote: null }),
-  setMailTab: (mailTab) => set({ mailTab }),
-  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", settings: null, mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
+  showTeam: (teamOpen) => set({ vertical: "mail", settings: null, search: null, mailTab: "team", teamOpen, mailSearch: "", mailCategory: null, mailSplit: null, jump: null, openNote: null }),
+  setMailTab: (mailTab) => set({ mailTab, settings: null, search: null }),
+  showMailTab: (mailTab, mailSearch = "") => set({ vertical: "mail", settings: null, search: null, mailTab, mailSearch, mailCategory: null, mailSplit: null, jump: null, openNote: null }),
+  mailAccount: null,
+  setMailAccount: (mailAccount) => set({ mailAccount }),
+  calendarPlace: "calendar",
+  setCalendarPlace: (calendarPlace) => set({ calendarPlace, settings: null, search: null }),
+  contactsPlace: { kind: "all" },
+  setContactsPlace: (contactsPlace) => set({ contactsPlace, settings: null, search: null }),
+  notesPlace: { folder: { kind: "all" }, tag: null },
+  setNotesFolder: (folder) => set((s) => ({ notesPlace: { folder, tag: folder.kind === "archive" ? null : s.notesPlace.tag }, settings: null, search: null })),
+  setNotesTag: (tag) => set((s) => ({ notesPlace: { ...s.notesPlace, tag: tag === s.notesPlace.tag ? null : tag }, settings: null, search: null })),
+  search: null,
+  setSearch: (search) => set({ search }),
   mailCategory: null,
   setMailCategory: (mailCategory) => set({ mailCategory, mailSplit: null }),
   mailSplit: null,

@@ -1,11 +1,11 @@
 // Mail: the lanes, a conversation, reading and writing. Search is in search.mjs.
-import { area, button, press, toastGone } from "./helpers.mjs"
+import { area, button, ensure, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, switcher, switcherLayer, toastGone } from "./helpers.mjs"
 import { settings } from "./settings.mjs"
 
 /** Opens a conversation in the Inbox list by its subject. */
 export const conversation = (app, subject) => press(app, app.page.getByRole("list", { name: "Inbox" }).getByRole("button", { name: subject }).first())
-/** Opens a lane (Unread, Starred, Snoozed…) by its tab. */
-export const lane = (app, name) => press(app, app.page.getByRole("tab", { name, exact: true }))
+/** Opens a lane (Unread, Starred, Snoozed…) from Mail's folders: the sidebar, or the page head's sheet or popover. */
+export const lane = (app, name) => pick(app, name)
 /** Opens a new message; returns its dialog. */
 export const compose = async (app) => {
   await press(app, button(app.page, "Compose"))
@@ -48,7 +48,8 @@ export const scenes = [
     name: "mail-archived-toast", // a toast with Undo, taken while it shows
     run: async (app) => {
       await conversation(app, /Cabin weekend/)
-      await button(app.page, "Archive").click()
+      // The conversation's own action: Mail's folders have an Archive too, in the sidebar (ADR-0084).
+      await app.page.getByRole("region", { name: "Mail: what is open" }).getByRole("button", { name: "Archive", exact: true }).click()
       await app.page.locator("[data-sonner-toast]").first().waitFor()
     },
   },
@@ -115,7 +116,7 @@ export const scenes = [
       await app.page.getByRole("switch", { name: "Screen first-time senders" }).click()
       await toastGone(app)
       await area(app, "Mail")
-      await press(app, app.page.getByRole("tab", { name: /^Screener/ }))
+      await lane(app, "Screener")
     },
   },
   { name: "mail-unread", run: (app) => lane(app, "Unread") },
@@ -141,4 +142,77 @@ export const scenes = [
     },
   },
   { name: "mail-archive", run: (app) => lane(app, "Archive") },
+  {
+    // Mobile / 05: Mail's folders and accounts (ADR-0084). A sheet from the page head on a phone, a
+    // popover at medium width, the sidebar's groups on a desktop. The rows are the core's lanes.
+    name: "mail-folders-sheet",
+    sizes: ["phone", "desktop", "medium"],
+    sean: { kind: "drawn", area: "mail", screen: "folders-sheet" },
+    run: async (app) => {
+      const { page } = app
+      const rows = page.getByRole("list", { name: "Inbox" }).getByRole("button")
+      const everyone = await rows.count()
+      // The Account radio group filters the list, and picking closes the layer.
+      await press(app, (await groups(app)).getByRole("radio", { name: "Work", exact: true }))
+      ensure(!(await switcherLayer(page).count()), "picking an account left the layer open")
+      const work = await rows.count()
+      ensure(work > 0 && work < everyone, `the Work account shows ${work} of ${everyone} conversations: it did not filter the list`)
+      ensure(/Inbox\s*\/\/\s*Work/i.test(await page.locator('[data-slot="page-head-overline"]:visible').first().innerText()), "the page head does not name the account")
+      // A place is a history entry: another folder, then Back, is the Inbox again, still on Work.
+      await lane(app, "Starred")
+      ensure((await headTitle(page)) === "Starred", "Starred did not open from the folders")
+      ensure(!(await switcherLayer(page).count()), "picking a folder left the layer open")
+      await goBack(app)
+      ensure((await headTitle(page)) === "Today", "Back from Starred did not return to the Inbox")
+      ensure((await rows.count()) === work, "Back from Starred lost the account")
+      await goBack(app)
+      ensure((await rows.count()) === everyone, "Back from the Work account did not return to all accounts")
+      if (await switcher(page).count()) {
+        // A pushed screen: Back returns to the list, in the same place.
+        await conversation(app, /Token audit/)
+        ensure(await page.getByRole("button", { name: "Back", exact: true }).first().isVisible(), "the conversation is not a pushed screen")
+        await goBack(app)
+        ensure(await page.getByRole("list", { name: "Inbox" }).isVisible(), "Back from a conversation did not return to the list")
+        ensure((await headTitle(page)) === "Today", "Back from a conversation changed the place")
+      }
+      if (app.size === "phone") {
+        // Scrolled, the small title the head collapses to is the same button (cross-app decisions §7).
+        const list = page.getByRole("region", { name: "Mail", exact: true })
+        await list.evaluate((el) => el.scrollTo(0, 400))
+        await app.settle()
+        const small = page.locator('button[data-slot="app-frame-top-row-title"]')
+        ensure((await small.getAttribute("aria-label")) === "Inbox, All accounts. Change folder or account.", `the small title is not the switcher: ${await small.getAttribute("aria-label")}`)
+        await press(app, small)
+        ensure(await switcherLayer(page).isVisible(), "the small title did not open the folders")
+        await leaveLayer(app)
+        await list.evaluate((el) => el.scrollTo(0, 0))
+        await app.settle()
+        // A sideways swipe on the head steps the account; its keys are the arrows while the head has focus.
+        await switcher(page).first().focus()
+        await page.keyboard.press("ArrowRight")
+        await app.settle()
+        ensure(/Inbox\s*\/\/\s*Personal/i.test(await page.locator('[data-slot="page-head-overline"]:visible').first().innerText()), "stepping the account from the head did not go from All to the first account")
+        await page.keyboard.press("ArrowLeft")
+        await app.settle()
+        ensure(/Inbox\s*\/\/\s*All accounts/i.test(await page.locator('[data-slot="page-head-overline"]:visible').first().innerText()), "stepping back did not return to all accounts")
+        await page.evaluate(() => document.activeElement?.blur())
+      }
+      await groups(app)
+    },
+    assert: async (app) => {
+      const { page } = app
+      const list = await groups(app)
+      ensure((await oneCurrent(list, "Mail's folders")) === "Inbox", "the Inbox is not the current place")
+      for (const gone of ["Drafts", "Sent", "Spam"]) ensure(!(await list.getByRole("button", { name: gone, exact: true }).count()), `${gone} is listed, and the core has no such folder`)
+      for (const row of ["Unread", "Starred", "Snoozed", "Waiting", "Scheduled", "Archive", "Team", "Add an account…"]) ensure(await list.getByRole("button", { name: row, exact: true }).count(), `${row} is not in Mail's folders`)
+      const accounts = list.getByRole("radiogroup", { name: /Account/ })
+      ensure((await accounts.getByRole("radio").count()) === 3, "the Account group is not All and the two accounts")
+      ensure(await accounts.getByRole("radio", { name: "All", exact: true }).isChecked(), "All is not the checked account")
+      ensure(!(await list.locator('[role="radio"][aria-current]').count()), "an account says it is the current place: it is a filter")
+      if (await switcherLayer(page).count()) {
+        ensure(/Mail\s*\/\/\s*All accounts/i.test(await list.innerText()), "the layer's overline does not name the section and the account")
+        ensure(/Change folder or account\.$/.test(await switcher(page).first().getAttribute("aria-label")), "the page head button does not say what it changes")
+      } else ensure(!(await switcher(page).count()), "the page head is a switcher although the sidebar lists the folders")
+    },
+  },
 ]

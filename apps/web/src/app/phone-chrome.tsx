@@ -42,6 +42,8 @@ export function PhoneTopRow({ settingsOpen, onSettings, onCloseSettings }: Pick<
     <AppFrameTopRow
       lockup={<AppLockup name="Vale" />}
       title={place ?? undefined}
+      // The small title is the page head collapsed: where the head is the section's switcher, so is it (ADR-0084).
+      switcher={frame.head?.switcher}
       actions={<FloatButton label="Settings" icon="user--avatar" size="l" mark={mark} onClick={onSettings} />}
     />
   )

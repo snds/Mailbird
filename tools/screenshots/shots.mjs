@@ -117,6 +117,7 @@ function checkScenes(list) {
       if (!SEAN.kinds.includes(kind)) throw new Error(`scene ${s.name}: sean.kind is drawn or undrawn`)
       for (const [k, v] of [["area", area], ["screen", screen]]) if (typeof v !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(v)) throw new Error(`scene ${s.name}: sean.${k} is lowercase words joined by "-"`)
       const key = `${kind}/${area}--${screen}`
+      if (s.sean.sizes !== undefined && !(Array.isArray(s.sean.sizes) && s.sean.sizes.length && s.sean.sizes.every((z) => z in SIZES))) throw new Error(`scene ${s.name}: sean.sizes lists sizes (${Object.keys(SIZES).join(", ")})`)
       if (seanNames.has(key)) throw new Error(`scenes ${seanNames.get(key)} and ${s.name} both export ${key}`)
       seanNames.set(key, s.name)
     }
@@ -127,7 +128,8 @@ function checkScenes(list) {
 function jobsFor(scene, args) {
   let sizes = scene.sizes ?? DEFAULT_SIZES
   if (args.sizes.length) sizes = args.sizes.filter((z) => !scene.sizes || scene.sizes.includes(z))
-  if (args.sean) sizes = sizes.filter((z) => SEAN.sizes.includes(z))
+  // Sean's set leaves medium out, unless the scene is of a medium-width screen and says so (`sean.sizes`).
+  if (args.sean) sizes = sizes.filter((z) => (scene.sean.sizes ?? SEAN.sizes).includes(z))
   const themes = args.theme ? [args.theme] : THEMES
   return sizes.flatMap((size) => themes.map((theme) => ({ scene, size, theme })))
 }

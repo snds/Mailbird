@@ -51,11 +51,9 @@ function Group({ group }: { group: ContactSummary[] }) {
 export function DuplicatesPane() {
   const { data: groups = [], isPending } = useDuplicates()
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-10 md:px-8 md:pt-8">
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Possible duplicates</h2>
-        <p className="text-sm text-muted-foreground">Cards that share an email, a phone number, or a full name. Pick the one to keep; nothing merges without you.</p>
-      </header>
+    <div className="flex max-w-2xl flex-col gap-4 pb-10">
+      {/* The place's own head names it (ADR-0084). */}
+      <p className="text-sm text-muted-foreground">Cards that share an email, a phone number, or a full name. Pick the one to keep; nothing merges without you.</p>
       {!isPending && groups.length === 0 && (
         <p className="flex items-center gap-2 rounded-xl border p-4 text-sm text-muted-foreground">
           <Icon name="checkmark--outline" /> No duplicates left.

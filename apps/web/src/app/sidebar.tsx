@@ -1,41 +1,19 @@
-import { useState } from "react"
-
-import { AppFrameSidebar, AppLockup, NavItem, NavSection } from "@unicron/ui"
+import { AppFrameSidebar, AppLockup, NavItem, NavSection, useAppFrame } from "@unicron/ui"
 import { useKeyBindings } from "@/core/queries"
 
+import { placeIsGroupItem } from "./places"
 import { SectionGroups } from "./section-groups"
+import { useUi } from "./ui-store"
 import { useUpdateMark } from "./update-mark"
 import { VERTICALS, type Vertical, type VerticalId } from "./verticals"
-
-/** The sidebar by choice: full, or its rail (ADR-0073, kept per device). At medium width it is always the rail. */
-const SIDEBAR_KEY = "vale.nav.expanded"
-function useSidebarCollapsed() {
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(SIDEBAR_KEY) === "0"
-    } catch {
-      // Storage can be off: the sidebar starts full.
-      return false
-    }
-  })
-  const set = (next: boolean) => {
-    try {
-      localStorage.setItem(SIDEBAR_KEY, next ? "0" : "1")
-    } catch {
-      // Not remembered this time; it still collapses.
-    }
-    setCollapsed(next)
-  }
-  return [collapsed, set] as const
-}
 
 interface SidebarProps {
   /** The sections this person has: all four, or Mail alone for a team member. */
   sections: Vertical[]
   /** The open section. Its create action stays on the button on Search and Settings. */
   active: Vertical
-  /** Which item is current: a section, Settings, or none (a place of the section's own group). */
-  current: VerticalId | "settings" | null
+  /** Where you are: a section, or Settings. Which item says so is worked out here: one per nav list (brief 3.3). */
+  current: VerticalId | "settings"
   onNavigate: (id: VerticalId) => void
   onSettings: () => void
   onSearch: () => void
@@ -52,7 +30,16 @@ interface SidebarProps {
  * medium width, or collapsed by choice (⌘\), the frame draws it as its rail.
  */
 export function Sidebar({ sections, active, current, onNavigate, onSettings, onSearch, onCreate, quickOpen, onQuickCreate }: SidebarProps) {
-  const [collapsed, setCollapsed] = useSidebarCollapsed()
+  // By choice (ADR-0073, kept per device); the store holds it, since the page head becomes the switcher beside a rail.
+  const collapsed = useUi((s) => s.sidebarCollapsed)
+  const setCollapsed = useUi((s) => s.setSidebarCollapsed)
+  const frame = useAppFrame()
+  // The groups are not in the rail (medium width, by choice, or when the frame asks for it): the page head opens them.
+  const groups = !collapsed && frame.layout === "expanded" && !frame.sidebarRail
+  const calendarPlace = useUi((s) => s.calendarPlace)
+  // One current item: the place's own row in the section's group when it has one and the group shows;
+  // otherwise the section under Apps. Settings marks itself alone.
+  const inGroup = current !== "settings" && groups && placeIsGroupItem(current, calendarPlace)
   const mark = useUpdateMark()
   const { data: keys } = useKeyBindings()
   return (
@@ -75,11 +62,11 @@ export function Sidebar({ sections, active, current, onNavigate, onSettings, onS
       {sections.length > 1 && (
         <NavSection title="Apps" count={VERTICALS.length}>
           {sections.map((v) => (
-            <NavItem key={v.id} label={v.label} icon={v.icon} current={current === v.id} onClick={() => onNavigate(v.id)} />
+            <NavItem key={v.id} label={v.label} icon={v.icon} current={current === v.id && !inGroup} onClick={() => onNavigate(v.id)} />
           ))}
         </NavSection>
       )}
-      <SectionGroups section={active.id} />
+      {groups && <SectionGroups section={active.id} />}
     </AppFrameSidebar>
   )
 }

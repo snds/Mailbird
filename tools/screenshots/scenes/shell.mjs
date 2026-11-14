@@ -1,6 +1,6 @@
 // The shell: its chrome (sidebar, rail, top and bottom rows, tab bar), the scrolled state, quick
 // create, the limited shells (a team member, the demo), and the ways around the app.
-import { area, button, ensure, press, settingsButton, sidebar, tabBar } from "./helpers.mjs"
+import { area, button, ensure, groups, oneCurrent, press, settingsButton, sidebar, switcher, switcherLayer, tabBar } from "./helpers.mjs"
 
 const AREAS = ["Mail", "Calendar", "Contacts", "Notes"]
 /** The words quick create lists, and what each one opens. */
@@ -243,13 +243,17 @@ export const scenes = [
         await page.keyboard.press("Control+Backslash")
         await app.settle()
         ensure((await sidebar(page).getAttribute("data-state")) === "rail", "⌘\\ did not collapse the sidebar")
+        // Beside the rail the page head is the way to the folders, as at medium width (ADR-0084).
+        ensure((await switcher(page).count()) === 1, "the page head is not the switcher beside the rail")
+        ensure(!(await sidebar(page).locator('[aria-label="Inbox"]').count()), "the rail lists the folders")
         await page.keyboard.press("Control+Backslash")
         await app.settle()
         ensure((await sidebar(page).getAttribute("data-state")) === "expanded", "⌘\\ did not expand the sidebar")
-        // Tab order: the sidebar first, then the content.
+        ensure(!(await switcher(page).count()), "the page head is still a switcher beside the full sidebar")
+        // Tab order: the sidebar first (its head, Search, Apps, the section's own groups, Settings), then the content.
         await page.keyboard.press("Tab")
         ensure(await page.evaluate(() => !!document.activeElement?.closest('[data-slot="app-frame-sidebar"]')), "the first Tab stop is not in the sidebar")
-        for (let i = 0; i < 12 && (await page.evaluate(() => !!document.activeElement?.closest('[data-slot="app-frame-sidebar"]'))); i++) await page.keyboard.press("Tab")
+        for (let i = 0; i < 40 && (await page.evaluate(() => !!document.activeElement?.closest('[data-slot="app-frame-sidebar"]'))); i++) await page.keyboard.press("Tab")
         ensure(await page.evaluate(() => !!document.activeElement?.closest('[data-slot="app-frame-status-line"], [data-slot="app-frame-main"]')), "Tab does not go from the sidebar to the content")
         await page.evaluate(() => document.activeElement?.blur())
       }
@@ -267,10 +271,44 @@ export const scenes = [
       ensure(await page.getByRole("dialog", { name: "Command menu" }).isVisible(), "Search did not open the command menu")
       await leave(app)
       // A header control carried into the page head still works: Mail's account choice.
-      await page.getByRole("combobox", { name: "Account" }).selectOption({ label: "Work" })
-      await app.settle()
+      // Mail's account choice, now a radio group in Mail's folders (ADR-0084): the sidebar, or the page head's layer.
+      await press(app, (await groups(app)).getByRole("radio", { name: "Work", exact: true }))
       ensure(/Inbox\s*\/\/\s*Work/i.test(await page.locator('[data-slot="page-head-overline"]').first().innerText()), "choosing an account did not change the page head")
-      await page.getByRole("combobox", { name: "Account" }).selectOption({ label: "All" })
+      await press(app, (await groups(app)).getByRole("radio", { name: "All", exact: true }))
+    },
+  },
+  {
+    // Medium width (ADR-0084; brief X1): the rail has no groups, so the page head is the switcher
+    // and opens them in a popover under it, 320 wide.
+    name: "switcher-medium",
+    sizes: ["medium"],
+    sean: { kind: "undrawn", area: "shell", screen: "switcher-medium", sizes: ["medium"] },
+    run: async (app) => {
+      await groups(app)
+    },
+    assert: async (app) => {
+      const { page } = app
+      const layer = switcherLayer(page)
+      ensure(await layer.isVisible(), "the page head did not open the folders")
+      const box = await layer.boundingBox()
+      ensure(Math.round(box.width) === 320, `the popover is ${Math.round(box.width)} wide, not 320`)
+      const head = await switcher(page).first().boundingBox()
+      ensure(box.y >= head.y + head.height - 8, "the popover does not stand under the page head")
+      ensure(!(await sidebar(page).locator('[aria-label="Inbox"]').count()), "the rail lists the folders")
+      ensure((await oneCurrent(sidebar(page), "the rail")) === "Mail", "Mail is not the rail's current item")
+      ensure((await oneCurrent(layer, "the popover")) === "Inbox", "the Inbox is not the popover's current place")
+      // Every section's head is its switcher here.
+      await page.keyboard.press("Escape")
+      await app.settle()
+      for (const [name, title] of [["Calendar", "Calendars"], ["Contacts", "Groups"], ["Notes", "Folders"]]) {
+        await area(app, name)
+        await groups(app)
+        ensure(await page.getByRole("dialog", { name: title, exact: true }).isVisible(), `${name}'s page head did not open its ${title.toLowerCase()}`)
+        await page.keyboard.press("Escape")
+        await app.settle()
+      }
+      await area(app, "Mail")
+      await groups(app)
     },
   },
 ]

@@ -5,6 +5,7 @@ import { isMember } from "@/core/client"
 
 import { DemoBar } from "./demo-bar"
 import { PhoneBottomRow, PhoneTopRow } from "./phone-chrome"
+import { stepBack, watchPlaces } from "./places"
 import { QuickCreateMenu, type CreateHandlers } from "./quick-create"
 import { returnToRoot } from "./screen"
 import { Sidebar } from "./sidebar"
@@ -48,6 +49,11 @@ export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen,
   const [quickOpen, setQuickOpen] = useState(false)
   const search = () => useUi.getState().setPaletteOpen(true)
 
+  // A change of place is a history entry, so the browser's and the phone's Back go back one place (ADR-0084).
+  useEffect(() => watchPlaces(), [])
+  // Leaving Settings by its own Back is the same step when Settings was opened from here.
+  const leaveSettings = () => stepBack((behind) => behind.settings === null, onCloseSettings)
+
   // ⌘, opens Settings, as it does in every app (cross-app decisions §6). ⌘\ is the sidebar's own.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -64,7 +70,6 @@ export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen,
       <Sidebar
         sections={sections}
         active={section}
-        // One current item: Settings, or the open section. A place that is no nav item marks none.
         current={settingsOpen ? "settings" : active}
         onNavigate={onNavigate}
         onSettings={onSettings}
@@ -74,7 +79,7 @@ export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen,
         onQuickCreate={() => setQuickOpen(true)}
       />
       <TopLine section={settingsOpen ? "Settings" : section.label} onSection={settingsOpen ? onSettings : returnToRoot} />
-      <PhoneTopRow settingsOpen={settingsOpen} onSettings={onSettings} onCloseSettings={onCloseSettings} />
+      <PhoneTopRow settingsOpen={settingsOpen} onSettings={onSettings} onCloseSettings={leaveSettings} />
       <AppFrameMain>{children}</AppFrameMain>
       <PhoneBottomRow sections={sections} active={section} onNavigate={onNavigate} settingsOpen={settingsOpen} onSearch={search} onCreate={onCreate} handlers={handlers} />
       <QuickCreateMenu open={quickOpen} onOpenChange={setQuickOpen} handlers={handlers} />

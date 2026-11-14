@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from "react"
 
 import { AppFrameDetail, AppFrameInset, AppFrameList, Button, EmptyState, Icon, useAppFrame } from "@unicron/ui"
 import { DemoBar } from "@/app/demo-bar"
+import { usePushedScreen } from "@/app/places"
 import { useScreen, useScreenRoot } from "@/app/screen"
 
 interface MasterDetailProps {
@@ -21,6 +22,8 @@ interface MasterDetailProps {
   listFills?: boolean
   /** A background for the detail pane, edge to edge (a note's color). */
   detailTint?: string
+  /** What opens in the detail is a place of its own (a Settings section), so its history entry is the place's. */
+  detailIsPlace?: boolean
 }
 
 /**
@@ -31,9 +34,11 @@ interface MasterDetailProps {
  * phone's top bar, or the status line's leading slot at medium width.
  * With `listFills`, the list has the room until something opens.
  */
-export function MasterDetail({ section, header, list, detail, onBack, onRoot, pick, listFills = false, detailTint }: MasterDetailProps) {
+export function MasterDetail({ section, header, list, detail, onBack, onRoot, pick, listFills = false, detailTint, detailIsPlace = false }: MasterDetailProps) {
   const frame = useAppFrame()
   const hasDetail = !!detail
+  // Pushed over the list (compact and medium): Back closes it and returns to the list where it was (ADR-0084).
+  usePushedScreen(hasDetail && !detailIsPlace, onBack)
   const wide = listFills && !hasDetail
   const refresh = useScreen((s) => s.refresh)
   const body = useRef<HTMLDivElement>(null)

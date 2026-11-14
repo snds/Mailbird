@@ -19,11 +19,9 @@ export function RecentlyDeletedPane({ onRestored }: { onRestored: (id: string) =
   }
   if (isPending) return null
   return (
-    <section className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-10 md:px-8 md:pt-8" aria-label="Recently deleted">
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Recently deleted</h2>
-        <p className="text-sm text-muted-foreground">Deleted contacts and cards merged into another stay here for 30 days.</p>
-      </header>
+    <section className="flex max-w-2xl flex-col gap-4 pb-10" aria-label="Recently deleted">
+      {/* The place's own head names it (ADR-0084). */}
+      <p className="text-sm text-muted-foreground">Deleted contacts and cards merged into another stay here for 30 days.</p>
       {gone.length === 0 ? (
         <Empty size="sm" className="py-12">
           <EmptyHeader>

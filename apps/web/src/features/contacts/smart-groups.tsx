@@ -1,56 +1,36 @@
 import { useState } from "react"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Switch, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
-import { useContactLabels, usePimAction, useSmartGroups } from "@/core/queries"
+import { useUi } from "@/app/ui-store"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Switch, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
+import { useContactLabels, usePimAction } from "@/core/queries"
 import type { SmartGroup, SmartGroupInput } from "@/core/types"
+
+import { useSmartGroupEditor } from "./open-smart-group"
 
 const fail = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e))
 
-/** Smart groups as chips: each keeps its own members by rule (ADR-0023). */
-export function SmartGroupChips({ active, onPick }: { active: string | null; onPick: (id: string | null) => void }) {
-  const { data: groups = [] } = useSmartGroups()
-  const [editing, setEditing] = useState<{ group?: SmartGroup } | null>(null)
-  const current = groups.find((g) => g.id === active)
+/**
+ * Smart groups keep their own members by rule (ADR-0023). Contacts mounts
+ * this; a saved group becomes the place, a deleted one gives way to everyone.
+ */
+export function SmartGroupEditor() {
+  const editing = useSmartGroupEditor((s) => s.editing)
+  const close = () => useSmartGroupEditor.setState({ editing: null })
   return (
-    <div role="group" aria-label="Smart groups" className="-mx-4 no-scrollbar mt-2 flex items-center gap-1.5 overflow-x-auto px-4">
-      {groups.map((g) => (
-        <Button
-          key={g.id}
-          size="xs"
-          variant={active === g.id ? "secondary" : "ghost"}
-          aria-pressed={active === g.id}
-          shape="pill"
-          onClick={() => onPick(active === g.id ? null : g.id)}
-        >
-          <Icon name="filter" data-icon="inline-start" />
-          {g.name}
-          <span className="text-muted-foreground tabular-nums">{g.count}</span>
-        </Button>
-      ))}
-      {current ? (
-        <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit smart group" onClick={() => setEditing({ group: current })}>
-          <Icon name="settings--adjust" />
-        </Button>
-      ) : (
-        <Button size="xs" variant="ghost-muted" shape="pill" onClick={() => setEditing({})}>
-          <Icon name="add" data-icon="inline-start" /> Smart group
-        </Button>
-      )}
-      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent size="md">
-          {editing && (
-            <SmartGroupForm
-              key={editing.group?.id ?? "new"}
-              group={editing.group}
-              onDone={(id) => {
-                setEditing(null)
-                if (id !== undefined) onPick(id)
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    <Dialog open={editing !== null} onOpenChange={(o) => !o && close()}>
+      <DialogContent size="md">
+        {editing && (
+          <SmartGroupForm
+            key={editing.group?.id ?? "new"}
+            group={editing.group}
+            onDone={(id) => {
+              close()
+              if (id !== undefined) useUi.getState().setContactsPlace(id ? { kind: "group", id } : { kind: "all" })
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

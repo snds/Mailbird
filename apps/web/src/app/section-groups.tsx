@@ -1,17 +1,25 @@
+import { isMember } from "@/core/client"
+import { CalendarNav } from "@/features/calendar/calendar-nav"
+import { ContactsNav } from "@/features/contacts/contacts-nav"
+import { MailNav } from "@/features/mail/mail-nav"
+import { NotesNav } from "@/features/notes/notes-nav"
+
 import type { VerticalId } from "./verticals"
 
 /**
- * The open section's own groups in the sidebar, under APPS (brief X1): mail
- * folders and accounts, calendars, contact groups, note folders and tags.
- * They scroll while the head and Settings stay put. Each returns
- * `NavSection`s of `NavItem`s; in the rail the frame leaves them out, and the
- * page head opens the same list instead.
+ * The open section's own groups in the sidebar, under APPS (ADR-0084; brief
+ * X1): mail folders and accounts, calendars, contact groups, note folders and
+ * tags. They scroll while the head and Settings stay put. Each lane owns its
+ * list (`features/<area>/<area>-nav.tsx`); the page head opens the same list
+ * where the sidebar is its rail (`section-switcher.tsx`).
  *
- * Empty until the lane that owns each section's second level fills it. One
- * item per nav list is current: once a group item is the current place
- * (Inbox, All contacts), the shell passes `current={null}` to the sidebar so
- * APPS marks none (shell.tsx, `current`).
+ * One item per nav list is current: a place's own row here, or the section
+ * under APPS when the place has no row (the sidebar works that out).
  */
-export function SectionGroups(_props: { section: VerticalId }) {
-  return null
+export function SectionGroups({ section }: { section: VerticalId }) {
+  // A team member works the mail; the rest is the owner's (ADR-0063).
+  if (section === "mail" || isMember()) return <MailNav />
+  if (section === "calendar") return <CalendarNav />
+  if (section === "contacts") return <ContactsNav />
+  return <NotesNav />
 }

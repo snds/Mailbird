@@ -1,5 +1,5 @@
 // Notes: the list, cards and map, a note and its menu, folders, import, sync and the quick note.
-import { area, button, press } from "./helpers.mjs"
+import { area, button, ensure, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer } from "./helpers.mjs"
 
 /** Opens a note from the Notes list by its title. */
 export const note = async (app, name) => {
@@ -57,10 +57,52 @@ export const scenes = [
     name: "notes-smart-folder",
     run: async (app) => {
       await area(app, "Notes")
-      await press(app, app.page.getByRole("group", { name: "Smart folders" }).getByRole("button", { name: "Smart folder" }))
+      await pick(app, "New smart folder…")
     },
   },
   { name: "notes-import", run: (app) => notesMenu(app, "Import notes…") },
   { name: "notes-sync", run: (app) => notesMenu(app, "Sync between devices…") },
   { name: "notes-quick-note", run: (app) => app.page.keyboard.press("Alt+KeyN") },
+  {
+    // Notes' folders and tags (ADR-0084; brief X1): the page head's sheet on a phone, with the view
+    // choice as its last group; its popover at medium width; the sidebar's groups on a desktop.
+    name: "notes-folders-sheet",
+    sizes: ["phone", "desktop", "medium"],
+    sean: { kind: "undrawn", area: "notes", screen: "folders-sheet" },
+    run: async (app) => {
+      const { page } = app
+      await area(app, "Notes")
+      // A folder is a place: Pinned opens from its row, and Back is all notes again.
+      await pick(app, "Pinned")
+      ensure((await headTitle(page)) === "Pinned", "Pinned did not open from the folders")
+      await goBack(app)
+      ensure((await headTitle(page)) === "Notes", "Back from Pinned did not return to all notes")
+      // A tag narrows the open folder, one at a time, and clears on a second pick.
+      const tag = async () => (await groups(app)).getByRole("checkbox").first()
+      const name = await (await tag()).getAttribute("aria-label")
+      await press(app, await tag())
+      ensure(await (await tag()).isChecked(), `${name} did not narrow the folder`)
+      ensure((await page.locator('[data-slot="page-head-overline"]:visible').first().innerText()).toLowerCase().includes(name.toLowerCase()), "the page head does not name the tag")
+      await press(app, await tag())
+      ensure(!(await (await tag()).isChecked()), `${name} did not clear on a second pick`)
+      // "Open a shared note…" opens through its intent; the layer closes first.
+      await pick(app, "Open a shared note…")
+      ensure(await page.getByRole("dialog", { name: "Open a shared note" }).isVisible(), "Open a shared note did not open")
+      ensure(!(await switcherLayer(page).count()), "the layer stayed open under the form")
+      await leaveLayer(app)
+      await groups(app)
+    },
+    assert: async (app) => {
+      const { page } = app
+      const list = await groups(app)
+      ensure((await oneCurrent(list, "Notes' folders")) === "All notes", "All notes is not the current place")
+      for (const row of ["Pinned", "Archive", "New smart folder…", "Open a shared note…"]) ensure(await list.getByRole("button", { name: row, exact: true }).count(), `${row} is not in Notes' folders`)
+      ensure(!(await list.locator('[role="checkbox"][aria-current]').count()), "a tag says it is the current place: it is a filter")
+      // The phone's sheet ends with how the notes are drawn; elsewhere the page head keeps that choice.
+      const view = list.getByRole("radiogroup", { name: "View" })
+      if (app.size === "phone") ensure(await view.getByRole("radio", { name: "List", exact: true }).isChecked(), "the sheet does not end with the view choice, on List")
+      else ensure(!(await view.count()), "the view choice is in the list, and it is the phone sheet's alone")
+      ensure(!(await page.getByRole("menuitem").count()), "a menu is open under the list")
+    },
+  },
 ]

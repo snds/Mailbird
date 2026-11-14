@@ -1,22 +1,27 @@
 import { useDeferredValue, useEffect, useState } from "react"
 
 import { useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { useSectionSwitcher } from "@/app/places"
+import { SectionSwitcher } from "@/app/section-switcher"
 import { pendingJump, useUi } from "@/app/ui-store"
 import { vertical } from "@/app/verticals"
 
-import { Icon, Button, formatNavCount, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
+import { Icon, formatNavCount, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
 import { EntryRow, ListSearch } from "@/components/list-row"
 import { MasterDetail } from "@/components/master-detail"
 import { ScreenHead } from "@/components/page"
-import { useAccounts, useCollections, useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
+import { useAccounts, useCollections, useContacts, useDeletedContacts, useDuplicates } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 
 import { ContactDetailPane } from "./contact-detail"
+import { ContactsNav } from "./contacts-nav"
 import { DuplicatesPane } from "./duplicates"
 import { PersonAvatar } from "./person"
 import { RecentlyDeletedPane } from "./recently-deleted"
+import { closeRestoreContacts, useRestoreContacts } from "./open-restore"
 import { RestoreContactsDialog } from "./restore"
-import { SmartGroupChips } from "./smart-groups"
+import { SmartGroupEditor } from "./smart-groups"
+import { contactsPlaceName, useContactsPlace } from "./use-contacts-place"
 
 /** Section letter for the A–Z list (accents fold: "Élodie" files under E). */
 const letter = (c: ContactSummary) => {
@@ -26,34 +31,44 @@ const letter = (c: ContactSummary) => {
   return /[A-Z]/.test(base) ? base : "#"
 }
 
-type Selection = { kind: "contact"; id: string } | { kind: "duplicates" } | { kind: "deleted" } | null
-
 export function ContactsView() {
-  const [selected, setSelected] = useState<Selection>(() => {
-    const j = pendingJump("contact")
-    return j ? { kind: "contact", id: j.id } : null
+  // The open card. Which list it is picked from is the place (ADR-0084): everyone, a label, a smart group;
+  // Duplicates and Recently deleted are places too, and take the list's room.
+  // `keep`: opened by a jump that also changed the place, so that change of place leaves it open.
+  const [open, setOpen] = useState<{ id: string; keep?: boolean } | null>(() => {
+    const id = pendingJump("contact")?.id
+    return id ? { id } : null
   })
+  const selected = open?.id ?? null
+  const setSelected = (id: string | null) => setOpen(id ? { id } : null)
   useEffect(() => void useUi.getState().takeJump("contact"), [])
   // A jump while Contacts is already open (a birthday, an Undo) selects that card.
   useEffect(
     () =>
-      useUi.subscribe((s) => {
+      useUi.subscribe((s, before) => {
         if (s.jump?.kind !== "contact") return
-        setSelected({ kind: "contact", id: s.jump.id })
+        setOpen({ id: s.jump.id, keep: s.contactsPlace !== before.contactsPlace })
         s.takeJump("contact")
       }),
     [],
   )
   const [search, setSearch] = useState("")
-  const [label, setLabel] = useState<string | null>(null)
   const query = useDeferredValue(search.trim())
-  const { data: labels = [] } = useContactLabels()
-  // A label that's gone (its last contact edited or deleted) stops filtering.
-  const active = label && labels.some((l) => l.name === label) ? label : null
-  const [group, setGroup] = useState<string | null>(null)
-  const { data: groups = [] } = useSmartGroups()
-  const activeGroup = groups.find((g) => g.id === group) ?? null
-  const [restoring, setRestoring] = useState<number | null>(null)
+  // A label or a smart group that's gone (its last contact edited, the group deleted) gives way to everyone.
+  const at = useContactsPlace()
+  const { place } = at
+  const setPlace = useUi((s) => s.setContactsPlace)
+  const active = place.kind === "label" ? place.name : null
+  const activeGroup = place.kind === "group" ? at.group : null
+  const tool = place.kind === "duplicates" || place.kind === "deleted"
+  // Another place, picked in the nav: the card that was open belongs to the one left behind.
+  const placeKey = JSON.stringify(place)
+  const [placeSeen, setPlaceSeen] = useState(placeKey)
+  if (placeSeen !== placeKey) {
+    setPlaceSeen(placeKey)
+    setOpen(open?.keep ? { id: open.id } : null)
+  }
+  const restoring = useRestoreContacts((s) => s.openedAt)
   const { data: contacts = [], isPending, refetch } = useContacts(query, active, activeGroup?.id ?? null)
   const { data: dupes = [] } = useDuplicates()
   // Source badges (ADR-0027): with more than one address book showing, each
@@ -77,10 +92,52 @@ export function ContactsView() {
   }
 
   // What the shell says about this screen (ADR-0083): the group as the place, and how many people it lists.
-  const place = active ?? activeGroup?.name ?? "All contacts"
-  useScreenPlace(place)
-  useScreenFact(isPending ? null : `${formatNavCount(contacts.length)} people`)
+  const placeName = contactsPlaceName(at)
+  useScreenPlace(placeName)
+  useScreenFact(isPending || tool ? null : `${formatNavCount(contacts.length)} people`)
   useRefresh(refetch)
+  // The page head opens the groups wherever the sidebar does not list them (brief X1).
+  const switching = useSectionSwitcher("Change group.")
+  const switcher = (
+    <SectionSwitcher state={switching} overline={`Contacts // ${placeName}`} title="Groups">
+      <ContactsNav layer />
+    </SectionSwitcher>
+  )
+
+  if (tool) {
+    // A clean-up tool has the list's room and no detail beside it; a card it restores opens among everyone.
+    return (
+      <>
+        <MasterDetail
+          section="Contacts"
+          pick={vertical("contacts").pick}
+          listFills
+          onBack={() => setPlace({ kind: "all" })}
+          header={
+            <ScreenHead
+              overline={place.kind === "duplicates" ? `Duplicates // ${formatNavCount(dupes.length)} ${dupes.length === 1 ? "set" : "sets"}` : "Recently deleted // 30 days"}
+              title={placeName}
+              switcher={switching.switcher}
+              below={switcher}
+            />
+          }
+          list={
+            place.kind === "duplicates" ? (
+              <DuplicatesPane />
+            ) : (
+              <RecentlyDeletedPane
+                onRestored={(id) => {
+                  useUi.getState().jumpTo({ kind: "contact", id })
+                }}
+              />
+            )
+          }
+          detail={null}
+        />
+        <Layers restoring={restoring} />
+      </>
+    )
+  }
 
   return (
     <MasterDetail
@@ -92,36 +149,22 @@ export function ContactsView() {
           <ScreenHead
             overline={`${active ?? activeGroup?.name ?? "Contacts"} // ${isPending ? "" : formatNavCount(contacts.length)}`}
             title={active ?? activeGroup?.name ?? "People"}
-            actions={
-              <Button size="icon" variant="ghost" aria-label="Restore contacts" onClick={() => setRestoring(Math.floor(Date.now() / 1000))}>
-                <Icon name="recently-viewed" />
-              </Button>
-            }
+            switcher={switching.switcher}
             below={
               <>
+            {switcher}
             <ListSearch placeholder="Search people" value={search} onChange={setSearch} />
-            {labels.length > 0 && (
-              <div role="group" aria-label="Labels" className="no-scrollbar mt-3 flex gap-1.5 overflow-x-auto">
-                {[{ name: null, count: 0 } as const, ...labels].map((l) => (
-                  <Button key={l.name ?? "all"} size="xs" variant={active === l.name ? "secondary" : "ghost"} aria-pressed={active === l.name} shape="pill" onClick={() => setLabel(l.name)}>
-                    {l.name ?? "All"}
-                    {l.name && <span className="text-muted-foreground tabular-nums">{l.count}</span>}
-                  </Button>
-                ))}
-              </div>
-            )}
-            <SmartGroupChips active={activeGroup?.id ?? null} onPick={(id) => (setGroup(id), setSelected(null))} />
               </>
             }
           />
-          <RestoreContactsDialog openedAt={restoring} onClose={() => setRestoring(null)} />
+          <Layers restoring={restoring} />
         </>
       }
       list={
         <div role="list" aria-label="Contacts">
           {dupes.length > 0 && !query && !active && !activeGroup && (
             <div className="px-3 pb-2">
-              <Item variant="muted" render={<button type="button" data-selected={selected?.kind === "duplicates"} onClick={() => setSelected({ kind: "duplicates" })} />}>
+              <Item variant="muted" render={<button type="button" onClick={() => setPlace({ kind: "duplicates" })} />}>
                 <ItemMedia>
                   <Icon name="user--multiple" />
                 </ItemMedia>
@@ -154,8 +197,8 @@ export function ContactsView() {
               {s.items.map((c) => (
                 <div role="listitem" key={c.id}>
                   <EntryRow
-                    selected={selected?.kind === "contact" && selected.id === c.id}
-                    onSelect={() => setSelected({ kind: "contact", id: c.id })}
+                    selected={selected === c.id}
+                    onSelect={() => setSelected(c.id)}
                     leading={<PersonAvatar contact={c} />}
                     title={c.fullName}
                     supporting={c.org ?? c.emails[0]?.value ?? c.phones[0]?.value}
@@ -167,7 +210,7 @@ export function ContactsView() {
           ))}
           {gone.length > 0 && !query && !active && !activeGroup && (
             <div className="p-3 text-muted-foreground">
-              <Item render={<button type="button" data-selected={selected?.kind === "deleted"} onClick={() => setSelected({ kind: "deleted" })} />}>
+              <Item render={<button type="button" onClick={() => setPlace({ kind: "deleted" })} />}>
                 <ItemMedia>
                   <Icon name="trash-can" />
                 </ItemMedia>
@@ -181,15 +224,17 @@ export function ContactsView() {
           )}
         </div>
       }
-      detail={
-        selected?.kind === "deleted" ? (
-          <RecentlyDeletedPane onRestored={(id) => setSelected({ kind: "contact", id })} />
-        ) : selected?.kind === "duplicates" ? (
-          <DuplicatesPane />
-        ) : selected?.kind === "contact" ? (
-          <ContactDetailPane key={selected.id} id={selected.id} onDeleted={() => setSelected(null)} />
-        ) : null
-      }
+      detail={selected ? <ContactDetailPane key={selected} id={selected} onDeleted={() => setSelected(null)} /> : null}
     />
+  )
+}
+
+/** What the groups list opens over Contacts (brief X1): Restore contacts by its intent, and the smart group form. */
+function Layers({ restoring }: { restoring: number | null }) {
+  return (
+    <>
+      <RestoreContactsDialog openedAt={restoring} onClose={closeRestoreContacts} />
+      <SmartGroupEditor />
+    </>
   )
 }

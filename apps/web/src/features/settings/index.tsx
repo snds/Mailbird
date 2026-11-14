@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 
+import { stepBack } from "@/app/places"
 import { useScreenPlace } from "@/app/screen"
 import { useUi, type SettingsSection } from "@/app/ui-store"
 import { Button, Icon, type IconName, Item, ItemContent, ItemMedia, ItemTitle } from "@unicron/ui"
@@ -11,6 +12,7 @@ import { AccountsSection } from "@/features/accounts"
 import { AdvancedMail } from "@/features/advanced-mail"
 import { AiSettingsForm } from "@/features/ai-settings"
 import { AppearanceSettings } from "@/features/appearance-settings"
+import { SecondZonePicker } from "@/features/calendar/second-zone"
 import { GatewayUpdatesSection } from "@/features/gateway-updates"
 import { ShortcutSettings } from "@/features/grammar"
 import { MeetingSettingsSection } from "@/features/meeting-settings"
@@ -49,7 +51,9 @@ export function SettingsView() {
     <MasterDetail
       section="Settings"
       pick="Pick a section to see its settings here."
-      onBack={() => useUi.setState({ settings: "index" })}
+      detailIsPlace
+      // Back from a section to the list of sections: the browser's Back when the list is the place behind (ADR-0084).
+      onBack={() => stepBack((behind) => behind.settings === "index", () => useUi.setState({ settings: "index" }))}
       header={<ScreenHead overline="Settings" title="Settings" />}
       list={
         <nav aria-label="Settings sections" className="flex flex-col gap-1 pb-4">
@@ -138,6 +142,8 @@ function useSections(): Section[] {
           <MeetingSettingsSection />
           {/* The menu bar is the desktop's; the demo stands in for it. */}
           {!remote && <MenuBarSettingsSection />}
+          {/* A choice for this device, beside the hours of the week and the day (it was in the calendar's side list). */}
+          <SecondZonePicker />
         </>
       ),
     },

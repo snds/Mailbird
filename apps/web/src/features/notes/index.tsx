@@ -1,6 +1,8 @@
 import { type ReactNode, useDeferredValue, useState } from "react"
 
 import { factTime, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { useSectionSwitcher } from "@/app/places"
+import { SectionSwitcher } from "@/app/section-switcher"
 import { useUi } from "@/app/ui-store"
 import { vertical } from "@/app/verticals"
 import { Icon, Button, formatNavCount, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Toggle, Tooltip, TooltipContent, TooltipTrigger, toast } from "@unicron/ui"
@@ -8,7 +10,7 @@ import { EntryRow, ListSearch } from "@/components/list-row"
 import { MasterDetail } from "@/components/master-detail"
 import { ScreenHead } from "@/components/page"
 import { getCoreClient } from "@/core/client"
-import { useNoteAction, useNoteFolders, useNotes, useNotesPrefs, useNoteTags } from "@/core/queries"
+import { useNoteAction, useNotes, useNotesPrefs } from "@/core/queries"
 import type { NoteSummary, NotesPrefs } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { reminderLabel, shortTime } from "@/lib/time"
@@ -17,12 +19,16 @@ import { cn } from "@/lib/utils"
 import { ImportDialog } from "./import-dialog"
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
 import { NoteDetailPane } from "./note-detail"
-import { NoteFolderChips } from "./note-folders"
+import { NoteFolderEditor } from "./note-folders"
 import { NoteGraphView } from "./note-graph"
 import { NoteCover } from "./note-image"
+import { NotesNav } from "./notes-nav"
+import { closeSharedNote, useOpenSharedNote } from "./open-shared-note"
+import { closeSyncSetup, openSyncSetup, useSyncSetup } from "./open-sync-setup"
 import { RelayDialog } from "./relay-dialog"
 import { OpenSharedDialog } from "./share-dialog"
 import { useSyncStatus } from "./sync"
+import { useNotesPlace } from "./use-notes-place"
 
 const SYNC_LABEL = { off: "Sync is off", connecting: "Connecting to the relay…", synced: "Synced with the relay", error: "Sync problem" } as const
 
@@ -32,19 +38,21 @@ export function NotesView() {
   const selected = useUi((s) => s.openNote)
   const setSelected = useUi((s) => s.setOpenNote)
   const [search, setSearch] = useState("")
-  const [tag, setTag] = useState<string | null>(null)
-  const [folder, setFolder] = useState<string | null>(null)
-  const { data: folders = [] } = useNoteFolders()
-  // A folder deleted elsewhere just stops filtering.
-  const activeFolder = folders.find((f) => f.id === folder) ?? null
-  const [archived, setArchived] = useState(false)
+  // Notes' place (ADR-0084): a folder, narrowed by one tag. A folder or a tag that is gone just stops filtering.
+  const { place, folder: activeFolder, name: placeName } = useNotesPlace()
+  const tag = place.tag
+  const archived = place.folder.kind === "archive"
+  const pinnedOnly = place.folder.kind === "pinned"
+  // Another folder or tag, picked in the nav: the note that was open stays open, as a link's note does.
   const [importing, setImporting] = useState(false)
-  const [relayOpen, setRelayOpen] = useState(false)
-  const [openingShared, setOpeningShared] = useState(false)
+  // Opened by their intents, so the folders list and the command menu reach them too.
+  const relayOpen = useSyncSetup((s) => s.open)
+  const openingShared = useOpenSharedNote((s) => s.open)
   const query = useDeferredValue(search.trim())
   const noteQuery = { search: query || null, tag, archived, folder: archived ? null : (activeFolder?.id ?? null) }
-  const { data: notes = [], isPending, refetch } = useNotes(noteQuery)
-  const { data: tags = [] } = useNoteTags()
+  const { data: found = [], isPending, refetch } = useNotes(noteQuery)
+  // Pinned is a place the core has no query for: the same read, narrowed here.
+  const notes = pinnedOnly ? found.filter((n) => n.pinned) : found
   const sync = useSyncStatus()
   const { data: prefs } = useNotesPrefs()
   const setPrefs = useNoteAction((c, change: Partial<NotesPrefs>) => c.setNotesPrefs({ sortChecked: true, ...prefs, ...change }))
@@ -70,6 +78,8 @@ export function NotesView() {
   const rest = notes.filter((n) => !n.pinned && !due.includes(n))
   const empty = archived
     ? "Archived notes show up here."
+    : pinnedOnly && !query && !tag
+      ? "Nothing pinned. Pin a note from its menu to keep it here."
     : activeFolder && !query && !tag
       ? "No notes in this folder yet. They join by themselves when they match."
       : query || tag || activeFolder
@@ -123,11 +133,13 @@ export function NotesView() {
   )
 
   // What the shell says about this screen (ADR-0083): the folder as the place, and when a note here was last edited.
-  const place = archived ? "Archive" : (activeFolder?.name ?? "All notes")
-  useScreenPlace(place)
+  useScreenPlace(placeName)
   const edited = notes.reduce((latest, n) => Math.max(latest, n.updated), 0)
   useScreenFact(edited ? `Edited ${factTime(edited)}` : null)
   useRefresh(refetch)
+  // The page head opens the folders and tags wherever the sidebar does not list them (brief X1).
+  const switching = useSectionSwitcher("Change folder or tag.")
+  const headName = place.folder.kind === "all" ? "Notes" : placeName
 
   return (
     <>
@@ -142,8 +154,9 @@ export function NotesView() {
         onBack={() => setSelected(null)}
         header={
           <ScreenHead
-            overline={`${[archived ? "Archive" : (activeFolder?.name ?? "Notes"), tag ? `#${tag}` : null].filter(Boolean).join(" // ")} // ${isPending ? "" : formatNavCount(notes.length)}`}
-            title={archived ? "Archive" : (activeFolder?.name ?? "Notes")}
+            overline={`${[headName, tag ? `#${tag}` : null].filter(Boolean).join(" // ")} // ${isPending ? "" : formatNavCount(notes.length)}`}
+            title={headName}
+            switcher={switching.switcher}
             actions={
               <>
               <IconButton label="Map of notes" render={<Toggle pressed={graph} onPressedChange={(on) => setPrefs.mutate({ graph: on })} />}>
@@ -155,7 +168,7 @@ export function NotesView() {
                 </IconButton>
               )}
               <Tooltip>
-                <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={SYNC_LABEL[sync.status]} onClick={() => setRelayOpen(true)} />}>
+                <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={SYNC_LABEL[sync.status]} onClick={openSyncSetup} />}>
                   <Icon
                     name={sync.status === "error" ? "warning--alt" : sync.status === "off" ? "cloud--offline" : "cloud"}
                     className={cn("size-5", sync.status === "error" && "text-destructive", sync.status === "connecting" && "animate-pulse")}
@@ -168,19 +181,13 @@ export function NotesView() {
                   <Icon name="overflow-menu--horizontal" className="size-5" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" width="auto">
-                  <DropdownMenuItem onClick={() => (setArchived(!archived), setSelected(null))}>
-                    <Icon name={archived ? "notebook" : "archive"} /> {archived ? "Back to notes" : "Archived notes"}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setOpeningShared(true)}>
-                    <Icon name="user--follow" /> Open a shared note…
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setImporting(true)}>
                     <Icon name="document--import" /> Import notes…
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void exportAll()}>
                     <Icon name="download" /> Export all as Markdown
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setRelayOpen(true)}>
+                  <DropdownMenuItem onClick={openSyncSetup}>
                     <Icon name="renew" /> Sync between devices…
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -196,24 +203,10 @@ export function NotesView() {
             }
             below={
             <div className="flex flex-col gap-2">
-              <ListSearch placeholder={activeFolder ? `Search ${activeFolder.name}` : "Search notes"} value={search} onChange={setSearch} />
-              {!archived && <NoteFolderChips active={activeFolder?.id ?? null} onPick={(id) => (setFolder(id), setSelected(null))} />}
-              {tags.length > 0 && !archived && (
-                <div className="flex gap-1.5 overflow-x-auto" role="group" aria-label="Filter by tag">
-                  {tags.map((t) => (
-                    <Button
-                      key={t.tag}
-                      size="xs"
-                      variant={tag === t.tag ? "secondary" : "ghost"}
-                      aria-pressed={tag === t.tag}
-                      shape="pill"
-                      onClick={() => setTag(tag === t.tag ? null : t.tag)}
-                    >
-                      #{t.tag}
-                    </Button>
-                  ))}
-                </div>
-              )}
+              <SectionSwitcher state={switching} overline={["Notes", place.folder.kind === "all" ? null : placeName, tag ? `#${tag}` : null].filter(Boolean).join(" // ")} title="Folders">
+                <NotesNav layer more={switching.sheet} />
+              </SectionSwitcher>
+              <ListSearch placeholder={place.folder.kind === "all" ? "Search notes" : `Search ${placeName}`} value={search} onChange={setSearch} />
             </div>
             }
           />
@@ -244,8 +237,9 @@ export function NotesView() {
         detail={selected && <NoteDetailPane key={selected.id} id={selected.id} fresh={selected.fresh} onClosed={() => setSelected(null)} />}
       />
       <ImportDialog open={importing} onOpenChange={setImporting} />
-      <RelayDialog open={relayOpen} onOpenChange={setRelayOpen} />
-      <OpenSharedDialog open={openingShared} onOpenChange={setOpeningShared} />
+      <RelayDialog open={relayOpen} onOpenChange={(o) => !o && closeSyncSetup()} />
+      <OpenSharedDialog open={openingShared} onOpenChange={(o) => !o && closeSharedNote()} />
+      <NoteFolderEditor />
     </>
   )
 }

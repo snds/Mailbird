@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react"
 
+import { usePushedScreen, useSectionSwitcher } from "@/app/places"
+import { SectionSwitcher } from "@/app/section-switcher"
 import { pendingJump, useUi } from "@/app/ui-store"
-import { Icon, AppFrameColumn, Button, Checkbox, AdaptiveSheetContent, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem, toast, useAppFrame } from "@unicron/ui"
+import { Icon, AppFrameColumn, Button, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem, toast, useAppFrame, useViewport } from "@unicron/ui"
 import { DemoBar } from "@/app/demo-bar"
-import { useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { useRefresh, useScreenFact, useScreenPlace, useScreenRoot } from "@/app/screen"
 import { ScreenHead } from "@/components/page"
 import { useAccounts, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
 import type { Collection, Occurrence } from "@/core/types"
@@ -11,8 +13,8 @@ import { ariaKey, commandFor } from "@/lib/keys"
 import { cn } from "@/lib/utils"
 
 import { Agenda } from "./agenda"
-import { CalendarSets } from "./calendar-sets"
-import { calendarColor } from "./colors"
+import { CalendarNav } from "./calendar-nav"
+import { SaveSetDialog } from "./calendar-sets"
 import { DAY, addDays, addMonths, dateInput, fmt, fromSecs, secs, startOfDay, startOfWeek, timeInput } from "./dates"
 import { EventDetailPane } from "./event-detail"
 import { MiniMonth } from "./mini-month"
@@ -20,13 +22,13 @@ import { useCalendars } from "./use-calendars"
 import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
 import { BookingLinks } from "./booking-links"
-import { InterestingCalendarsPicker } from "./interesting"
-import { SecondZonePicker } from "./second-zone"
+import { AddCalendarsDialog } from "./interesting"
 import { TasksPanel } from "./tasks"
 import { occurrenceKey } from "./layout"
 import { TimeGrid } from "./time-grid"
+import { setCalendarRange, useCalendarViewPrefs, type CalendarRange } from "./view-prefs"
 
-type View = "agenda" | "day" | "week" | "month"
+type View = CalendarRange
 
 interface Selected {
   eventId: string
@@ -78,17 +80,13 @@ export function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) 
   )
 }
 
-function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection>; onOpen: (eventId: string, start: number) => void }) {
+/** Calendars and contacts that did not sync, by account. They stay at the top of the calendar until the status lane's banner takes them. */
+function SyncProblems() {
   const { data: accounts = [] } = useAccounts()
-  const toggle = usePimAction((c, { id, hidden }: { id: string; hidden: boolean }) => c.setCollectionHidden(id, hidden))
-  // Added holidays and moon phases get their own group, after the rest.
-  const groupOf = (c: Collection) => (c.id.startsWith("interesting:") ? "interesting" : c.accountId)
-  const groups = [...new Set([...calendars.values()].map(groupOf))].sort((a, b) => Number(a === "interesting") - Number(b === "interesting"))
-  const name = (id: string | null) =>
-    id === "interesting" ? "Holidays and more" : id ? accounts.find((a) => a.id === id)?.displayName ?? "Account" : "On this device"
   const failing = accounts.filter((a) => a.davError)
+  if (failing.length === 0) return null
   return (
-    <div className="flex flex-col gap-3 px-4 pb-4" data-slot="calendar-list">
+    <div className="flex flex-col gap-2 pb-3" data-slot="calendar-sync-problems">
       {failing.map((a) => (
         <p key={a.id} role="status" className="flex gap-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
           <Icon name="warning--alt" size="sm" />
@@ -97,27 +95,6 @@ function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection
           </span>
         </p>
       ))}
-      <TasksPanel onOpen={onOpen} />
-      {groups.map((g) => (
-        <section key={g ?? "local"} aria-label={name(g)}>
-          <h3 className="pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{name(g)}</h3>
-          {[...calendars.values()]
-            .filter((c) => groupOf(c) === g)
-            .map((c) => (
-              <label key={c.id} className="flex h-9 items-center gap-2.5 rounded-lg px-1 text-sm hover:bg-accent/50">
-                <Checkbox checked={!c.hidden} onCheckedChange={(on) => toggle.mutate({ id: c.id, hidden: !on })} aria-label={`Show ${c.name}`} />
-                {/* The calendar's own color, as a small square: unicron 1.0's checkbox is ink, so it no longer carries it. */}
-                <span aria-hidden className="event-dot size-2 shrink-0" style={{ "--event": calendarColor(c) } as React.CSSProperties} />
-                <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                {!c.writable && <Icon name="locked" tone="muted" size={14} label="Read-only" />}
-              </label>
-            ))}
-        </section>
-      ))}
-      <InterestingCalendarsPicker />
-      <CalendarSets calendars={calendars} />
-      <BookingLinks />
-      <SecondZonePicker />
     </div>
   )
 }
@@ -128,7 +105,12 @@ export function CalendarView() {
   const frame = useAppFrame()
   const tabletUp = !frame.phone
   const beside = frame.split
-  const [view, setView] = useState<View>(() => (tabletUp ? "week" : "agenda"))
+  // The range is this device's choice (view-prefs.ts): the agenda on a phone and the week from medium up, until changed.
+  const view = useCalendarViewPrefs().range
+  const setView = setCalendarRange
+  // Calendar's place (ADR-0084): the calendar itself, or one of its two tools, which take the list column.
+  const place = useUi((s) => s.calendarPlace)
+  const setPlace = useUi((s) => s.setCalendarPlace)
   // Opened from a note's link: show that event, on its day.
   const [jumped] = useState(() => pendingJump("event"))
   useEffect(() => void useUi.getState().takeJump("event"), [])
@@ -136,7 +118,6 @@ export function CalendarView() {
   const [month, setMonth] = useState(focus)
   const [agendaDays, setAgendaDays] = useState(30)
   const [selected, setSelected] = useState<Selected | null>(jumped?.start != null ? { eventId: jumped.id, start: jumped.start } : null)
-  const [listOpen, setListOpen] = useState(false)
   const openEditor = useUi((s) => s.openEventEditor)
   const calendars = useCalendars()
 
@@ -212,14 +193,14 @@ export function CalendarView() {
   }
   const selectedKey = selected ? occurrenceKey(selected) : null
   const openEvent = (eventId: string, start: number) => {
-    setListOpen(false)
     setFocus(startOfDay(fromSecs(start)))
     setSelected({ eventId, start })
   }
 
   // What the shell says about this screen (ADR-0083): the view as the place, its range as the fact.
   const VIEW_NAME: Record<View, string> = { agenda: "Agenda", day: "Day", week: "Week", month: "Month" }
-  useScreenPlace(VIEW_NAME[view])
+  const tool = place === "tasks" ? "Tasks" : place === "booking" ? "Booking links" : null
+  useScreenPlace(tool ?? VIEW_NAME[view])
   useScreenFact(
     view === "day"
       ? fmt.dayLong(focus)
@@ -228,6 +209,19 @@ export function CalendarView() {
         : `${from.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${addDays(to, -1).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`,
   )
   useRefresh(refetch)
+  // A second tap on Calendar's tab, or its breadcrumb: back to the calendar itself, with nothing open.
+  useScreenRoot(() => {
+    setPlace("calendar")
+    setSelected(null)
+  })
+  // Where the event is a full screen over the calendar (compact and medium), Back closes it.
+  usePushedScreen(selected !== null && !beside, () => setSelected(null))
+  // The page head opens the calendars wherever the sidebar does not list them (brief X1).
+  const switching = useSectionSwitcher("Change calendars.")
+  // The list column stands beside the grid from the old tablet width up, as it did; under it an open tool takes the screen.
+  const sideColumn = useViewport().width >= 768
+  const panel = place === "tasks" ? <TasksPanel onOpen={openEvent} /> : place === "booking" ? <BookingLinks /> : null
+  const toolScreen = !!panel && !sideColumn
 
   const detail = selected && (
     <EventDetailPane key={selectedKey} eventId={selected.eventId} start={selected.start} calendars={calendars} onDeleted={() => setSelected(null)} />
@@ -239,20 +233,25 @@ export function CalendarView() {
      <div className="flex h-full min-h-0 flex-col">
      <DemoBar in="column" />
      <div className="flex min-h-0 flex-1">
-      <aside className="hidden w-(--c-shell-list-width) shrink-0 flex-col overflow-y-auto border-r bg-surface-ground md:flex" aria-label="Calendars">
-        <QuickAdd calendars={calendars} />
-        <MiniMonth month={month} onMonth={setMonth} selected={focus} onPick={pick} busy={busy} />
-        <CalendarList calendars={calendars} onOpen={openEvent} />
-      </aside>
+      {/* The list column: quick add and the month, until the calendar lane replaces them; then the open tool. */}
+      {sideColumn && (
+        <aside className="flex w-(--c-shell-list-width) shrink-0 flex-col overflow-y-auto border-r bg-surface-ground" aria-label={tool ?? "Go to a date"}>
+          <QuickAdd calendars={calendars} />
+          <MiniMonth month={month} onMonth={setMonth} selected={focus} onPick={pick} busy={busy} />
+          {panel && <div className="px-4 pb-4">{panel}</div>}
+        </aside>
+      )}
 
       <section className={cn("flex min-w-0 flex-1 flex-col", tabletUp && "pl-6")}>
+        <SyncProblems />
         <ScreenHead
           overline="Calendar"
           size="sm"
           gap="sm"
-          title={title}
+          title={toolScreen ? tool! : title}
+          switcher={switching.switcher}
           actions={
-            <>
+            !toolScreen && <>
               <Button variant="outline" size="sm" onClick={goToday} aria-keyshortcuts={ariaKey(keys?.["calendar.today"] ?? "t")}>
                 Today
               </Button>
@@ -262,25 +261,26 @@ export function CalendarView() {
               <Button variant="ghost" size="icon-sm" aria-label={`Next ${view === "agenda" ? "days" : view}`} onClick={() => step(1)}>
                 <Icon name="chevron--right" />
               </Button>
-              <ToggleGroup value={[view]} onValueChange={(v) => v[0] && setView(v[0] as View)} variant="outline" size="sm" aria-label="View">
+              <ToggleGroup value={[view]} onValueChange={(v) => v[0] && (setView(v[0] as View), setPlace("calendar"))} variant="outline" size="sm" aria-label="View">
                 <ToggleGroupItem value="agenda" aria-keyshortcuts={ariaKey(keys?.["calendar.agenda"] ?? "a")}>Agenda</ToggleGroupItem>
                 <ToggleGroupItem value="day" aria-keyshortcuts={ariaKey(keys?.["calendar.day"] ?? "d")}>Day</ToggleGroupItem>
                 <ToggleGroupItem value="week" aria-keyshortcuts={ariaKey(keys?.["calendar.week"] ?? "w")}>Week</ToggleGroupItem>
                 <ToggleGroupItem value="month" aria-keyshortcuts={ariaKey(keys?.["calendar.month"] ?? "m")}>Month</ToggleGroupItem>
               </ToggleGroup>
-              {/* Where the calendars list is not beside the grid, it opens from here. */}
-              <span className="md:hidden">
-                <Button variant="ghost" size="icon" aria-label="Calendars" onClick={() => setListOpen(true)}>
-                  <Icon name="layers" />
-                </Button>
-              </span>
             </>
           }
         />
-        <div className="md:hidden">
-          <QuickAdd calendars={calendars} />
+        {/* Under the head, where its popover stands. It takes no room of its own. */}
+        <div className="relative">
+          <SectionSwitcher state={switching} overline={`Calendar // ${tool ?? VIEW_NAME[view]}`} title="Calendars">
+            <CalendarNav standalone />
+          </SectionSwitcher>
         </div>
+        {!sideColumn && !toolScreen && <QuickAdd calendars={calendars} />}
 
+        {/* Where the list column is not beside the grid, an open tool takes the screen. */}
+        {toolScreen && <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{panel}</div>}
+        <div className={cn("min-h-0 flex-1 flex-col", toolScreen ? "hidden" : "flex")}>
         {view === "month" ? (
           <MonthGrid
             month={focus}
@@ -300,6 +300,7 @@ export function CalendarView() {
         ) : (
           <TimeGrid days={days} occurrences={occurrences} calendars={calendars} selected={selectedKey} onSelect={select} onCreateAt={tabletUp ? createAt : undefined} />
         )}
+        </div>
       </section>
 
       {/* Detail: a side panel beside the grid where there is room, a full screen otherwise. */}
@@ -328,14 +329,9 @@ export function CalendarView() {
         </Sheet>
       )}
 
-      <Sheet open={listOpen} onOpenChange={setListOpen}>
-        <AdaptiveSheetContent>
-          <SheetTitle className="px-4 pt-1 sm:pt-4">Calendars</SheetTitle>
-          <div className="pt-2">
-            <CalendarList calendars={calendars} onOpen={openEvent} />
-          </div>
-        </AdaptiveSheetContent>
-      </Sheet>
+      {/* What the calendars list opens (brief X1): the holidays picker by its intent, and the form that names a set. */}
+      <AddCalendarsDialog />
+      <SaveSetDialog />
      </div>
      </div>
     </AppFrameColumn>
