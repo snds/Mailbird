@@ -3,6 +3,7 @@ import { useState } from "react"
 import { useUi, type EventEditorState } from "@/app/ui-store"
 import { DatePicker } from "@/components/date-picker"
 import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { RecipientField, hasWrongAddress } from "@/components/recipient-field"
 import { ZonePicker } from "@/components/zone-picker"
 import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove, toast } from "@unicron/ui"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
@@ -11,7 +12,6 @@ import { useLeaveGuard } from "@/lib/leave-guard"
 import { meetingInfo, meetingLink } from "@/lib/meeting-info"
 
 import { formatRecipients, parseRecipients } from "../mail/format"
-import { RecipientInput } from "../mail/recipient-input"
 import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dates"
 import { FindATime } from "./find-a-time"
 import { REMINDER_PRESETS, reminderLabel, travelLabel } from "./reminders"
@@ -67,7 +67,7 @@ const bare = "h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholde
 const picker = "h-10 rounded-lg border bg-transparent px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 /** A date field (brief C3): a button that shows "Fri 11.20", is named "Start date, Friday, November 20, 2026", and opens the month grid. */
-function DateField({ name, value, onPick, min }: { name: string; value: string; onPick: (date: string) => void; min?: string }) {
+function EventDay({ name, value, onPick, min }: { name: string; value: string; onPick: (date: string) => void; min?: string }) {
   const d = fromInputs(value)
   const two = (n: number) => String(n).padStart(2, "0")
   return (
@@ -138,6 +138,8 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
     setError(null)
     if (!title.trim()) return setError("Give the event a title.")
     if (!calendarId) return setError("There's no calendar you can write to.")
+    // A guest that is not an address: the field says so; nothing is saved until it is fixed or removed.
+    if (!guestOf && !single && hasWrongAddress(guests)) return
     const input: EventInput = {
       calendarId,
       title: title.trim(),
@@ -210,14 +212,14 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
         <div className={row}>
           <span className={label}>Starts</span>
           <div className="ml-auto flex flex-wrap justify-end gap-2 py-1.5">
-            <DateField name="Start date" value={startDate} onPick={(date) => moveStart(date, startTime)} />
+            <EventDay name="Start date" value={startDate} onPick={(date) => moveStart(date, startTime)} />
             {!allDay && <input type="time" aria-label="Start time" className={picker} value={startTime} onChange={(ev) => ev.target.value && moveStart(startDate, ev.target.value)} />}
           </div>
         </div>
         <div className={row}>
           <span className={label}>Ends</span>
           <div className="ml-auto flex flex-wrap justify-end gap-2 py-1.5">
-            <DateField name="End date" value={endDate} min={startDate} onPick={setEndDate} />
+            <EventDay name="End date" value={endDate} min={startDate} onPick={setEndDate} />
             {!allDay && <input type="time" aria-label="End time" className={picker} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} />}
           </div>
         </div>
@@ -316,11 +318,9 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
           </div>
         </div>
         {!guestOf && !single && (
-          <div className={row}>
-            <label htmlFor="event-guests" className={label}>
-              Guests
-            </label>
-            <RecipientInput id="event-guests" className={bare} value={guests} onChange={setGuests} placeholder="Add people by name or email" inputMode="email" />
+          // The shared recipient field (ADR-0089): guests as chips; a chip that is not an address says so under the field.
+          <div className="border-b py-3">
+            <RecipientField id="event-guests" label="Invite" value={guests} onChange={setGuests} showProblem placeholder="Add people by name or email" inputMode="email" />
           </div>
         )}
         {!guestOf && !single && parseRecipients(guests).length > 0 && (
