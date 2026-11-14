@@ -3,7 +3,6 @@ import { useState } from "react"
 import { useUi, type EventEditorState } from "@/app/ui-store"
 import { DatePicker } from "@/components/date-picker"
 import { FormLayer, FormLayerForm } from "@/components/editor-frame"
-import { RecipientField, hasWrongAddress } from "@/components/recipient-field"
 import { ZonePicker } from "@/components/zone-picker"
 import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove, toast } from "@unicron/ui"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
@@ -12,6 +11,7 @@ import { useLeaveGuard } from "@/lib/leave-guard"
 import { meetingInfo, meetingLink } from "@/lib/meeting-info"
 
 import { formatRecipients, parseRecipients } from "../mail/format"
+import { RecipientInput } from "../mail/recipient-input"
 import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dates"
 import { FindATime } from "./find-a-time"
 import { REMINDER_PRESETS, reminderLabel, travelLabel } from "./reminders"
@@ -138,8 +138,6 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
     setError(null)
     if (!title.trim()) return setError("Give the event a title.")
     if (!calendarId) return setError("There's no calendar you can write to.")
-    // A guest that is not an address: the field says so; nothing is saved until it is fixed or removed.
-    if (!guestOf && !single && hasWrongAddress(guests)) return
     const input: EventInput = {
       calendarId,
       title: title.trim(),
@@ -318,9 +316,11 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
           </div>
         </div>
         {!guestOf && !single && (
-          // The shared recipient field (ADR-0089): guests as chips; a chip that is not an address says so under the field.
-          <div className="border-b py-3">
-            <RecipientField id="event-guests" label="Invite" value={guests} onChange={setGuests} showProblem placeholder="Add people by name or email" inputMode="email" />
+          <div className={row}>
+            <label htmlFor="event-guests" className={label}>
+              Guests
+            </label>
+            <RecipientInput id="event-guests" className={bare} value={guests} onChange={setGuests} placeholder="Add people by name or email" inputMode="email" />
           </div>
         )}
         {!guestOf && !single && parseRecipients(guests).length > 0 && (
