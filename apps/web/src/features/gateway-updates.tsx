@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 
 import { Button, Icon, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, Switch, toast } from "@unicron/ui"
+import { setServerUpdating } from "@/app/live-status"
 import { type GatewayUpdates, checkGatewayUpdates, gatewayUpdates, peekGatewayUpdates, reloadGateway, setGatewayAutoCheck, updateGateway } from "@/core/client"
 
 const KEY = ["gateway-updates"]
@@ -34,6 +35,11 @@ export function GatewayUpdatesSection() {
   const [error, setError] = useState<string | null>(null)
   const [following, setFollowing] = useState<Following | null>(null)
   const followFrom = following && !following.ended ? following.from : null
+  // While the gateway restarts, the shell's live status says so on every screen (ADR-0086).
+  useEffect(() => {
+    setServerUpdating(followFrom !== null)
+    return () => setServerUpdating(false)
+  }, [followFrom])
 
   // While an Update or Reload runs, look every two seconds. The gateway goes
   // away (a failed request), then comes back asking for a sign-in (sign-ins

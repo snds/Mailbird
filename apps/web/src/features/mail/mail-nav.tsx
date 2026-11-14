@@ -1,10 +1,11 @@
 import { factTime } from "@/app/screen"
+import { checkMail, useStatus } from "@/app/live-status"
 import { useNavPicked } from "@/app/places"
 import { FirstGroup } from "@/app/section-switcher"
 import { useUi } from "@/app/ui-store"
 import { FieldRow, FieldRowAction, NavItem, NavSection, SectionHeader, type IconName } from "@unicron/ui"
 import { isMember } from "@/core/client"
-import { useCore, useMailAction } from "@/core/queries"
+import { useCore } from "@/core/queries"
 import { startAddAccount } from "@/features/onboarding/start-add-account"
 
 import { LANES, type MailTab } from "./lanes"
@@ -92,7 +93,7 @@ export function MailNav({ layer = false, more = false }: { layer?: boolean; more
 function MailMore() {
   const { data: core } = useCore()
   const { account, accounts } = useMailPlace()
-  const sync = useMailAction<void>((c) => c.syncNow())
+  const checking = useStatus((s) => s.checking > 0)
   // Only the desktop core checks the servers itself; a gateway keeps its own time.
   if (core?.kind !== "native") return null
   const shown = account ? [account] : accounts
@@ -105,7 +106,7 @@ function MailMore() {
         rule="none"
         label="Last checked"
         action={
-          <FieldRowAction loading={sync.isPending} onClick={() => sync.mutate()}>
+          <FieldRowAction loading={checking} onClick={() => void checkMail()}>
             Check again
           </FieldRowAction>
         }

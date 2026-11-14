@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode 
 
 import { useUi, type ComposerDraft } from "@/app/ui-store"
 import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions, toast, useAppFrame } from "@unicron/ui"
+import { FormStrip } from "@/app/status"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore, useLocalTimes, useMailPrefs, useSignatures, useTemplates } from "@/core/queries"
 import type { Draft, LocalTime, OutgoingAttachment, Template } from "@/core/types"
@@ -103,6 +104,7 @@ export function ComposeMail() {
       >
         <SheetTitle className="sr-only">New message</SheetTitle>
         {body}
+        <FormStrip />
       </SheetContent>
     </Sheet>
   )
@@ -284,20 +286,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         })
         return
       }
-      toast("Sending…", {
-        id: item.id,
-        duration: UNDO_SECONDS * 1000,
-        action: {
-          label: "Undo",
-          onClick: async () => {
-            try {
-              openComposer(await client.cancelSend(item.id))
-            } catch (e) {
-              toast.error(e instanceof Error ? e.message : String(e))
-            }
-          },
-        },
-      })
+      // In its undo window the send is live: the status strip and the status line show it, with UNDO (ADR-0086).
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setSending(false)
@@ -528,33 +517,4 @@ function SaveTemplateDialog({ open, onOpenChange, subject, html }: { open: boole
       </DialogContent>
     </Dialog>
   )
-}
-
-/**
- * Reports outcomes once a send leaves the undo window. Mounted at the root.
- * The core emits `outbox:changed` with the item id when a send finishes.
- */
-export function OutboxWatcher() {
-  const { data: core } = useCore()
-  const openComposer = useUi((s) => s.openComposer)
-  useEffect(() => {
-    if (!core) return
-    return core.on("outbox:changed", async (id) => {
-      if (typeof id !== "string") return
-      const failed = (await core.listOutbox()).find((i) => i.id === id && i.state === "failed")
-      if (failed) {
-        toast.dismiss(id)
-        toast.error(`Couldn't send “${failed.draft.subject || "(no subject)"}”`, {
-          description: failed.error ?? undefined,
-          duration: Infinity,
-          action: { label: "Edit", onClick: () => openComposer(failed.draft) },
-        })
-      } else {
-        // Replace the "Sending…" toast outright: reusing its id would keep its Undo action.
-        toast.dismiss(id)
-        toast.success("Sent", { duration: 2500 })
-      }
-    })
-  }, [core, openComposer])
-  return null
 }

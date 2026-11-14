@@ -1,4 +1,4 @@
-import { AppFrameAccessory, AppFrameBottomRow, AppFrameTopRow, AppLockup, FloatButton, TabBar, TabBarItem, TopBar, useAppFrame } from "@unicron/ui"
+import { AppFrameBottomRow, AppFrameTopRow, AppLockup, FloatButton, TabBar, TabBarItem, TopBar, useAppFrame } from "@unicron/ui"
 
 import { QuickCreateButton, type CreateHandlers } from "./quick-create"
 import { returnToRoot, useScreen } from "./screen"
@@ -63,14 +63,13 @@ export function PhoneTopRow({ settingsOpen, searchOpen, onSettings, onCloseSetti
 /**
  * The phone's bottom row (ADR-0083; Mobile / 01): Search, the tab bar of
  * sections, and the open section's create button. Scrolled, the frame
- * shrinks the bar to the active tab and the place strip joins the row
- * (States / 02). A pushed item gets the detail row its lane fills; Settings
+ * shrinks the bar to the active tab and the status strip joins the row
+ * (States / 02; the strip is the shell's, app/status.tsx). A pushed item gets the detail row its lane fills; Settings
  * has no row. A team member's one section draws no tab bar (brief X10).
  * Search keeps the row (ADR-0085).
  */
 export function PhoneBottomRow({ sections, active, onNavigate, settingsOpen, searchOpen, onSearch, onCreate, handlers }: Omit<PhoneChromeProps, "onSettings" | "onCloseSettings" | "onLeaveSearch">) {
   const frame = useAppFrame()
-  const strip = useScreen((s) => s.strip)
   const pushed = useScreen((s) => s.pushed)
   if (settingsOpen) return null
   if (frame.detailOpen) {
@@ -78,8 +77,6 @@ export function PhoneBottomRow({ sections, active, onNavigate, settingsOpen, sea
   }
   return (
     <>
-      {/* Nothing is live: once the page has scrolled, where you are and the newest item's name. */}
-      {strip && <AppFrameAccessory scrolledOnly meta={strip.meta} title={strip.title} />}
       <AppFrameBottomRow
         variant="tabs"
         // On Search the button is the current place, and no tab is (cross-app decisions §6).

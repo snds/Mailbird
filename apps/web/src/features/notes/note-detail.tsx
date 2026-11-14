@@ -8,6 +8,7 @@ import { useLockedNote, useNote, useNoteAction, useNoteBacklinks, useNotesLock, 
 import type { NoteLink, NoteMeta } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
 import { longTime, reminderLabel } from "@/lib/time"
+import { copyText } from "@/lib/copy"
 
 import { titleAndSnippet } from "@/core/demo-notes"
 
@@ -174,14 +175,8 @@ export function NoteDetailPane({ id, fresh, onClosed }: { id: string; fresh: boo
       toast.error(e instanceof Error ? e.message : String(e))
     }
   }
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(markdownRef.current ?? openLocked?.markdown ?? note.markdown)
-      toast.success("Copied as Markdown", { duration: 2000 })
-    } catch {
-      toast.error("Couldn't reach the clipboard")
-    }
-  }
+  // From the note's menu, so a toast says it; a blocked clipboard shows the text to copy by hand (lib/copy.ts).
+  const copy = () => copyText(markdownRef.current ?? openLocked?.markdown ?? note.markdown, { what: "note as Markdown", label: "Note as Markdown" })
 
   return (
     // The note takes its card's tint, as an open Keep note does; the pane

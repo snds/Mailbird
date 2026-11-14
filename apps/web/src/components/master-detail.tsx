@@ -3,6 +3,7 @@ import { useRef, type ReactNode } from "react"
 import { AppFrameDetail, AppFrameInset, AppFrameList, Button, EmptyState, Icon, useAppFrame } from "@unicron/ui"
 import { DemoBar } from "@/app/demo-bar"
 import { usePushedScreen } from "@/app/places"
+import { SectionNotice } from "@/app/section-notice"
 import { useScreen, useScreenRoot } from "@/app/screen"
 
 interface MasterDetailProps {
@@ -51,6 +52,8 @@ export function MasterDetail({ section, header, list, detail, onBack, onRoot, pi
       <AppFrameList aria-label={section} data-scroll-root="" size={wide ? "fill" : "default"} onRefresh={refresh ?? undefined}>
         <DemoBar in="column" />
         {header}
+        {/* A phone shows the section's banner under the page head (Mobile / 07); wider, the shell does (ADR-0086). */}
+        <SectionNotice in="column" />
         <div ref={body}>{list}</div>
       </AppFrameList>
       {!wide && (

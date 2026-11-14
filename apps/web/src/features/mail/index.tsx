@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { factTime, usePlaceStrip, useRefresh, useScreenFact, useScreenPlace } from "@/app/screen"
+import { checkMail, useStatus } from "@/app/live-status"
 import { useSectionSwitcher } from "@/app/places"
+import { useSectionBanner, type SectionBanner } from "@/app/section-banner"
 import { SectionSwitcher } from "@/app/section-switcher"
 import { pendingJump, useUi } from "@/app/ui-store"
 import { vertical } from "@/app/verticals"
@@ -10,7 +12,7 @@ import { EntryRow } from "@/components/list-row"
 import { MasterDetail } from "@/components/master-detail"
 import { ScreenHead } from "@/components/page"
 import { VirtualList } from "@/components/virtual-list"
-import { useCore, useInboxOverview, useMailAction, useMailPrefs, useMe, useMessagePages, useContactPhotos, useSwipeActions, useThread } from "@/core/queries"
+import { useCore, useInboxOverview, useMailPrefs, useMe, useMessagePages, useContactPhotos, useSwipeActions, useThread } from "@/core/queries"
 import type { Lane, MessageSummary } from "@/core/types"
 import { shortTime } from "@/lib/time"
 
@@ -64,7 +66,7 @@ export function MailView() {
   const { data: core } = useCore()
   // All of the inbox (no chip) folds newsletters into the bundle row. Searching a lane is Search's (ADR-0085).
   const bundling = tab === "inbox" && !category && !split
-  const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage, refetch } = useMessagePages({
+  const { data: pages, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessagePages({
     lane,
     accountId,
     search: null,
@@ -76,7 +78,8 @@ export function MailView() {
   const { data: thread } = useThread(selectedId)
   const { data: overview } = useInboxOverview(accountId)
   const openComposer = useUi((s) => s.openComposer)
-  const sync = useMailAction<void>((c) => c.syncNow())
+  // A check the person asks for is live status while it runs (ADR-0086).
+  const checking = useStatus((s) => s.checking > 0)
   const triage = useTriage(() => setSelected(null))
   const verb = useMailVerbs(triage, senderActions)
   const { data: swipes = { right: "read", rightLong: "none", left: "archive", leftLong: "none" } } = useSwipeActions()
@@ -115,8 +118,8 @@ export function MailView() {
   usePlaceStrip(where, tab === "scheduled" || tab === "team" ? null : (list[0]?.subject ?? null))
   const synced = syncedAt(account ? [account] : accounts)
   useScreenFact(synced ? `Synced // ${synced}` : null)
-  // Pull to refresh, and a second tap on Mail's tab: the desktop core checks the servers; a gateway's list is read again.
-  useRefresh(() => (core?.kind === "native" ? sync.mutateAsync() : refetch()))
+  // Pull to refresh, and a second tap on Mail's tab: the core checks the servers, and the lists are read again (app/status.tsx).
+  useRefresh(checkMail)
 
   // The page head is the way to the folders and accounts wherever the sidebar does not list them (brief X1).
   // A sideways swipe on it steps the account: All, then each (brief 3.6).
@@ -132,6 +135,16 @@ export function MailView() {
   // After the title, which the head says first: "Today, Personal. Change folder or account." on the page head,
   // and "Inbox, Personal. Change folder or account." on the small title it collapses to.
   const switching = useSectionSwitcher(`${accountName ? `${accountName}. ` : ""}${multiAccount ? "Change folder or account." : "Change folder."}`, multiAccount ? stepAccount : undefined)
+
+  // An account that stopped syncing is Mail's banner (ADR-0086; Mobile / 07, Desktop / 05): the first one, in the server's words.
+  const failing = accounts.find((a) => a.lastError)
+  const failingName = failing?.displayName
+  const failingError = failing?.lastError
+  const syncBanner = useMemo<SectionBanner | null>(
+    () => (failingName && failingError ? { title: `${failingName} account stopped syncing`, body: failingError, action: { label: "Open Accounts", onClick: () => useUi.getState().openSettings("accounts") } } : null),
+    [failingName, failingError],
+  )
+  useSectionBanner("mail", syncBanner)
 
   useMailShortcuts({
     list,
@@ -163,8 +176,8 @@ export function MailView() {
           switcher={switching.switcher}
           actions={
             core?.kind === "native" && (
-              <Button variant="ghost" size="icon" aria-label="Check for new mail" onClick={() => sync.mutate()} disabled={sync.isPending}>
-                <Icon name="renew" className={sync.isPending ? "animate-spin" : undefined} />
+              <Button variant="ghost" size="icon" aria-label="Check for new mail" onClick={() => void checkMail()} disabled={checking}>
+                <Icon name="renew" className={checking ? "animate-spin" : undefined} />
               </Button>
             )
           }

@@ -8,7 +8,9 @@ import { PhoneBottomRow, PhoneTopRow } from "./phone-chrome"
 import { stepBack, watchPlaces } from "./places"
 import { QuickCreateMenu, type CreateHandlers } from "./quick-create"
 import { returnToRoot } from "./screen"
+import { SectionNotice } from "./section-notice"
 import { Sidebar } from "./sidebar"
+import { StatusStrip } from "./status"
 import { StatusLine } from "./status-line"
 import { VERTICALS, vertical, type VerticalId } from "./verticals"
 
@@ -84,6 +86,8 @@ export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen,
       <PhoneTopRow settingsOpen={settingsOpen} searchOpen={searchOpen} onSettings={onSettings} onCloseSettings={leaveSettings} onLeaveSearch={onLeaveSearch} />
       <AppFrameMain>{children}</AppFrameMain>
       <PhoneBottomRow sections={sections} active={section} onNavigate={onNavigate} settingsOpen={settingsOpen} searchOpen={searchOpen} onSearch={onSearch} onCreate={onCreate} handlers={handlers} />
+      {/* What is live, on every phone screen: above the bottom row, inside it once scrolled, alone where there is no row (ADR-0086). */}
+      <StatusStrip />
       <QuickCreateMenu open={quickOpen} onOpenChange={setQuickOpen} handlers={handlers} />
       {/* Inside the frame, so a toast stands where the frame says: the content's bottom left, or the phone's strip slot. */}
       <Toaster />
@@ -91,7 +95,7 @@ export function AppShell({ active, onNavigate, onCreate, handlers, settingsOpen,
   )
 }
 
-/** The desktop's header cell: the demo's notice, pinned above the status line (brief X10), then the line itself. */
+/** The desktop's header cell: the demo's notice, pinned above the status line (brief X10), the line itself, then the open section's banner (ADR-0086). */
 function TopLine({ section, onSection }: { section: string; onSection: () => void }) {
   const frame = useAppFrame()
   if (frame.phone) return null
@@ -99,6 +103,7 @@ function TopLine({ section, onSection }: { section: string; onSection: () => voi
     <div className="min-w-0 [grid-area:header]">
       <DemoBar in="frame" />
       <StatusLine section={section} onSection={onSection} />
+      <SectionNotice in="frame" />
     </div>
   )
 }

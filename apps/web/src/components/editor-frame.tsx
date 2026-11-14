@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 
+import { FormStrip } from "@/app/status"
 import { Button, Dialog, DialogContent, DialogTitle, Sheet, SheetContent, SheetTitle, useAppFrame } from "@unicron/ui"
 
 /** The field marked `data-editor-focus` gets focus once the frame is open. */
@@ -28,6 +29,8 @@ export function EditorFrame({ open, onClose, title, children }: { open: boolean;
       <SheetContent side="bottom" fullscreen showCloseButton={false} initialFocus={firstField}>
         <SheetTitle className="sr-only">{title}</SheetTitle>
         {children}
+        {/* A send in its undo window shows on every phone screen, a full-screen form too (ADR-0086). */}
+        <FormStrip />
       </SheetContent>
     </Sheet>
   )

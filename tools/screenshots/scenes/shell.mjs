@@ -1,6 +1,8 @@
 // The shell: its chrome (sidebar, rail, top and bottom rows, tab bar), the scrolled state, quick
 // create, the limited shells (a team member, the demo), and the ways around the app.
 import { area, button, ensure, groups, oneCurrent, press, settingsButton, sidebar, switcher, switcherLayer, tabBar } from "./helpers.mjs"
+import { send } from "./mail.mjs"
+import { noteAction } from "./notes.mjs"
 
 const AREAS = ["Mail", "Calendar", "Contacts", "Notes"]
 /** The words quick create lists, and what each one opens. */
@@ -20,6 +22,15 @@ const topRow = (page) => page.locator('[data-slot="app-frame-top-row"]')
 const smallTitle = (page) => page.locator('[data-slot="app-frame-top-row-title"]')
 const strip = (page) => page.locator('[data-slot="accessory"]')
 
+const statusLine = (page) => page.locator('[data-slot="app-frame-status-line"]')
+const statusItems = (page) => statusLine(page).locator('[data-slot="status-item"]')
+const toasts = (page) => page.locator("[data-sonner-toast]")
+/** Where live status shows: the phone's strip, the desktop's status line. */
+const live = ({ page, phone }) => (phone ? strip(page) : statusLine(page).locator('[data-slot="app-frame-status-line-status"]'))
+/** What a part says, on one line. */
+const said = async (part) => ((await part.count()) ? (await part.first().innerText()).replace(/\s+/g, " ").trim() : "")
+/** The place a phone names: the page head's title, or the small title once it has collapsed. */
+const smallOrHead = async (page) => (await page.locator('[data-slot="page-head-title"]:visible').first().innerText()).trim()
 /** Scrolls Mail's list the way a finger would, far enough for the chrome to minimize. */
 const scrollMail = async (app, top) => {
   await listOf(app.page, "Mail").evaluate((el, y) => el.scrollTo(0, y), top)
@@ -35,6 +46,7 @@ const rest = async (page) => {
   await page.evaluate(() => document.activeElement?.blur())
   await page.mouse.move(0, 0)
   await page.getByRole("tooltip").waitFor({ state: "detached" })
+  await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "detached" })
 }
 /** Leaves whatever a create flow opened: a form closes on Escape; a new note is a pushed screen or a pane. */
 const leave = async (app) => {
@@ -311,6 +323,216 @@ export const scenes = [
       }
       await area(app, "Mail")
       await groups(app)
+    },
+  },
+  // ── Status and messages (ADR-0086; brief X4) ────────────────────────────────────────────────
+  {
+    // States / 04: a check for mail the person asked for. The strip on a phone, the first status
+    // item on a desktop; the scenario holds the check, so it stays up.
+    name: "status-syncing",
+    sizes: ["desktop", "phone", "medium"],
+    scenario: "syncing",
+    sean: { kind: "undrawn", area: "shell", screen: "status-syncing" },
+    run: async (app) => {
+      const { page } = app
+      ensure(!(await live(app).filter({ hasText: /syncing|checking/i }).count()), "something says it is checking before anyone asked")
+      if (app.phone) {
+        // A second tap on Mail's tab reads again.
+        await press(app, tabBar(page).getByRole("tab", { name: "Mail", exact: true }))
+        // The strip's text area is a button: while mail is fetched it opens the Folders sheet.
+        await press(app, strip(page).locator('[data-slot="accessory-open"]'))
+        ensure(await page.getByRole("dialog", { name: "Folders", exact: true }).isVisible(), "the syncing strip did not open the Folders sheet")
+        await leave(app)
+      } else {
+        const again = statusLine(page).getByRole("button", { name: "Check again", exact: true })
+        await again.hover()
+        await page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Check for new mail" }).waitFor()
+        await press(app, again)
+      }
+      await rest(page)
+    },
+    assert: async (app) => {
+      const { page } = app
+      if (app.phone) {
+        const words = await said(strip(page))
+        ensure(/^SYNCING \/\/ PERSONAL \+ WORK Checking 2 accounts$/i.test(words), `the strip says “${words}”`)
+        ensure((await strip(page).getAttribute("data-tone")) === "live", "the syncing strip is not live")
+        ensure(await strip(page).locator('[data-slot="accessory-open"]').count(), "the strip's text area is not a button")
+      } else {
+        const items = await statusItems(page).allInnerTexts()
+        ensure(items.length === 2 && /^CHECKING \/\/ 2 ACCOUNTS$/i.test(items[0].trim()) && /^SYNCED \/\/ 09:16$/i.test(items[1].trim()), `the status line says ${JSON.stringify(items)}`)
+        ensure((await statusItems(page).first().getAttribute("data-tone")) === "live", "the live item is not first")
+        ensure(!(await statusLine(page).getByRole("button", { name: "Check again" }).count()), "Check again is still offered while checking")
+      }
+      ensure(!(await toasts(page).count()), "a check for mail raised a toast")
+    },
+  },
+  {
+    // An account added a moment ago: its first sync is live until it has synced once.
+    name: "status-first-sync",
+    sizes: ["desktop", "phone", "medium"],
+    scenario: "first-sync",
+    assert: async (app) => {
+      const words = await said(app.phone ? strip(app.page) : statusItems(app.page).first())
+      ensure(app.phone ? /^FIRST SYNC \/\/ WORK Fetching mail$/i.test(words) : /^FIRST SYNC \/\/ WORK$/i.test(words), `the first sync reads “${words}”`)
+      ensure((await (app.phone ? strip(app.page) : statusItems(app.page).first()).getAttribute("data-tone")) === "live", "the first sync is not live")
+    },
+  },
+  {
+    // A send in its undo window: SENDING // NN S with UNDO, on the strip and on the line, never a
+    // toast. UNDO reopens the message; two sends show the newest; Ctrl+Z takes it back.
+    name: "status-sending",
+    sizes: ["desktop", "phone", "medium"],
+    sean: { kind: "undrawn", area: "shell", screen: "status-sending" },
+    run: async (app) => {
+      const { page } = app
+      const message = page.getByRole("dialog", { name: "New message" })
+      const subject = message.getByRole("textbox", { name: "Subject" })
+      await send(app, "Saturday ferry")
+      ensure(/SENDING \/\/ 10 S/i.test(await said(live(app))), `after Send the status says “${await said(live(app))}”`)
+      ensure(!(await toasts(page).count()), "Send raised a toast while its undo window is open")
+      // UNDO is its own button: it reopens the message as it was.
+      await press(app, live(app).getByRole("button", { name: "Undo", exact: true }))
+      ensure((await subject.inputValue()) === "Saturday ferry", "Undo did not reopen the message")
+      ensure(!(await live(app).filter({ hasText: /sending/i }).count()), "the status still says Sending after Undo")
+      await press(app, message.getByRole("button", { name: "Send", exact: true }))
+      await message.waitFor({ state: "detached" })
+      // A second send inside the window: the status shows the newest and counts both.
+      await send(app, "Pier parking")
+      ensure(/SENDING \/\/ 2 MESSAGES \/\/ 10 S/i.test(await said(live(app))), `two sends read “${await said(live(app))}”`)
+      if (app.phone) ensure(/Pier parking/.test(await said(strip(page))), "the strip does not name the newest send")
+      // Ctrl+Z outside a text field takes back the newest.
+      await rest(page)
+      await page.keyboard.press("Control+KeyZ")
+      await app.settle()
+      ensure((await subject.inputValue()) === "Pier parking", "Ctrl+Z did not take back the newest send")
+      // In a text field the key is the field's own undo.
+      await subject.focus()
+      await page.keyboard.press("Control+KeyZ")
+      await app.settle()
+      ensure(/SENDING \/\/ 10 S/i.test(await said(app.phone ? message.locator('[data-slot="accessory"]') : live(app))), "Ctrl+Z in a text field took back a send")
+      // On a phone the strip shows in the full-screen form too, and on Settings, which has no bottom row.
+      if (app.phone) ensure(await message.locator('[data-slot="accessory"]').getByRole("button", { name: "Undo" }).isVisible(), "the sending strip is not in the full-screen form")
+      await leave(app)
+      if (app.phone) {
+        // Scrolled, the strip joins the bottom row and shows the seconds and UNDO only.
+        await scrollMail(app, 400)
+        ensure((await said(strip(page))) === "10 S", `in the bottom row the strip says “${await said(strip(page))}”`)
+        ensure(await strip(page).getByRole("button", { name: "Undo", exact: true }).isVisible(), "in the bottom row the strip has no UNDO")
+        await scrollMail(app, 0)
+        await press(app, settingsButton(page))
+        ensure(await strip(page).isVisible(), "the sending strip does not show on Settings")
+        const box = await strip(page).boundingBox()
+        ensure(Math.round(box.x) === 16 && Math.round(box.x + box.width) === app.viewport.width - 16, `alone at the foot the strip spans ${Math.round(box.x)} to ${Math.round(box.x + box.width)}`)
+        await press(app, button(page, "Back"))
+        // Its text area opens Scheduled, where the message waits.
+        await press(app, strip(page).locator('[data-slot="accessory-open"]'))
+        ensure((await smallOrHead(page)) === "Scheduled", "the sending strip did not open Scheduled")
+        await press(app, tabBar(page).getByRole("tab", { name: "Mail", exact: true }))
+      }
+      // Two seconds on.
+      const now = await page.evaluate(() => Date.now())
+      await page.clock.setFixedTime(new Date(now + 2000))
+      await live(app).filter({ hasText: /08 S/ }).waitFor()
+      await rest(page)
+    },
+    assert: async (app) => {
+      const { page } = app
+      const words = await said(live(app))
+      ensure(/SENDING \/\/ 08 S/i.test(words) && !/MESSAGES/i.test(words), `the status says “${words}”`)
+      ensure(await live(app).getByRole("button", { name: "Undo", exact: true }).isVisible(), "there is no UNDO")
+      ensure(await live(app).locator('[data-slot="accessory-progress"], [data-slot="status-item-progress"]').count(), "there is no progress bar")
+      if (app.phone) ensure(/Saturday ferry/.test(words), "the strip does not name the message")
+      else {
+        ensure((await statusItems(page).count()) === 2, "the status line holds more than the live item and the screen's fact")
+        ensure((await statusItems(page).first().getAttribute("data-tone")) === "live", "the live item is not first")
+      }
+      ensure(!(await toasts(page).count()), "a toast shows while the send can still be undone")
+    },
+  },
+  {
+    // Desktop / 05, Mobile / 07: an account stopped syncing. A critical status item in place of the
+    // sync time, and Mail's banner. Never yellow, never a strip.
+    name: "status-sync-error",
+    sizes: ["desktop", "phone", "medium"],
+    scenario: "sync-error",
+    sean: { kind: "undrawn", area: "shell", screen: "status-sync-error" },
+    assert: async (app) => {
+      const { page } = app
+      const banner = page.locator('[data-role="section-banner"]:visible')
+      ensure((await banner.count()) === 1, `Mail shows ${await banner.count()} banners, not one`)
+      ensure(/Work account stopped syncing/.test(await banner.innerText()), "the banner does not name the account")
+      ensure(await banner.getByRole("button", { name: "Open Accounts", exact: true }).isVisible(), "the banner has no way to fix it")
+      ensure(!(await page.locator('[data-tone="needs-you"]').count()), "a sync error is yellow")
+      if (app.phone) {
+        ensure(!(await strip(page).isVisible()), "a sync error shows as a strip on a phone")
+        const head = await page.locator('[data-slot="page-head-title"]:visible').first().boundingBox()
+        const box = await banner.boundingBox()
+        ensure(box.y > head.y + head.height, "the banner is not under the page head")
+      } else {
+        const items = await statusItems(page).allInnerTexts()
+        ensure(items.length === 1 && /^WORK \/\/ NOT SYNCING SINCE 08:36$/i.test(items[0].trim()), `the status line says ${JSON.stringify(items)}`)
+        ensure((await statusItems(page).first().getAttribute("data-tone")) === "critical", "the item is not critical")
+        const line = await statusLine(page).boundingBox()
+        const box = await banner.boundingBox()
+        ensure(box.y >= line.y + line.height && Math.abs(box.x - line.x) < 1 && Math.abs(box.width - line.width) < 1, "the banner does not stand under the status line, across the content")
+      }
+      // The banner belongs to Mail: another section shows none, and the line still says what stopped.
+      await area(app, "Contacts")
+      ensure(!(await banner.count()), "Mail's banner shows in Contacts")
+      if (!app.phone) ensure((await statusItems(page).count()) === 2, "outside Mail the line should hold the critical item and the screen's fact")
+      await area(app, "Mail")
+      await rest(page)
+    },
+  },
+  {
+    // No network: a neutral fact with the last sync. The demo says so only under this scenario.
+    name: "status-offline",
+    sizes: ["desktop", "phone", "medium"],
+    scenario: "offline",
+    offline: true,
+    assert: async (app) => {
+      const { page } = app
+      const part = app.phone ? strip(page) : statusItems(page).first()
+      const words = await said(part)
+      ensure(app.phone ? /^OFFLINE Last synced 09:16$/i.test(words) : /^OFFLINE \/\/ LAST SYNCED 09:16$/i.test(words), `offline reads “${words}”`)
+      if (!app.phone) ensure((await statusItems(page).count()) === 1, "Mail's sync time shows beside Offline, which already says it")
+      ensure((await part.getAttribute("data-tone")) === "neutral", "offline is not neutral")
+    },
+  },
+  {
+    // Two reminders came due while Vale was closed: one notice, and SEE opens the Missed list.
+    name: "status-missed",
+    scenario: "missed",
+    run: async (app) => {
+      const { page } = app
+      const notice = toasts(page).filter({ hasText: "2 reminders came due while Vale was closed" })
+      await notice.waitFor()
+      ensure((await toasts(page).count()) === 1, "missed reminders raised more than one toast")
+      await press(app, notice.getByRole("button", { name: "See", exact: true }))
+    },
+    assert: async ({ page }) => {
+      const list = page.getByRole("dialog", { name: "Missed", exact: true })
+      ensure(await list.isVisible(), "SEE did not open the Missed list")
+      ensure((await list.getByRole("list", { name: "Missed reminders" }).getByRole("listitem").count()) === 2, "the Missed list does not hold both reminders")
+    },
+  },
+  {
+    // The browser refuses the clipboard: the value shows in a toast, to select and copy by hand.
+    name: "status-copy-blocked",
+    run: async (app) => {
+      const { page } = app
+      await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new DOMException("blocked", "NotAllowedError")) } }))
+      // A copy from a menu: the note's "Copy as Markdown".
+      await noteAction(app, "Copy as Markdown")
+      await page.locator('[data-role="copy-value"]').waitFor()
+      await rest(page)
+    },
+    assert: async ({ page }) => {
+      const toast = toasts(page).filter({ has: page.locator('[data-role="copy-value"]') })
+      ensure(/Note as Markdown/.test(await toast.innerText()), "the toast does not say what the value is")
+      ensure(/Cabin packing list/.test(await page.locator('[data-role="copy-value"]').innerText()), "the toast does not show the text")
+      ensure((await page.locator('[data-role="copy-value"]').evaluate((el) => getComputedStyle(el).userSelect)) === "all", "the value cannot be selected")
     },
   },
 ]

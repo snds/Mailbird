@@ -179,7 +179,17 @@ async function settle(page, { loading = false } = {}) {
     const QUIET_MS = 300
     const GIVE_UP_MS = 8000
     await document.fonts.ready
-    const busy = () => !allowLoading && !!document.querySelector('[aria-busy="true"], [data-slot="skeleton"]')
+    // Only what is on screen counts. A section hidden behind Search or Settings stops drawing (React's
+    // Activity), so a skeleton caught there stands unseen for as long as it is hidden; it cannot be in the
+    // picture, and it made `search-all` fail by chance (ADR-0086).
+    const loadingNow = () => [...document.querySelectorAll('[aria-busy="true"], [data-slot="skeleton"]')].filter((el) => el.checkVisibility())
+    const busy = () => !allowLoading && loadingNow().length > 0
+    // Names what is loading, so a failed picture says where to look.
+    const what = () => {
+      const el = loadingNow()[0]
+      const named = el?.closest("[aria-label]")
+      return el ? `${el.getAttribute("data-slot") ?? el.tagName.toLowerCase()}${named ? ` in “${named.getAttribute("aria-label")}”` : ""}` : "nothing now"
+    }
     // Endless animations (a spinner) never finish, so only ones that end count as still moving.
     const moving = () => document.getAnimations().some((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime)))
     const result = await new Promise((resolve) => {
@@ -198,7 +208,7 @@ async function settle(page, { loading = false } = {}) {
         const now = performance.now()
         if (busy() || moving()) last = now
         if (now - last >= QUIET_MS) done(true)
-        else if (now - started > GIVE_UP_MS) done(busy() ? "something is still loading" : moving() ? "something is still moving" : "the page keeps changing")
+        else if (now - started > GIVE_UP_MS) done(busy() ? `something is still loading (${what()})` : moving() ? "something is still moving" : "the page keeps changing")
         else requestAnimationFrame(tick)
       }
       requestAnimationFrame(tick)

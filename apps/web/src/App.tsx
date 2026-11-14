@@ -21,13 +21,15 @@ import { CalendarView } from "@/features/calendar"
 import { ContactsView } from "@/features/contacts"
 import { EventEditor } from "@/features/calendar/event-editor"
 import { MiniCalendar } from "@/features/calendar/mini-calendar"
+import { MissedList } from "@/features/calendar/missed-list"
 import { ReminderWatcher } from "@/features/calendar/reminder-watcher"
 import { ContactEditor } from "@/features/contacts/contact-editor"
 import { FirstRunGate } from "@/features/onboarding/first-run-gate"
 import { QuickNote } from "@/features/notes/quick-note"
 import { SplitEditor } from "@/features/mail/splits"
 import { MailView } from "@/features/mail"
-import { ComposeMail, OutboxWatcher } from "@/features/mail/composer"
+import { ComposeMail } from "@/features/mail/composer"
+import { OutboxWatcher } from "@/features/mail/outbox-watcher"
 import { NotesView } from "@/features/notes"
 import { ImageTextRunner } from "@/features/notes/image-text-runner"
 import { ImageViewer } from "@/features/notes/image-viewer"
@@ -120,6 +122,7 @@ function Root() {
       {!isMember() && (
         <>
           <ReminderWatcher />
+          <MissedList />
           <NotesSyncRunner />
           <TeamSyncRunner />
           <ImageTextRunner />

@@ -12,6 +12,32 @@ export const compose = async (app) => {
   return app.page.getByRole("dialog", { name: "New message" })
 }
 
+/** Writes a message to Marcus and sends it. */
+export const send = async (app, subject) => {
+  const message = await compose(app)
+  await message.getByRole("combobox", { name: "To" }).pressSequentially("Marcus")
+  await press(app, message.getByRole("option", { name: /Marcus Lee/ }))
+  await message.getByRole("textbox", { name: "Subject" }).fill(subject)
+  await press(app, message.getByRole("button", { name: "Send", exact: true }))
+  await message.waitFor({ state: "detached" })
+  await app.settle()
+}
+const toasts = (page) => page.locator("[data-sonner-toast]")
+const visibleBoxes = async (list) => {
+  const boxes = []
+  for (const el of await list.all()) if (await el.isVisible()) boxes.push(await el.boundingBox())
+  return boxes.filter(Boolean)
+}
+/** The bars at the phone's foot: the bottom row, a strip above it, a toast in the strip's slot. */
+const bars = async (page) => 1 + ((await page.locator('[data-slot="accessory"]:not([data-compact]):visible').count()) ? 1 : 0) + (await visibleBoxes(page.locator("[data-sonner-toast]"))).filter((b) => b.y > 422).length
+const strip = (page) => page.locator('[data-slot="accessory"]')
+/** Archives a conversation from its own action bar: a finished action, so a toast with Undo. */
+const archive = async (app, subject) => {
+  await conversation(app, subject)
+  // The conversation's own action: Mail's folders have an Archive too, in the sidebar (ADR-0084).
+  await app.page.getByRole("region", { name: "Mail: what is open" }).getByRole("button", { name: "Archive", exact: true }).click()
+}
+
 export const scenes = [
   { name: "mail-inbox" },
   { name: "mail-conversation", run: (app) => conversation(app, /Token audit/) }, // three messages, and the sender beside them
@@ -47,10 +73,53 @@ export const scenes = [
   {
     name: "mail-archived-toast", // a toast with Undo, taken while it shows
     run: async (app) => {
-      await conversation(app, /Cabin weekend/)
-      // The conversation's own action: Mail's folders have an Archive too, in the sidebar (ADR-0084).
-      await app.page.getByRole("region", { name: "Mail: what is open" }).getByRole("button", { name: "Archive", exact: true }).click()
-      await app.page.locator("[data-sonner-toast]").first().waitFor()
+      await archive(app, /Cabin weekend/)
+      await toasts(app.page).first().waitFor()
+    },
+  },
+  {
+    // Where a toast stands (ADR-0086; cross-app decisions §1): the bottom left of the content on a
+    // desktop; on a phone the status strip's slot, so the foot never holds three bars, and never
+    // over a strip with an action: it waits for a send's undo window to end.
+    name: "toast-placement",
+    sizes: ["desktop", "phone", "medium"],
+    run: async (app) => {
+      const { page } = app
+      if (app.phone) {
+        await send(app, "Saturday ferry")
+        await archive(app, /Cabin weekend/)
+        await app.settle()
+        await page.waitForTimeout(600)
+        ensure(await strip(page).getByRole("button", { name: "Undo", exact: true }).isVisible(), "the sending strip left for a toast")
+        const held = await strip(page).boundingBox()
+        for (const box of await visibleBoxes(toasts(page))) ensure(box.y + box.height <= held.y || box.y >= held.y + held.height, "a toast covers the sending strip")
+        ensure((await bars(page)) <= 2, `the foot holds ${await bars(page)} bars`)
+        // The send is taken back, so the slot is free and the toast that waited takes it.
+        await press(app, strip(page).getByRole("button", { name: "Undo", exact: true }))
+        await page.keyboard.press("Escape")
+        await app.settle()
+      } else await archive(app, /Cabin weekend/)
+      await toasts(page).filter({ hasText: "Archived" }).first().waitFor()
+      await page.mouse.move(0, 0)
+    },
+    assert: async (app) => {
+      const { page } = app
+      const toast = toasts(page).filter({ hasText: "Archived" }).first()
+      const box = await toast.boundingBox()
+      ensure(await toast.getByRole("button", { name: "Undo", exact: true }).isVisible(), "the toast has no Undo")
+      ensure((await toast.getByRole("button").count()) === 1, "the toast holds more than one action")
+      if (app.phone) {
+        const row = await page.locator('[data-slot="app-frame-bottom-row-bar"]').boundingBox()
+        ensure(!(await strip(page).isVisible()), "a strip and a toast both stand above the bottom row")
+        ensure(box.y + box.height <= row.y && row.y - (box.y + box.height) <= 16, `the toast is not in the strip's slot: it ends at ${Math.round(box.y + box.height)}, the row starts at ${Math.round(row.y)}`)
+        ensure(Math.round(box.x) === 16 && Math.round(box.x + box.width) === app.viewport.width - 16, `the toast spans ${Math.round(box.x)} to ${Math.round(box.x + box.width)}`)
+        ensure((await bars(page)) === 2, `the foot holds ${await bars(page)} bars`)
+      } else {
+        const content = await page.locator('[data-slot="app-frame-status-line"]').boundingBox()
+        ensure(Math.abs(box.x - content.x) <= 1, `the toast starts at ${Math.round(box.x)}, the content at ${Math.round(content.x)}`)
+        ensure(app.viewport.height - (box.y + box.height) <= 48, "the toast is not at the bottom")
+        ensure(box.x + box.width / 2 < content.x + content.width / 2, "the toast is not at the left of the content")
+      }
     },
   },
   {
