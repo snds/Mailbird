@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { ContactDetail } from "@/core/types"
 
@@ -27,10 +26,10 @@ export function ShareContact({ contact, className }: { contact: ContactDetail; c
     <>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="secondary" className={className} />}>
-          <Icon name="ios_share" className="size-5" />
+          <Icon name="share" className="size-5" />
           Share
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="center">
+        <DropdownMenuContent align="center" width="fit">
           {canShareFiles && (
             <DropdownMenuItem onClick={() => void shareSheet().catch(fail)}>
               <Icon name="share" /> Share…
@@ -40,7 +39,7 @@ export function ShareContact({ contact, className }: { contact: ContactDetail; c
             <Icon name="download" /> Save as vCard file
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => void showQr().catch(fail)}>
-            <Icon name="qr_code_2" /> Show QR code
+            <Icon name="qr-code" /> Show QR code
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

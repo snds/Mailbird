@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions } from "@unicron/ui"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions, FilterChip, FilterChipGroup, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { usePimAction } from "@/core/queries"
 
@@ -68,13 +67,13 @@ function RestoreForm({ openedAt, onDone }: { openedAt: number; onDone: () => voi
         <DialogTitle>Restore contacts</DialogTitle>
         <DialogDescription>Put every contact back the way it was, undoing edits, deletes, and additions since then, from here or from a sync.</DialogDescription>
       </DialogHeader>
-      <div role="radiogroup" aria-label="Restore to" className="flex flex-wrap gap-1.5">
+      <FilterChipGroup label="Restore to" value={String(pick)} onValueChange={(i) => choose(Number(i))}>
         {POINTS.map((p, i) => (
-          <Button key={p.label} size="sm" variant={pick === i ? "secondary" : "outline"} role="radio" aria-checked={pick === i} shape="pill" onClick={() => choose(i)}>
+          <FilterChip key={p.label} value={String(i)}>
             {p.label}
-          </Button>
+          </FilterChip>
         ))}
-      </div>
+      </FilterChipGroup>
       <div role="status" aria-label="What changes" className="min-h-16 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
         {isPending || !plan ? (
           <span className="text-muted-foreground">Checking…</span>

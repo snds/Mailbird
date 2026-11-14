@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, Toggle, toast } from "@unicron/ui"
 import { useCalendarSets, usePimAction } from "@/core/queries"
 import type { Collection } from "@/core/types"
 
@@ -26,10 +25,11 @@ export function CalendarSets({ calendars }: { calendars: Map<string, Collection>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show a set">
           {sets.map((s) => (
             <span key={s.id} className="inline-flex items-center">
-              <Button size="xs" variant={isActive(s.calendarIds) ? "secondary" : "outline"} aria-pressed={isActive(s.calendarIds)} className="rounded-l-full rounded-r-none pr-2" onClick={() => apply.mutate(s.id, { onError: fail })}>
+              {/* The set now showing stays pressed: inverted ink (unicron 1.0 draws secondary and outline alike). */}
+              <Toggle size="sm" variant="outline" pressed={isActive(s.calendarIds)} onPressedChange={() => apply.mutate(s.id, { onError: fail })}>
                 {s.name}
-              </Button>
-              <Button size="icon-xs" variant="outline" aria-label={`Delete set ${s.name}`} className="-ml-px rounded-l-none rounded-r-full" onClick={() => remove.mutate(s.id, { onError: fail })}>
+              </Toggle>
+              <Button size="icon-xs" variant="outline" aria-label={`Delete set ${s.name}`} onClick={() => remove.mutate(s.id, { onError: fail })}>
                 <Icon name="close" />
               </Button>
             </span>

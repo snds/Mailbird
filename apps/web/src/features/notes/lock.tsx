@@ -59,7 +59,7 @@ function SetForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => voi
         <DialogDescription>One passphrase opens every locked note, on all your devices.</DialogDescription>
       </DialogHeader>
       <p className="flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-        <Icon name="warning" tone="destructive" className="mt-0.5 size-4" />
+        <Icon name="warning--alt" tone="destructive" size="sm" className="mt-0.5" />
         <span>If you forget it, your locked notes can't be opened. Nobody can reset it, Vale included.</span>
       </p>
       {/* Labels stay short; help and errors are descriptions, so a field's name is just its name. */}
@@ -198,12 +198,12 @@ function UnlockFields({ info, onDone, onCancel }: { info: NotesLockInfo; onDone?
           </Button>
         )}
         <Button type="submit" disabled={busy || !pass} className={!onCancel && (!info.hint || hint) ? "ml-auto" : undefined}>
-          <Icon name="lock_open" data-icon="inline-start" /> Unlock
+          <Icon name="unlocked" data-icon="inline-start" /> Unlock
         </Button>
       </div>
       {info.identity && (
         <Button type="button" variant="ghost-muted" disabled={busy} onClick={() => void withIdentity()}>
-          <Icon name="verified_user" data-icon="inline-start" /> Unlock with your identity
+          <Icon name="security" data-icon="inline-start" /> Unlock with your identity
         </Button>
       )}
     </form>
@@ -216,7 +216,7 @@ export function LockedPanel({ title }: { title: string }) {
   return (
     <section aria-label="Locked note" className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center gap-4 px-6 py-12 text-center">
       <span className="grid size-14 place-items-center rounded-full bg-muted">
-        <Icon name="lock" tone="muted" className="size-7" />
+        <Icon name="locked" tone="muted" size={28} />
       </span>
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-semibold text-balance">{title || "Locked note"}</h2>

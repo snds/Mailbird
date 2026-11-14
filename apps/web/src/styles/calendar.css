@@ -1,0 +1,51 @@
+/*
+ * Calendar: what only the calendar area adds to Vale's layer (see shell.css
+ * for the rules).
+ */
+
+/* ── Tier 3 · Calendar knobs ─────────────────────────────────────────────── */
+:root,
+.light,
+.dark,
+[data-theme] {
+  /* An event whose calendar has no color of its own: a neutral ink. */
+  --c-event-fallback: var(--text-label);
+  /* How much of the calendar color tints an event's fill. */
+  --c-event-tint: 16%;
+  --c-event-tint-hover: 26%;
+  --c-calendar-hour-height: 3rem;
+  --c-calendar-gutter: 3.5rem;
+  /* Now and today are the identity color: the one mark of "you are here". */
+  --c-calendar-now: var(--primary-fill);
+  --c-calendar-today: var(--primary-fill);
+  /* Today's label as text, and its date chip: a filled block with its number. */
+  --c-calendar-today-text: var(--primary-text);
+  --c-calendar-today-chip: var(--primary-fill);
+  --c-calendar-today-chip-text: var(--primary-on-fill);
+}
+
+/* Event chips take one input, --event (the calendar's color), and derive
+   fill, edge, and text from it so any server color stays legible. */
+@layer components {
+  .event-chip {
+    background: color-mix(in oklab, var(--event) var(--c-event-tint), var(--background));
+    border-left: 3px solid var(--event);
+    color: color-mix(in oklab, var(--event) 35%, var(--foreground));
+    &:hover {
+      background: color-mix(in oklab, var(--event) var(--c-event-tint-hover), var(--background));
+    }
+  }
+  .event-dot {
+    background: var(--event);
+  }
+  /* Travel time before an event (ADR-0029): the same hue, hatched and
+     lighter, so it reads as "blocked" rather than as a second event. */
+  .travel-band {
+    border-color: color-mix(in oklab, var(--event) 45%, transparent);
+    background: repeating-linear-gradient(
+      -45deg,
+      color-mix(in oklab, var(--event) calc(var(--c-event-tint) * 0.6), var(--background)) 0 4px,
+      var(--background) 4px 8px
+    );
+  }
+}

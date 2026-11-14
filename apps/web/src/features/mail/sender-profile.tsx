@@ -58,19 +58,19 @@ export function SenderProfile({ from, threadId, onOpenThread }: { from: Address;
 
       {/* One row of equal buttons, however many apply (a narrow column fits four). */}
       <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(0,1fr))] gap-1.5 [&>*]:min-w-0 [&>*]:px-1">
-        <Action icon="mail" label="Email" onClick={() => openComposer({ to: [{ name, email: p.email }] })} />
-        {dial && <Action icon="call" label="Call" href={`tel:${dial}`} />}
+        <Action icon="email" label="Email" onClick={() => openComposer({ to: [{ name, email: p.email }] })} />
+        {dial && <Action icon="phone" label="Call" href={`tel:${dial}`} />}
         {dial && <Action icon="chat" label="Message" href={`sms:${dial}`} />}
         {c ? (
-          <Action icon="contact_page" label="Card" onClick={() => jumpTo({ kind: "contact", id: c.id })} />
+          <Action icon="user--profile" label="Card" onClick={() => jumpTo({ kind: "contact", id: c.id })} />
         ) : (
-          <Action icon="person_add" label="Add" onClick={() => openContactEditor({ initial: { fullName: p.name ?? from.name ?? "", emails: [{ value: p.email, label: null }] } })} />
+          <Action icon="user--follow" label="Add" onClick={() => openContactEditor({ initial: { fullName: p.name ?? from.name ?? "", emails: [{ value: p.email, label: null }] } })} />
         )}
       </div>
 
       {p.received > 0 && (
         <p className="text-xs text-muted-foreground">
-          <Icon name="history" className="mr-1 inline size-3.5 align-[-2px]" />
+          <Icon name="recently-viewed" size={14} className="mr-1 inline align-[-2px]" />
           {p.received === 1 ? "1 message" : `${p.received} messages`} from them{p.firstSeen ? ` since ${monthYear(p.firstSeen)}` : ""}
         </p>
       )}
@@ -99,7 +99,7 @@ function LocalTime({ offset, seen, name }: { offset: number; seen: number | null
   const stale = seen !== null && now - seen > FRESH
   return (
     <p data-slot="sender-local-time" className="flex flex-wrap items-center justify-center gap-x-1.5 text-xs text-muted-foreground" aria-label={`Local time for ${name}: ${time}, ${utcLabel(offset)}, ${gapLabel(offset, mine)}${day ? `. ${day}` : ""}`}>
-      <Icon name={day === "Night there" ? "bedtime" : "schedule"} className="size-3.5" />
+      <Icon name={day === "Night there" ? "moon" : "time"} size={14} />
       <span className="font-medium text-foreground">{time}</span>
       <span>
         {utcLabel(offset)} · {gapLabel(offset, mine)}

@@ -1,7 +1,6 @@
 import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Icon, IconButton } from "@unicron/ui"
+import { Button, Icon, IconButton, toast } from "@unicron/ui"
 import { useNoteGraph } from "@/core/queries"
 import type { NoteGraph, NoteLinkKind, NoteQuery, NoteSummary } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -25,11 +24,10 @@ interface GNode {
   target?: string | null
 }
 
-const HUE: Record<NoteLinkKind, string> = {
-  event: "var(--vertical-calendar)",
-  contact: "var(--vertical-contacts)",
-  thread: "var(--vertical-mail)",
-}
+/** A linked item (an event, a person, a conversation) is one neutral ink; its glyph says which. */
+const LINK_INK = "var(--text-label)"
+/** A note with no color of its own. */
+const NOTE_INK = "var(--text-secondary)"
 const KIND_NAME: Record<NoteLinkKind, [string, string]> = {
   event: ["Event", "Events"],
   contact: ["Person", "People"],
@@ -270,10 +268,8 @@ export function NoteGraphView({ query, selectedId, onOpenNote }: { query: NoteQu
             aria-pressed={!hidden.has(k)}
             onClick={() => setHidden((h) => (h.has(k) ? new Set([...h].filter((x) => x !== k)) : new Set([...h, k])))}
           >
-            {/* The kind's hue, so the chips read as the map's legend. */}
-            <span className="contents" style={{ color: HUE[k] }}>
-              <Icon name={LINK_ICON[k]} />
-            </span>
+            {/* The kind's glyph, so the chips read as the map's legend. */}
+            <Icon name={LINK_ICON[k]} />
             {KIND_NAME[k][1]} {counts[k]}
           </Button>
         ))}
@@ -312,7 +308,7 @@ export function NoteGraphView({ query, selectedId, onOpenNote }: { query: NoteQu
                   y1={pa.y}
                   x2={pb.x}
                   y2={pb.y}
-                  stroke={item ? HUE[item] : "var(--muted-foreground)"}
+                  stroke={item ? LINK_INK : "var(--muted-foreground)"}
                   strokeWidth={litSet && on ? 1.75 : 1.1}
                   strokeDasharray={item ? "3 3" : undefined}
                   strokeOpacity={litSet ? (on ? 0.95 : 0.12) : item ? 0.6 : 0.5}
@@ -361,8 +357,8 @@ export function NoteGraphView({ query, selectedId, onOpenNote }: { query: NoteQu
                     cx={p.x}
                     cy={p.y}
                     r={r}
-                    fill={n.note?.color ? noteFill(n.note.color) : "var(--vertical-notes)"}
-                    stroke={n.note?.color ? `color-mix(in oklab, ${noteFill(n.note.color)} 45%, var(--foreground))` : "var(--surface-chrome)"}
+                    fill={n.note?.color ? noteFill(n.note.color) : NOTE_INK}
+                    stroke={n.note?.color ? `color-mix(in oklab, ${noteFill(n.note.color)} 45%, var(--foreground))` : "var(--surface-ground)"}
                     strokeWidth={1.5}
                   />
                 ) : (
@@ -371,12 +367,12 @@ export function NoteGraphView({ query, selectedId, onOpenNote }: { query: NoteQu
                       cx={p.x}
                       cy={p.y}
                       r={r}
-                      fill={`color-mix(in oklab, ${HUE[n.kind]} 16%, var(--surface-chrome))`}
-                      stroke={HUE[n.kind]}
+                      fill={`color-mix(in oklab, ${LINK_INK} 16%, var(--surface-ground))`}
+                      stroke={LINK_INK}
                       strokeWidth={1.5}
                       strokeDasharray={n.target ? undefined : "2 2"}
                     />
-                    <g style={{ color: HUE[n.kind] }}>
+                    <g style={{ color: LINK_INK }}>
                       <Icon name={LINK_ICON[n.kind]} x={p.x - r * 0.65} y={p.y - r * 0.65} width={r * 1.3} height={r * 1.3} />
                     </g>
                   </>
@@ -390,7 +386,7 @@ export function NoteGraphView({ query, selectedId, onOpenNote }: { query: NoteQu
                     textAnchor="middle"
                     className={cn("text-[11px]", selected || lit === n.id ? "font-semibold" : "font-medium")}
                     fill="var(--foreground)"
-                    stroke="var(--surface-chrome)"
+                    stroke="var(--surface-ground)"
                     strokeWidth={3}
                     strokeLinejoin="round"
                     paintOrder="stroke"
@@ -410,8 +406,8 @@ export function NoteGraphView({ query, selectedId, onOpenNote }: { query: NoteQu
       </p>
       <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 rounded-full border bg-background/80 p-1 shadow-sm backdrop-blur">
         <IconButton label="Zoom in" icon="add" size="icon-sm" shortcut="+" onClick={() => zoomBy(1.25)} />
-        <IconButton label="Zoom out" icon="remove" size="icon-sm" shortcut="−" onClick={() => zoomBy(0.8)} />
-        <IconButton label="Fit the map" icon="fit_screen" size="icon-sm" shortcut="0" onClick={refit} />
+        <IconButton label="Zoom out" icon="subtract" size="icon-sm" shortcut="−" onClick={() => zoomBy(0.8)} />
+        <IconButton label="Fit the map" icon="fit-to-screen" size="icon-sm" shortcut="0" onClick={refit} />
       </div>
     </div>
   )

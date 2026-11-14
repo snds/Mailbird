@@ -37,7 +37,7 @@ export function SendLaterMenu({
             <DropdownMenuLabel>Send later…</DropdownMenuLabel>
             {sendLaterOptions().map((o) => (
               <DropdownMenuItem key={o.label} onClick={() => onPick(o.until)}>
-                <Icon name="schedule_send" />
+                <Icon name="time" />
                 <span className="flex-1">{o.label}</span>
                 <span className="text-xs text-muted-foreground">{o.detail}</span>
               </DropdownMenuItem>
@@ -50,7 +50,7 @@ export function SendLaterMenu({
                 <DropdownMenuLabel>Their time</DropdownMenuLabel>
                 {theirs.map((t) => (
                   <DropdownMenuItem key={t.label} onClick={() => onPick(t.at)}>
-                    <Icon name="schedule" />
+                    <Icon name="time" />
                     <span className="flex-1">{t.label}</span>
                     <span className="text-xs text-muted-foreground">{t.detail}</span>
                   </DropdownMenuItem>
@@ -60,7 +60,7 @@ export function SendLaterMenu({
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setCustom(true)}>
-            <Icon name="calendar_month" />
+            <Icon name="calendar" />
             Pick a time…
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -87,7 +87,7 @@ export function FollowUpAfterMenu({ trigger, children, value, onChange }: { trig
           <DropdownMenuLabel>Remind me if no reply in…</DropdownMenuLabel>
           {FOLLOW_UP_OPTIONS.map((o) => (
             <DropdownMenuItem key={o.label} onClick={() => onChange(o.after)}>
-              <Icon name={value === o.after ? "check" : "notifications"} />
+              <Icon name={value === o.after ? "checkmark" : "notification"} />
               {o.label}
             </DropdownMenuItem>
           ))}
@@ -96,7 +96,7 @@ export function FollowUpAfterMenu({ trigger, children, value, onChange }: { trig
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onChange(null)}>
-              <Icon name="notifications_off" />
+              <Icon name="notification--off" />
               Don't remind me
             </DropdownMenuItem>
           </>
@@ -118,7 +118,7 @@ export function FollowUpAtMenu({ trigger, children, onPick }: { trigger: ReactEl
             <DropdownMenuLabel>Remind me if no reply…</DropdownMenuLabel>
             {snoozeOptions().map((o) => (
               <DropdownMenuItem key={o.label} onClick={() => onPick(o.until, o.label.toLowerCase())}>
-                <Icon name="notifications" />
+                <Icon name="notification" />
                 <span className="flex-1">{o.label}</span>
                 <span className="text-xs text-muted-foreground">{o.detail}</span>
               </DropdownMenuItem>
@@ -126,7 +126,7 @@ export function FollowUpAtMenu({ trigger, children, onPick }: { trigger: ReactEl
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setCustom(true)}>
-            <Icon name="calendar_month" />
+            <Icon name="calendar" />
             Pick a time…
           </DropdownMenuItem>
         </DropdownMenuContent>

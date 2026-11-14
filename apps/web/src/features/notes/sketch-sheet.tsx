@@ -128,7 +128,8 @@ function Drawing({ start, editing, onCancel, onDone }: { start: Sketch; editing:
   const empty = sketch.strokes.length === 0
   return (
     <>
-      <div className="flex flex-col gap-1">
+      {/* Clear of the sheet's close button, top right (48px in unicron 1.0). */}
+      <div className="flex flex-col gap-1 pr-14">
         <SheetTitle>{editing ? "Edit sketch" : "Sketch"}</SheetTitle>
         <SheetDescription>Draw with a mouse, a finger, or a pen. A pen's pressure shapes the line.</SheetDescription>
       </div>
@@ -138,10 +139,10 @@ function Drawing({ start, editing, onCancel, onDone }: { start: Sketch; editing:
             <Icon name="edit" />
           </ToggleGroupItem>
           <ToggleGroupItem value="marker" aria-label="Marker">
-            <Icon name="ink_highlighter" />
+            <Icon name="text--highlight" />
           </ToggleGroupItem>
           <ToggleGroupItem value="eraser" aria-label="Eraser">
-            <Icon name="ink_eraser" />
+            <Icon name="erase" />
           </ToggleGroupItem>
         </ToggleGroup>
         {mode !== "eraser" && (
@@ -177,7 +178,7 @@ function Drawing({ start, editing, onCancel, onDone }: { start: Sketch; editing:
         <span className="ml-auto flex items-center gap-0.5">
           <IconButton icon="undo" label="Undo" size="icon-sm" disabled={!past.length} onClick={undo} />
           <IconButton icon="redo" label="Redo" size="icon-sm" disabled={!future.length} onClick={redo} />
-          <IconButton icon="delete_sweep" label="Clear" size="icon-sm" disabled={empty} onClick={() => commit({ ...sketch, strokes: [] })} />
+          <IconButton icon="clean" label="Clear" size="icon-sm" disabled={empty} onClick={() => commit({ ...sketch, strokes: [] })} />
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border bg-(--c-sketch-paper)">
@@ -202,7 +203,7 @@ function Drawing({ start, editing, onCancel, onDone }: { start: Sketch; editing:
           Cancel
         </Button>
         <Button type="button" variant="outline" disabled={sketch.h >= MAX_H} onClick={() => setSketch((s) => ({ ...s, h: Math.min(MAX_H, s.h + ROOM) }))}>
-          <Icon name="expand" data-icon="inline-start" /> More room
+          <Icon name="unfold--open" data-icon="inline-start" /> More room
         </Button>
         <Button type="button" className="ml-auto" disabled={empty} onClick={() => onDone(sketch)}>
           {editing ? "Save sketch" : "Add to note"}

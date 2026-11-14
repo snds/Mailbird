@@ -1,10 +1,19 @@
 /*
- * The shared design system (unicron): Tailwind, the core tokens, Inter, the
- * Material Symbols font, the dark variant, the base layer, and the
- * primitives' classes. Then Vale's own roles (app-extension.css).
+ * The shared design system (unicron): Tailwind, the core tokens, Geist and
+ * Geist Mono, the dark variant, the base layer, and the primitives' classes.
+ * Icons are IBM Carbon, drawn inline by unicron's Icon: no icon font loads.
+ *
+ * Then Vale's own layer, one file per area, so each area's owner edits its
+ * own file. shell.css comes first: it holds the rules for the layer and what
+ * every area shares.
  */
 @import "@unicron/ui/styles";
-@import "./styles/app-extension.css";
+@import "./styles/shell.css";
+@import "./styles/mail.css";
+@import "./styles/calendar.css";
+@import "./styles/contacts.css";
+@import "./styles/notes.css";
+@import "./styles/settings.css";
 
 /* What only Vale adds to the base layer; unicron's sets borders, outlines, and the body colors. */
 @layer base {
@@ -18,163 +27,5 @@
   }
   body {
     overscroll-behavior: none;
-  }
-}
-
-/* Composer body (Tiptap). Preflight strips list and quote styling, so the
-   editor puts back just what an email needs. */
-@layer components {
-  .composer-body {
-    & > * + * {
-      margin-top: 0.25em;
-    }
-    & ul {
-      list-style: disc;
-      padding-left: 1.5em;
-    }
-    & ol {
-      list-style: decimal;
-      padding-left: 1.5em;
-    }
-    & blockquote {
-      border-left: 2px solid var(--c-composer-quote-border);
-      color: var(--c-composer-quote-text);
-      padding-left: 0.75em;
-    }
-    & a {
-      color: var(--c-composer-link);
-      text-decoration: underline;
-    }
-    & a.wikilink {
-      color: var(--c-note-wikilink-text);
-      background: var(--c-note-wikilink-bg);
-      border-radius: 0.25em;
-      padding: 0 0.2em;
-      text-decoration: none;
-      cursor: pointer;
-    }
-    & a.wikilink.ProseMirror-selectednode {
-      outline: 2px solid var(--c-note-wikilink-text);
-    }
-    & code {
-      font-family: var(--font-mono);
-      font-size: 0.9em;
-    }
-    & p.is-editor-empty:first-child::before {
-      content: attr(data-placeholder);
-      float: left;
-      height: 0;
-      pointer-events: none;
-      color: var(--c-composer-placeholder);
-    }
-  }
-}
-
-@layer components {
-  /* Shares the composer's prose rules, plus what only notes have. */
-  .note-body {
-    & > * + * {
-      margin-top: 0.4em;
-    }
-    & > :first-child {
-      font-size: var(--c-note-title-size);
-      font-weight: 600;
-      line-height: 1.25;
-      letter-spacing: -0.01em;
-    }
-    & h1,
-    & h2,
-    & h3 {
-      font-size: var(--c-note-heading-size);
-      font-weight: 600;
-      margin-top: 0.9em;
-    }
-    & ul:not([data-type="taskList"]) {
-      list-style: disc;
-      padding-left: 1.5em;
-    }
-    & ol {
-      list-style: decimal;
-      padding-left: 1.5em;
-    }
-    & blockquote {
-      border-left: 2px solid var(--c-composer-quote-border);
-      color: var(--c-composer-quote-text);
-      padding-left: 0.75em;
-    }
-    & a {
-      color: var(--c-composer-link);
-      text-decoration: underline;
-    }
-    & code {
-      font-family: var(--font-mono);
-      font-size: 0.9em;
-    }
-    & pre {
-      background: var(--c-note-code-bg);
-      border-radius: var(--radius-md);
-      padding: 0.75em 1em;
-      overflow-x: auto;
-    }
-    & ul[data-type="taskList"] {
-      padding-left: 0.1em;
-      & li {
-        display: flex;
-        gap: 0.6em;
-        align-items: flex-start;
-      }
-      & li > label {
-        flex-shrink: 0;
-        margin-top: 0.2em;
-        user-select: none;
-      }
-      & li > label input {
-        width: 1.05em;
-        height: 1.05em;
-        accent-color: var(--c-note-check-accent);
-      }
-      & li > div {
-        flex: 1;
-        min-width: 0;
-      }
-      & li[data-checked="true"] > div {
-        color: var(--c-note-done-text);
-        text-decoration: line-through;
-      }
-    }
-    & .is-empty:first-child::before,
-    & p.is-empty::before {
-      content: attr(data-placeholder);
-      float: left;
-      height: 0;
-      pointer-events: none;
-      color: var(--c-composer-placeholder);
-    }
-  }
-}
-
-/* Event chips take one input, --event (the calendar's color), and derive
-   fill, edge, and text from it so any server color stays legible. */
-@layer components {
-  .event-chip {
-    background: color-mix(in oklab, var(--event) var(--c-event-tint), var(--background));
-    border-left: 3px solid var(--event);
-    color: color-mix(in oklab, var(--event) 35%, var(--foreground));
-    &:hover {
-      background: color-mix(in oklab, var(--event) var(--c-event-tint-hover), var(--background));
-    }
-  }
-  .event-dot {
-    background: var(--event);
-  }
-  /* Travel time before an event (ADR-0029): the same hue, hatched and
-     lighter, so it reads as "blocked" rather than as a second event. */
-  .travel-band {
-    border-color: color-mix(in oklab, var(--event) 45%, transparent);
-    background: repeating-linear-gradient(
-      -45deg,
-      color-mix(in oklab, var(--event) calc(var(--c-event-tint) * 0.6), var(--background)) 0 4px,
-      var(--background) 4px 8px
-    );
   }
 }

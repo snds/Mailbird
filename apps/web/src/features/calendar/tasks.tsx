@@ -1,9 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, DialogAction, DialogActions } from "@unicron/ui"
+import { Icon, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useCollections, useNoteTasks, useNotesPrefs } from "@/core/queries"
 import type { NoteTask, TimeSlot } from "@/core/types"
@@ -52,9 +51,9 @@ export function TasksPanel({ onOpen }: { onOpen: (eventId: string, start: number
             <span className="truncate">{t.text}</span>
             {t.planned ? (
               <span className="text-xs">
-                {/* In the calendar's hue: it's on the calendar now. */}
-                <Button variant="link" size="inline" className="text-vertical-calendar-text" onClick={() => onOpen(t.planned!.eventId, t.planned!.start)}>
-                  <Icon name="event_available" /> {when(t.planned.start)}
+                {/* A link to its place on the calendar. */}
+                <Button variant="link" size="inline" onClick={() => onOpen(t.planned!.eventId, t.planned!.start)}>
+                  <Icon name="calendar" /> {when(t.planned.start)}
                 </Button>
               </span>
             ) : (
@@ -66,7 +65,7 @@ export function TasksPanel({ onOpen }: { onOpen: (eventId: string, start: number
             )}
           </div>
           <Button size="icon-sm" variant="ghost" aria-label={`${t.planned ? "Plan again" : "Plan"}: ${t.text}`} onClick={() => setPlanning(t)}>
-            <Icon name="more_time" />
+            <Icon name="event--schedule" />
           </Button>
         </div>
       ))}
@@ -171,14 +170,16 @@ function PlanForm({ task, onDone, onOpen }: { task: NoteTask; onDone: () => void
         ) : (
           <div role="group" aria-label="Free times" className="flex flex-wrap gap-2">
             {free.map((s) => (
-              <Button key={s.start} type="button" size="sm" variant={dateInput(fromSecs(s.start)) === day && timeInput(fromSecs(s.start)) === time ? "default" : "secondary"} onClick={() => pickSlot(s)}>
+              // The picked time stays pressed (inverted ink); the dialog's one primary is Plan.
+              <Toggle key={s.start} type="button" size="sm" variant="outline" pressed={dateInput(fromSecs(s.start)) === day && timeInput(fromSecs(s.start)) === time} onPressedChange={() => pickSlot(s)}>
                 {when(s.start)}
-              </Button>
+              </Toggle>
             ))}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      {/* One column on a phone: unicron 1.0's 48px selects cut "30 minutes" beside the calendar's name. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           Length
           <NativeSelect

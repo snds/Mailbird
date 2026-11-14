@@ -12,6 +12,9 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY tools/notes-relay/package.json ./tools/notes-relay/
+# The unicron pre-release tarballs the manifests name with file: paths (ADR-0082). Drop this line
+# with vendor/unicron/ when Unicron 1.0 is released.
+COPY vendor ./vendor
 RUN pnpm install --frozen-lockfile --filter "web..."
 COPY apps/web ./apps/web
 RUN pnpm --filter web build

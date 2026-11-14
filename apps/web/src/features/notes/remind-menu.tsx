@@ -15,27 +15,27 @@ export function RemindMenu({ value, onPick }: { value: number | null; onPick: (a
     <>
       <DropdownMenu>
         <DropdownMenuTrigger render={<IconButton label={label} />}>
-          <Icon name={value ? "notifications_active" : "notification_add"} className="size-5" fill={!!value} />
+          <Icon name={value ? "notification--filled" : "notification"} className="size-5" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Remind me…</DropdownMenuLabel>
             {snoozeOptions().map((o) => (
               <DropdownMenuItem key={o.label} onClick={() => onPick(o.until)}>
-                <Icon name="schedule" />
+                <Icon name="time" />
                 <span className="flex-1">{o.label}</span>
                 <span className="text-xs text-muted-foreground">{o.detail}</span>
               </DropdownMenuItem>
             ))}
             <DropdownMenuItem onClick={() => setCustom(true)}>
-              <Icon name="edit_calendar" /> Pick a date and time…
+              <Icon name="event--schedule" /> Pick a date and time…
             </DropdownMenuItem>
           </DropdownMenuGroup>
           {value && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onPick(null)}>
-                <Icon name="notifications_off" /> Remove reminder
+                <Icon name="notification--off" /> Remove reminder
               </DropdownMenuItem>
             </>
           )}

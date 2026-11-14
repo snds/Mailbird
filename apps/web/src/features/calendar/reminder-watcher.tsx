@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useUi } from "@/app/ui-store"
 import { useCore } from "@/core/queries"
@@ -29,8 +29,9 @@ export function ReminderWatcher() {
         toast(missed ? `Missed: ${title}` : title, {
           id: `reminder-note-${id}-${r.fireAt}`,
           description: "From your notes",
+          // A missed one stays until its action is pressed (or it is swiped away): unicron's
+          // toast has one action and no close button.
           duration: missed ? Infinity : 15_000,
-          closeButton: missed,
           action: { label: "Open", onClick: () => jumpTo({ kind: "note", id }) },
         })
         return
@@ -54,7 +55,8 @@ export function ReminderWatcher() {
         id: `reminder-${r.eventId}-${r.fireAt}`,
         description: r.location ? `${lead} · ${r.location}` : lead,
         duration: missed ? Infinity : 15_000,
-        closeButton: missed,
+        // A missed one stays until closed; pressing a toast's action closes it.
+        action: missed ? { label: "Dismiss", onClick: () => {} } : undefined,
       })
     }
     let live = true

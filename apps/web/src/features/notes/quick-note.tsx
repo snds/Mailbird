@@ -1,13 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 
 import { type QuickContext, useUi } from "@/app/ui-store"
-import { Icon, type IconName, Button, Kbd, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, Chip, ChipRemove } from "@unicron/ui"
+import { Icon, type IconName, Button, Kbd, AdaptiveSheetContent, Sheet, SheetDescription, SheetTitle, Chip, ChipRemove, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useLinkedNotes } from "@/core/queries"
 
-const ICON: Record<QuickContext["kind"], IconName> = { event: "event", contact: "person", thread: "mail" }
+const ICON: Record<QuickContext["kind"], IconName> = { event: "calendar", contact: "user", thread: "email" }
 
 /**
  * Quick Note (Apple Notes): jot something down without leaving what you're
@@ -44,13 +43,13 @@ export function QuickNote() {
   return (
     <Sheet open={!!state} onOpenChange={onOpenChange}>
       <AdaptiveSheetContent className="flex flex-col gap-3 px-5 pb-5 sm:pt-5">
-        {state && <Composer target={state.target} onChange={setDraft} onDone={() => onOpenChange(false)} />}
+        {state && <QuickNoteForm target={state.target} onChange={setDraft} onDone={() => onOpenChange(false)} />}
       </AdaptiveSheetContent>
     </Sheet>
   )
 }
 
-function Composer({ target, onChange, onDone }: { target: QuickContext | null; onChange: (d: { text: string; linked: boolean }) => void; onDone: () => void }) {
+function QuickNoteForm({ target, onChange, onDone }: { target: QuickContext | null; onChange: (d: { text: string; linked: boolean }) => void; onDone: () => void }) {
   const [text, setText] = useState("")
   const [linked, setLinked] = useState(!!target)
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -72,7 +71,8 @@ function Composer({ target, onChange, onDone }: { target: QuickContext | null; o
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2 pr-10 max-sm:pr-0">
+      {/* Clear of the sheet's close button, top right (48px in unicron 1.0). */}
+      <div className="flex items-center justify-between gap-2 pr-14">
         <SheetTitle>Quick note</SheetTitle>
         <span className="hidden text-xs text-muted-foreground sm:inline">
           <Kbd>⌥N</Kbd> anywhere

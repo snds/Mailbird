@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, toast } from "@unicron/ui"
 import { useInterestingCalendars, usePimAction } from "@/core/queries"
 import type { InterestingCalendar } from "@/core/types"
 

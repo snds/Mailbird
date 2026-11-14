@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, toast } from "@unicron/ui"
 import { useDuplicates, usePimAction } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
 
@@ -29,7 +28,7 @@ function Group({ group }: { group: ContactSummary[] }) {
         <legend className="sr-only">Keep which card?</legend>
         {group.map((c) => (
           <label key={c.id} className="flex cursor-pointer items-center gap-3 border-b px-4 py-3 last:border-0 has-checked:bg-muted/50">
-            <input type="radio" name={`keep-${group[0]!.id}`} checked={primary === c.id} onChange={() => setPrimary(c.id)} className="accent-(--primary)" aria-label={`Keep ${c.fullName}`} />
+            <input type="radio" name={`keep-${group[0]!.id}`} checked={primary === c.id} onChange={() => setPrimary(c.id)} className="accent-(--foreground)" aria-label={`Keep ${c.fullName}`} />
             <PersonAvatar contact={c} size="sm" />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-medium">{c.fullName}</span>
@@ -59,7 +58,7 @@ export function DuplicatesPane() {
       </header>
       {!isPending && groups.length === 0 && (
         <p className="flex items-center gap-2 rounded-xl border p-4 text-sm text-muted-foreground">
-          <Icon name="check_circle" className="size-5" /> No duplicates left.
+          <Icon name="checkmark--outline" /> No duplicates left.
         </p>
       )}
       {groups.map((g) => (

@@ -1,8 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, type IconName, Button, NativeSelect, NativeSelectOption } from "@unicron/ui"
+import { Icon, type IconName, Button, NativeSelect, NativeSelectOption, Toggle, toast } from "@unicron/ui"
 import { useCollections, useMailAction } from "@/core/queries"
 import type { Invite, InviteResponse } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -13,9 +12,9 @@ import { displayName } from "./format"
 import { Conflicts, CounterProposal, ProposeTime } from "./invite-planning"
 
 const ANSWERS: { value: InviteResponse; label: string; icon: IconName }[] = [
-  { value: "accepted", label: "Accept", icon: "check_circle" },
+  { value: "accepted", label: "Accept", icon: "checkmark--outline" },
   { value: "tentative", label: "Maybe", icon: "help" },
-  { value: "declined", label: "Decline", icon: "cancel" },
+  { value: "declined", label: "Decline", icon: "close--outline" },
 ]
 
 const STATUS_TEXT: Record<string, string> = {
@@ -122,16 +121,10 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
           <>
             <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Your answer">
               {ANSWERS.map((a) => (
-                <Button
-                  key={a.value}
-                  size="sm"
-                  variant={invite.myStatus === a.value ? "default" : "outline"}
-                  aria-pressed={invite.myStatus === a.value}
-                  disabled={respond.isPending}
-                  onClick={() => void answer(a.value)}
-                >
-                  <Icon name={a.icon} data-icon="inline-start" fill={invite.myStatus === a.value} /> {a.label}
-                </Button>
+                // The answer you gave stays pressed: inverted ink, never the one primary's color.
+                <Toggle key={a.value} size="sm" variant="outline" pressed={invite.myStatus === a.value} disabled={respond.isPending} onPressedChange={() => void answer(a.value)}>
+                  <Icon name={a.icon} data-icon="inline-start" /> {a.label}
+                </Toggle>
               ))}
               {!invite.eventId && writable.length > 1 && (
                 <NativeSelect size="sm" aria-label="Add to calendar" value={target} onChange={(e) => setCalendarId(e.target.value)} className="ml-auto max-w-44">
@@ -146,7 +139,7 @@ export function InviteCard({ invite, messageId, accountId }: { invite: Invite; m
             <Conflicts invite={invite} />
             {invite.myStatus && STATUS_TEXT[invite.myStatus] && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
-                <Icon name="event_available" className="size-3.5" /> {STATUS_TEXT[invite.myStatus]}
+                <Icon name="calendar" size={14} /> {STATUS_TEXT[invite.myStatus]}
                 {invite.eventId ? " · in your calendar" : ""}
               </p>
             )}

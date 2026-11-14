@@ -3,7 +3,7 @@
 One command takes a picture of every main screen of the web app, so a change to the look can be checked screen by screen ([ADR-0079](../../docs/decisions/0079-screenshots.md), [ADR-0081](../../docs/decisions/0081-harness-and-scenarios.md)).
 
 ```sh
-pnpm shots --out ~/vale-shots                                  # builds apps/web, then 296 pictures (about 3 minutes)
+pnpm shots --out ~/vale-shots                                  # builds apps/web, then every picture (300 today, about 4 minutes)
 pnpm shots --out ~/vale-shots -g mail-inbox -g calendar-week   # only scenes whose name contains any of these
 pnpm shots --out ~/vale-shots --size medium -g mail            # medium 768 × 1024; also landscape 844 × 390
 pnpm shots --out ~/vale-shots --demo                           # the desktop demo build (VITE_DEMO_APP=1)

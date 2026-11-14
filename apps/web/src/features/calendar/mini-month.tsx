@@ -18,10 +18,10 @@ export function MiniMonth({ month, onMonth, selected, onPick, busy }: { month: D
         <span className="text-sm font-semibold">{fmt.monthYear(first)}</span>
         <div className="flex">
           <Button variant="ghost" size="icon-sm" aria-label="Previous month" onClick={() => onMonth(addMonths(first, -1))}>
-            <Icon name="chevron_left" />
+            <Icon name="chevron--left" />
           </Button>
           <Button variant="ghost" size="icon-sm" aria-label="Next month" onClick={() => onMonth(addMonths(first, 1))}>
-            <Icon name="chevron_right" />
+            <Icon name="chevron--right" />
           </Button>
         </div>
       </div>

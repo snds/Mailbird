@@ -60,14 +60,14 @@ export function AppShell({ active, onNavigate, onCreate, onSettings, settingsOpe
   const current = VERTICALS.find((v) => v.id === active)!
   const [expanded, toggleRail] = useRailExpanded()
   return (
-    <div className="flex h-dvh overflow-hidden bg-surface-canvas">
+    <div className="flex h-dvh overflow-hidden bg-surface-raised">
       <NavRail active={settingsOpen ? null : active} onNavigate={onNavigate} onSettings={onSettings} settingsOpen={settingsOpen} expanded={expanded} onToggle={toggleRail} />
       <main className="relative flex min-w-0 flex-1 flex-col pb-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0">
         {DEMO_APP && <DemoBar />}
         {children}
         {!settingsOpen && <Fab vertical={current} onClick={onCreate} />}
       </main>
-      <TabBar active={settingsOpen ? null : active} onNavigate={onNavigate} />
+      <PhoneAreas active={settingsOpen ? null : active} onNavigate={onNavigate} />
     </div>
   )
 }
@@ -83,7 +83,7 @@ function RailTip({ label, expanded, children }: { label: ReactNode; expanded: bo
   )
 }
 
-function NavItem({
+function AreaEntry({
   vertical,
   active,
   onClick,
@@ -109,12 +109,10 @@ function NavItem({
       className={cn(
         "group/nav flex text-xs font-medium text-muted-foreground outline-none transition-colors",
         "focus-visible:ring-3 focus-visible:ring-ring/50 rounded-full",
-        // Tier-3 tokens drive the icon axes; @property makes them animate.
-        "[--c-icon-fill:var(--c-nav-icon-fill-rest)] [--c-icon-wght:var(--c-nav-icon-wght-rest)]",
-        "data-[active=true]:text-foreground data-[active=true]:[--c-icon-fill:var(--c-nav-icon-fill-active)] data-[active=true]:[--c-icon-wght:var(--c-nav-icon-wght-active)]",
+        "data-[active=true]:text-foreground",
         rail
           ? cn(
-              "h-12 flex-none items-center gap-3 text-sm hover:bg-accent/60 data-[active=true]:bg-accent",
+              "h-12 flex-none items-center gap-3 text-sm hover:bg-accent/60 data-[active=true]:bg-primary-soft",
               expanded ? "w-full px-4" : "w-12 justify-center"
             )
           : "h-full flex-1 flex-col items-center justify-center gap-1 rounded-xl"
@@ -123,10 +121,10 @@ function NavItem({
       <span
         className={cn(
           "flex items-center justify-center",
-          !rail && "h-8 w-14 rounded-full transition-colors group-hover/nav:bg-accent/60 group-data-[active=true]/nav:bg-accent"
+          !rail && "h-8 w-14 rounded-full transition-colors group-hover/nav:bg-accent/60 group-data-[active=true]/nav:bg-primary-soft"
         )}
       >
-        <Icon name={vertical.icon} className={cn("size-6", active && vertical.accent)} opticalSize={24} />
+        <Icon name={vertical.icon} size={24} />
       </span>
       {(!rail || expanded) && <span className="truncate">{vertical.label}</span>}
     </button>
@@ -155,7 +153,7 @@ function NavRail({
       aria-label="Apps"
       data-expanded={expanded}
       className={cn(
-        "hidden shrink-0 flex-col gap-1 border-r bg-surface-chrome px-3 py-3 transition-[width] duration-(--g-duration-base) ease-(--g-ease-standard) md:flex",
+        "hidden shrink-0 flex-col gap-1 border-r bg-surface-ground px-3 py-3 transition-[width] duration-(--g-duration-base) ease-(--g-ease-standard) md:flex",
         expanded ? "w-(--c-shell-rail-width-expanded)" : "w-(--c-shell-rail-width) items-center"
       )}
     >
@@ -167,25 +165,25 @@ function NavRail({
           aria-expanded={expanded}
           onClick={onToggle}
         >
-          <Icon name={expanded ? "left_panel_close" : "left_panel_open"} opticalSize={24} />
+          <Icon name={expanded ? "side-panel--close" : "side-panel--open"} />
         </Button>
       </RailTip>
       {shown().map((v) => (
         <RailTip key={v.id} label={v.label} expanded={expanded}>
-          <NavItem vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" expanded={expanded} />
+          <AreaEntry vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="rail" expanded={expanded} />
         </RailTip>
       ))}
       <div className="mt-auto flex flex-col gap-1">
         <RailTip label="Accounts and settings" expanded={expanded}>
           <Button
             variant="ghost"
-            className={cn(row, "data-[active=true]:bg-accent data-[active=true]:text-foreground")}
+            className={cn(row, "data-[active=true]:bg-primary-soft data-[active=true]:text-foreground")}
             aria-label="Accounts and settings"
             data-active={settingsOpen}
             aria-current={settingsOpen ? "page" : undefined}
             onClick={onSettings}
           >
-            <Icon name="settings" opticalSize={24} />
+            <Icon name="settings" />
             {expanded && "Settings"}
           </Button>
         </RailTip>
@@ -194,14 +192,14 @@ function NavRail({
   )
 }
 
-function TabBar({ active, onNavigate }: { active: VerticalId | null; onNavigate: (id: VerticalId) => void }) {
+function PhoneAreas({ active, onNavigate }: { active: VerticalId | null; onNavigate: (id: VerticalId) => void }) {
   return (
     <nav
       aria-label="Apps"
-      className="fixed inset-x-0 bottom-0 z-20 flex h-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] border-t bg-surface-chrome/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      className="fixed inset-x-0 bottom-0 z-20 flex h-[calc(var(--c-shell-tabbar-height)+env(safe-area-inset-bottom))] border-t bg-surface-ground/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
     >
       {shown().map((v) => (
-        <NavItem key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="tab" />
+        <AreaEntry key={v.id} vertical={v} active={v.id === active} onClick={() => onNavigate(v.id)} orientation="tab" />
       ))}
     </nav>
   )
@@ -223,7 +221,7 @@ function Fab({ vertical, onClick }: { vertical: Vertical; onClick: () => void })
         "md:absolute md:right-6 md:bottom-6 md:size-auto md:h-14 md:gap-3 md:px-5 md:text-base"
       )}
     >
-      <Icon name={vertical.create.icon} opticalSize={24} />
+      <Icon name={vertical.create.icon} />
       <span className="hidden md:inline">{vertical.create.label}</span>
     </Button>
   )

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
  * Slots: leading (avatar/icon) · title · meta (time) · supporting text · trailing.
  * Sized for a 44px+ touch target; density modes can retune the tier-3 tokens.
  */
-export function ListRow({
+export function EntryRow({
   selected,
   onSelect,
   leading,
@@ -54,7 +54,7 @@ export function ListRow({
   )
 }
 
-export function SearchField({ placeholder, value, onChange }: { placeholder: string; value?: string; onChange?: (v: string) => void }) {
+export function ListSearch({ placeholder, value, onChange }: { placeholder: string; value?: string; onChange?: (v: string) => void }) {
   return (
     <InputGroup className="h-10 rounded-xl bg-background">
       <InputGroupAddon>

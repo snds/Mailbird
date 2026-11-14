@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Avatar, AvatarFallback, AvatarImage, Badge, Button, AdaptiveSheetContent, Sheet, SheetTitle, Skeleton, Tooltip, TooltipContent, TooltipTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton } from "@unicron/ui"
+import { Icon, type IconName, Avatar, AvatarFallback, AvatarImage, Badge, Button, AdaptiveSheetContent, Sheet, SheetTitle, Skeleton, Tooltip, TooltipContent, TooltipTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, Spinner, toast } from "@unicron/ui"
 import { getCoreClient, isMember } from "@/core/client"
 import type { Account, AttachmentInfo, MessageDetail, MessageSummary } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -33,19 +32,19 @@ import { SuggestedRepliesRow, SummaryCard } from "./ai-assist"
 import { useSuggestedReplies, useThreadSummary } from "./use-ai-assist"
 import { useNowSecs } from "@/hooks/use-now"
 
-function ToolbarButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
-  return <IconButton icon={icon} label={label} shortcut={shortcut} aria-pressed={active} fill={active} onClick={onClick} />
+function ToolButton({ icon, label, shortcut, onClick, active }: { icon: IconName; label: string; shortcut?: string; onClick?: () => void; active?: boolean }) {
+  return <IconButton icon={icon} label={label} shortcut={shortcut} aria-pressed={active} onClick={onClick} />
 }
 
 function fileIcon(mime: string): IconName {
-  if (mime === "application/pdf") return "picture_as_pdf"
+  if (mime === "application/pdf") return "document--pdf"
   if (mime.startsWith("image/")) return "image"
-  if (mime.startsWith("audio/")) return "audio_file"
-  if (mime.startsWith("video/")) return "video_file"
-  if (/zip|compressed|tar|gzip/.test(mime)) return "folder_zip"
+  if (mime.startsWith("audio/")) return "document--audio"
+  if (mime.startsWith("video/")) return "document--video"
+  if (/zip|compressed|tar|gzip/.test(mime)) return "ZIP"
   if (/sheet|excel|csv/.test(mime)) return "table"
-  if (/word|document|text/.test(mime)) return "description"
-  return "draft"
+  if (/word|document|text/.test(mime)) return "document"
+  return "document--blank"
 }
 
 function AttachmentChip({ file }: { file: AttachmentInfo }) {
@@ -76,7 +75,7 @@ function AttachmentChip({ file }: { file: AttachmentInfo }) {
         {thumb ? (
           <img src={thumb} alt="" className="size-8 shrink-0 rounded-md object-cover" />
         ) : (
-          <Icon name={fileIcon(file.mimeType)} tone="muted" className="size-6" opticalSize={24} />
+          <Icon name={fileIcon(file.mimeType)} tone="muted" size={24} />
         )}
         <span className="flex min-w-0 flex-col">
           <span className="truncate font-medium">{file.filename}</span>
@@ -95,7 +94,7 @@ function AttachmentChip({ file }: { file: AttachmentInfo }) {
             />
           }
         >
-          <Icon name={busy ? "progress_activity" : "download"} className={cn("size-4", busy && "animate-spin")} />
+          {busy ? <Spinner aria-hidden /> : <Icon name="download" size="sm" />}
         </TooltipTrigger>
         <TooltipContent>Save and open</TooltipContent>
       </Tooltip>
@@ -121,7 +120,7 @@ function MessageCard({ message, expanded, onToggle, accountAddress }: { message:
   const { data: photos } = useContactPhotos()
   const header = (
     <>
-      <Avatar className={cn("shrink-0", mine && "bg-primary/10")}>
+      <Avatar className={cn("shrink-0", mine && "bg-foreground/10")}>
         {!mine && photos?.[message.from.email.trim().toLowerCase()] && <AvatarImage src={photos[message.from.email.trim().toLowerCase()]} alt="" />}
         <AvatarFallback>{mine ? "Me" : initials(message.from)}</AvatarFallback>
       </Avatar>
@@ -129,7 +128,7 @@ function MessageCard({ message, expanded, onToggle, accountAddress }: { message:
         <span className="flex items-center gap-2">
           <span className={cn("truncate text-sm", message.seen ? "font-medium" : "font-semibold")}>{mine ? "Me" : displayName(message.from)}</span>
           {message.mailbox === "Sent" && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">Sent</Badge>}
-          {files.length > 0 && !expanded && <Icon name="attach_file" tone="muted" className="size-3.5" label="Has attachments" />}
+          {files.length > 0 && !expanded && <Icon name="attachment" tone="muted" size={14} label="Has attachments" />}
         </span>
         <span className="truncate text-xs text-muted-foreground">
           {expanded ? `to ${message.to.map(displayName).join(", ") || "you"}` : message.preview}
@@ -259,37 +258,38 @@ export function ConversationView({
     <div className="flex justify-center gap-2">
     <article className="flex w-full min-w-0 max-w-3xl flex-col gap-3 px-4 pb-8 md:px-8 md:pt-6">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-1">
-        <div className="min-w-0 flex-1">
+        {/* A floor for the subject: on a phone the actions (40px each in unicron 1.0) wrap under it instead of squeezing it. */}
+        <div className="min-w-48 flex-1">
           <h2 className="text-xl font-semibold tracking-tight break-words">{subject}</h2>
           <p className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
             {thread.length > 1 && <span>{thread.length} messages</span>}
             {showAccount && account && <Badge variant="secondary">{account.displayName}</Badge>}
             {reminder !== null && !due && (
-              <span className="inline-flex items-center gap-1 text-vertical-mail-text">
-                <Icon name="notifications" className="size-3.5" /> Reminder {longTime(reminder)} if nobody replies
+              <span className="inline-flex items-center gap-1 text-foreground">
+                <Icon name="notification" size={14} /> Reminder {longTime(reminder)} if nobody replies
               </span>
             )}
           </p>
         </div>
         <div className="-mr-2 flex shrink-0 items-center">
-          {aiReady && <ToolbarButton icon="summarize" label="Summarize" active={!summary.isIdle} onClick={() => (summary.isIdle || summary.isError ? summary.mutate() : summary.reset())} />}
+          {aiReady && <ToolButton icon="text--short-paragraph" label="Summarize" active={!summary.isIdle} onClick={() => (summary.isIdle || summary.isError ? summary.mutate() : summary.reset())} />}
           {/* Sharing by link is through the owner's relay; a team member works the inbox with them instead. */}
-          {!isMember() && <ToolbarButton icon={teamShare ? "group" : "group_add"} label={teamShare ? "Shared with teammates" : "Share with teammates"} active={!!teamShare} onClick={() => setSharing(true)} />}
+          {!isMember() && <ToolButton icon={teamShare ? "user--multiple" : "user--follow"} label={teamShare ? "Shared with teammates" : "Share with teammates"} active={!!teamShare} onClick={() => setSharing(true)} />}
           {other && <AboutSender from={other} threadId={row.threadId} onOpenThread={onOpenThread} />}
-          <ToolbarButton icon={row.archived ? "unarchive" : "archive"} label={row.archived ? "Move to Inbox" : "Archive"} shortcut="E" onClick={() => triage.toggleArchive(row)} />
+          <ToolButton icon={row.archived ? "reset" : "archive"} label={row.archived ? "Move to Inbox" : "Archive"} shortcut="E" onClick={() => triage.toggleArchive(row)} />
           {snoozed ? (
-            <ToolbarButton icon="notifications_active" label="Unsnooze" onClick={() => triage.unsnooze(row)} active />
+            <ToolButton icon="notification--filled" label="Unsnooze" onClick={() => triage.unsnooze(row)} active />
           ) : (
             <SnoozeMenu onSnooze={(until, label) => triage.snooze(row, until, label)} trigger={<Button variant="ghost" size="icon" aria-label="Snooze" />}>
-              <Icon name="snooze" />
+              <Icon name="time" />
             </SnoozeMenu>
           )}
-          <ToolbarButton icon="star" label={row.flagged ? "Unstar" : "Star"} shortcut="S" active={row.flagged} onClick={() => triage.toggleFlag(row)} />
-          <ToolbarButton icon="mark_email_unread" label="Mark unread" shortcut="U" onClick={() => triage.markSeen(row, false)} />
+          <ToolButton icon={row.flagged ? "star--filled" : "star"} label={row.flagged ? "Unstar" : "Star"} shortcut="S" active={row.flagged} onClick={() => triage.toggleFlag(row)} />
+          <ToolButton icon="email--new" label="Mark unread" shortcut="U" onClick={() => triage.markSeen(row, false)} />
           {target.mailbox !== "Sent" && (
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Sender options" />}>
-                <Icon name="more_vert" />
+                <Icon name="overflow-menu--horizontal" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuGroup>
@@ -312,26 +312,26 @@ export function ConversationView({
                     useUi.getState().openSplitEditor({ initial: { name, senders: [shared ? target.from.email.toLowerCase() : `@${domain}`], exclusive: true } })
                   }}
                 >
-                  <Icon name="tab_new_right" />
+                  <Icon name="new-tab" />
                   Make a split for {target.from.email.split("@")[1] && !/^(gmail|googlemail|outlook|hotmail|live|icloud|me|yahoo|proton|protonmail|fastmail)\./.test(target.from.email.split("@")[1]!.toLowerCase()) ? `@${target.from.email.split("@")[1]}` : "this sender"}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => senders.decide(target.from, "screened_out")}>
-                  <Icon name="person_off" />
+                  <Icon name="user--minus" />
                   Screen out sender
                 </DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => senders.decide(target.from, "blocked")}>
-                  <Icon name="block" />
+                  <Icon name="error" />
                   Block sender
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
           {reminder !== null ? (
-            <ToolbarButton icon="notifications_active" label="Cancel reminder" active onClick={() => cancelFollowUp.mutate(row.threadId, { onSuccess: () => toast("Reminder cancelled") })} />
+            <ToolButton icon="notification--filled" label="Cancel reminder" active onClick={() => cancelFollowUp.mutate(row.threadId, { onSuccess: () => toast("Reminder cancelled") })} />
           ) : (
             sentAny && (
               <FollowUpAtMenu onPick={(at, label) => remind(row.threadId, at, label)} trigger={<Button variant="ghost" size="icon" aria-label="Remind me if no reply" />}>
-                <Icon name="notifications" />
+                <Icon name="notification" />
               </FollowUpAtMenu>
             )
           )}
@@ -340,24 +340,24 @@ export function ConversationView({
 
       {screening && target.mailbox !== "Sent" && (
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border bg-accent/40 px-4 py-3 text-sm">
-          <Icon name="waving_hand" tone="muted" className="size-5" />
+          <Icon name="information" tone="muted" />
           <span className="min-w-0 flex-1">
             <span className="font-medium">{displayName(target.from)}</span> is writing to you for the first time. Do you want their mail in your inbox?
           </span>
           <span className="flex gap-1">
             <Button variant="ghost" size="sm" onClick={() => senders.decide(target.from, "screened_out")}>
-              <Icon name="person_off" data-icon="inline-start" /> Screen out
+              <Icon name="user--minus" data-icon="inline-start" /> Screen out
             </Button>
             <Button size="sm" onClick={() => senders.decide(target.from, "allowed")}>
-              <Icon name="how_to_reg" data-icon="inline-start" /> Let in
+              <Icon name="user--admin" data-icon="inline-start" /> Let in
             </Button>
           </span>
         </div>
       )}
 
       {due && (
-        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-vertical-mail/30 bg-vertical-mail/5 px-4 py-3 text-sm">
-          <Icon name="notifications_active" className="size-5 text-vertical-mail-text" />
+        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border bg-accent/40 px-4 py-3 text-sm">
+          <Icon name="notification--filled" />
           <span className="min-w-0 flex-1">
             <span className="font-medium">No reply yet.</span> You asked to be reminded {longTime(reminder!)}.
           </span>
@@ -392,11 +392,11 @@ export function ConversationView({
           <Icon name="reply" data-icon="inline-start" /> Reply
         </Button>
         <Button variant="outline" onClick={() => openComposer(forwardDraft(target))}>
-          <Icon name="forward" data-icon="inline-start" /> Forward
+          <Icon name="vale--forward" data-icon="inline-start" /> Forward
         </Button>
         {aiReady && replies.isIdle && (
           <Button variant="ghost" onClick={() => replies.mutate()}>
-            <Icon name="wand_stars" data-icon="inline-start" /> Suggest replies
+            <Icon name="bot" data-icon="inline-start" /> Suggest replies
           </Button>
         )}
       </div>
@@ -425,7 +425,7 @@ function AboutSender({ from, threadId, onOpenThread }: { from: MessageDetail["fr
   return (
     <>
       <span className="@4xl:hidden">
-        <ToolbarButton icon="account_circle" label={`About ${displayName(from)}`} onClick={() => setOpen(true)} />
+        <ToolButton icon="user--avatar" label={`About ${displayName(from)}`} onClick={() => setOpen(true)} />
       </span>
       <Sheet open={open} onOpenChange={setOpen}>
         <AdaptiveSheetContent className="px-6 pb-6 sm:pt-6">

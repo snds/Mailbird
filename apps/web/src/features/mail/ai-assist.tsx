@@ -1,7 +1,6 @@
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Button, Icon, IconButton, Item, ItemContent, ItemMedia, Skeleton } from "@unicron/ui"
+import { Button, Icon, IconButton, Item, ItemContent, ItemMedia, Skeleton, toast } from "@unicron/ui"
 import type { SuggestedReplies, ThreadSummary } from "@/core/types"
 
 import { byline, type useSuggestedReplies, type useThreadSummary } from "./use-ai-assist"
@@ -25,7 +24,7 @@ const openSettings = () => useUi.getState().openSettings("ai")
 function Failed({ message, retry }: { message: string; retry: () => void }) {
   return (
     <div role="alert" className="flex flex-wrap items-start gap-x-3 gap-y-2 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-destructive">
-      <Icon name="error" />
+      <Icon name="warning" />
       <span className="min-w-0 flex-1">{message}</span>
       <span className="flex gap-1">
         <Button variant="ghost" size="xs" onClick={openSettings}>
@@ -59,9 +58,9 @@ export function SummaryCard({ summary, onClose }: { summary: ReturnType<typeof u
     <section aria-label="Summary" aria-busy={summary.isPending} className="flex flex-col gap-2 rounded-2xl border bg-muted/40 px-4 py-3" data-role="ai-summary">
       <div className="-mr-2 flex items-center gap-2">
         <h3 className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium [&_svg]:size-4 [&_svg]:text-muted-foreground">
-          <Icon name="summarize" /> Summary
+          <Icon name="text--short-paragraph" /> Summary
         </h3>
-        {data && <IconButton icon="content_copy" label="Copy summary" size="icon-sm" onClick={() => void copy()} />}
+        {data && <IconButton icon="copy" label="Copy summary" size="icon-sm" onClick={() => void copy()} />}
         <IconButton icon="close" label="Close summary" size="icon-sm" onClick={onClose} />
       </div>
       {summary.isPending && (

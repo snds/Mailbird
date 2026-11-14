@@ -23,7 +23,7 @@ export const MAIL_EXTENSIONS = [
 
 /**
  * `focusFirst` marks the body as the composer's first focus. The dialog does
- * the focusing once it is open (see Composer), which Tiptap's own autofocus
+ * the focusing once it is open (see ComposeMail), which Tiptap's own autofocus
  * can't time reliably inside an opening dialog.
  */
 export function useRichEditor({

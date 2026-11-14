@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
-import { toast } from "sonner"
+import { toast } from "@unicron/ui"
 
 import { useUi } from "@/app/ui-store"
 import { getCoreClient } from "@/core/client"

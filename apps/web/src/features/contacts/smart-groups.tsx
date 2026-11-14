@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Switch, DialogAction, DialogActions } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Switch, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
 import { useContactLabels, usePimAction, useSmartGroups } from "@/core/queries"
 import type { SmartGroup, SmartGroupInput } from "@/core/types"
 
@@ -23,14 +22,14 @@ export function SmartGroupChips({ active, onPick }: { active: string | null; onP
           shape="pill"
           onClick={() => onPick(active === g.id ? null : g.id)}
         >
-          <Icon name="filter_alt" data-icon="inline-start" className="text-vertical-contacts-text" />
+          <Icon name="filter" data-icon="inline-start" />
           {g.name}
           <span className="text-muted-foreground tabular-nums">{g.count}</span>
         </Button>
       ))}
       {current ? (
         <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit smart group" onClick={() => setEditing({ group: current })}>
-          <Icon name="tune" />
+          <Icon name="settings--adjust" />
         </Button>
       ) : (
         <Button size="xs" variant="ghost-muted" shape="pill" onClick={() => setEditing({})}>
@@ -113,9 +112,9 @@ function SmartGroupForm({ group, onDone }: { group?: SmartGroup; onDone: (picked
           Has any of these labels
           <div className="flex flex-wrap gap-1.5">
             {choices.map((l) => (
-              <Button key={l} type="button" size="xs" variant={picked.includes(l) ? "secondary" : "outline"} aria-pressed={picked.includes(l)} shape="pill" onClick={() => toggle(l)}>
+              <Toggle key={l} type="button" size="sm" variant="outline" pressed={picked.includes(l)} onPressedChange={() => toggle(l)}>
                 {l}
-              </Button>
+              </Toggle>
             ))}
           </div>
         </div>

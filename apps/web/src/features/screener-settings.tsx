@@ -1,6 +1,5 @@
-import { toast } from "sonner"
 
-import { Icon, Button, Switch } from "@unicron/ui"
+import { Icon, Button, Switch, toast } from "@unicron/ui"
 import { useMailAction, useScreener, useSenders } from "@/core/queries"
 import type { Category, Sender } from "@/core/types"
 import { CATEGORIES } from "@/features/mail/lanes"
@@ -54,7 +53,7 @@ function SenderRow({ sender: s, onForget }: { sender: Sender; onForget: (what: "
   const category = (c: Category) => CATEGORIES.find((x) => x.id === c)!.label
   return (
     <li className="flex items-center gap-3 px-3 py-2.5">
-      <Icon name={s.decision === "blocked" ? "block" : s.decision === "screened_out" ? "person_off" : "label"} tone="muted" className="size-5" />
+      <Icon name={s.decision === "blocked" ? "error" : s.decision === "screened_out" ? "user--minus" : "tag"} tone="muted" />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium">{s.name || s.email}</span>
         <span className="truncate text-xs text-muted-foreground">

@@ -26,11 +26,12 @@ Full research: [competitive analysis](docs/research/competitive-analysis.md).
 | Layer | Choice |
 |---|---|
 | UI | React 19 · Vite 8 · Tailwind CSS v4 · **shadcn/ui** (Base UI, Nova) through **unicron**, the shared design system ([ADR-0047](docs/decisions/0047-unicron.md)) |
-| Icons | **Google Material Symbols** (Rounded variable font, live axes) |
+| Icons | **IBM Carbon**, drawn inline through `@unicron/ui` |
+| Type | **Geist** and **Geist Mono**, through `@unicron/ui` |
 | Shells | **Tauri 2** (desktop now, mobile spike) · PWA for the web |
 | Core | Rust `pim-core`: IMAP/SMTP, Gmail API, Graph, JMAP, CalDAV/CardDAV, SQLite, Tantivy |
 
-Every shipped dependency is MIT, Apache-2.0, BSD, or ISC. See [docs/oss-stack.md](docs/oss-stack.md) for versions, licenses, and open-core traps to avoid. Architecture: [docs/architecture.md](docs/architecture.md).
+Every shipped dependency is MIT, Apache-2.0, BSD, or ISC; the two typefaces are under the SIL Open Font License 1.1. See [docs/oss-stack.md](docs/oss-stack.md) for versions, licenses, and open-core traps to avoid. Architecture: [docs/architecture.md](docs/architecture.md).
 
 ## Getting started
 
@@ -76,9 +77,9 @@ The web gateway is a server, so it doesn't replace itself ([ADR-0077](docs/decis
 
 ### The design system (unicron)
 
-Primitives and core tokens come from [unicron](https://github.com/snds/unicron), as the versioned packages `@unicron/ui` and `@unicron/tokens`, installed from its GitHub release tarballs ([ADR-0052](docs/decisions/0052-unicron-packages.md)). Vale's own roles are in `apps/web/src/styles/app-extension.css`. A new or changed primitive goes to unicron first: it ships in a release, and Vale moves to it by changing the version in two URLs (`apps/web/package.json`, and the tokens override in `pnpm-workspace.yaml`).
+Primitives and core tokens come from [unicron](https://github.com/snds/unicron), as the versioned packages `@unicron/ui` and `@unicron/tokens` ([ADR-0052](docs/decisions/0052-unicron-packages.md)). Unicron 1.0 is not released yet, so both install from the pre-release tarballs in `vendor/unicron/` ([ADR-0082](docs/decisions/0082-unicron-1-0.md)). Swap to the `@unicron/ui@1.0.0` and `@unicron/tokens@1.0.0` release URLs when Unicron 1.0 is released, and delete `vendor/unicron/`. The two places are `apps/web/package.json` and the tokens override in `pnpm-workspace.yaml`; the gateway's `Dockerfile` copies `vendor/` and drops that line then too.
 
-Components come from shadcn/ui through unicron's Material Symbols transform (`pnpm regen` in unicron; see its `tools/shadcn-material/README.md`).
+Vale's theme is `data-theme="vale"` on `<html>`, on the graphite (dark) or stone (light) ground. Vale's own layer is `apps/web/src/styles/`, one file per area. A new or changed primitive goes to unicron first: it ships in a release, and Vale moves to it.
 
 Design-system analytics: `pnpm ds:scan`, `pnpm ds:patterns`, and `pnpm ds:ratchet` (CI fails if misuse of unicron components grows past `.dsa/baseline.json`). The ratchet also counts plain `<button>`s, which bypass the system (dsa's `rawElements`, [ADR-0058](docs/decisions/0058-ds-additions-adopted.md)). The ones left are whole surfaces, like calendar cells and cards, and the ADR says why each stays.
 

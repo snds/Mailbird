@@ -1,8 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button } from "@unicron/ui"
+import { Icon, Button, toast } from "@unicron/ui"
 import { useMailAction } from "@/core/queries"
 import type { Invite } from "@/core/types"
 
@@ -19,14 +18,14 @@ export function Conflicts({ invite }: { invite: Invite }) {
   if (!list.length) {
     return (
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground" data-slot="conflicts">
-        <Icon name="event_available" className="size-3.5" /> Nothing else on your calendar then
+        <Icon name="calendar" size={14} /> Nothing else on your calendar then
       </p>
     )
   }
   const [first, ...rest] = list
   return (
     <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400" role="note" data-slot="conflicts">
-      <Icon name="warning" className="mt-px size-3.5" />
+      <Icon name="warning--alt" size={14} className="mt-px" />
       <span>
         Clashes with <span className="font-medium">{first!.title || "(no title)"}</span> ({fmt.time(first!.start)}–{fmt.time(first!.end)})
         {rest.length > 0 && ` and ${rest.length} more`}
@@ -70,7 +69,7 @@ export function ProposeTime({ invite, messageId }: { invite: Invite; messageId: 
           </p>
         )}
         <Button size="sm" variant="ghost" className={invite.proposed ? "" : "-ml-2"} onClick={() => setOpen(true)}>
-          <Icon name="schedule" data-icon="inline-start" /> {invite.proposed ? "Propose another" : "Propose new time"}
+          <Icon name="time" data-icon="inline-start" /> {invite.proposed ? "Propose another" : "Propose new time"}
         </Button>
       </div>
     )
@@ -132,7 +131,7 @@ export function CounterProposal({ invite, messageId }: { invite: Invite; message
       <Conflicts invite={invite} />
       {invite.answered ? (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
-          <Icon name={invite.answered === "accepted" ? "event_available" : "event_busy"} className="size-3.5" />
+          <Icon name={invite.answered === "accepted" ? "calendar" : "close--outline"} size={14} />
           {invite.answered === "accepted" ? "You moved the event to this time" : "You kept the original time"}
         </p>
       ) : !invite.eventId ? (
@@ -140,7 +139,7 @@ export function CounterProposal({ invite, messageId }: { invite: Invite; message
       ) : (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Your answer">
           <Button size="sm" disabled={accept.isPending || decline.isPending} onClick={() => void run(true)}>
-            <Icon name="check_circle" data-icon="inline-start" /> Accept new time
+            <Icon name="checkmark--outline" data-icon="inline-start" /> Accept new time
           </Button>
           <Button size="sm" variant="outline" disabled={accept.isPending || decline.isPending} onClick={() => void run(false)}>
             Keep original

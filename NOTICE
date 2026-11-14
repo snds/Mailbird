@@ -1,6 +1,13 @@
 Vale
 Copyright 2026 Sean Sands
 
-This product includes software from shadcn/ui (MIT), Base UI (MIT),
-Google Material Symbols (Apache-2.0), and Tesseract OCR with its English
-model (Apache-2.0, via tesseract.js). See docs/oss-stack.md for the full list.
+This product includes software from shadcn/ui (MIT), Base UI (MIT), and
+Tesseract OCR with its English model (Apache-2.0, via tesseract.js).
+
+Through @unicron/ui it also includes icon drawings from IBM Carbon
+(@carbon/icons, Copyright IBM Corp., Apache-2.0), and the typefaces Geist and
+Geist Mono (Copyright 2024 The Geist Project Authors, SIL Open Font License
+1.1). The forward arrow in apps/web/src/app/icons.ts is Carbon's reply arrow,
+mirrored.
+
+See docs/oss-stack.md for the full list.

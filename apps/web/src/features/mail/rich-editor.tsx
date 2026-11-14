@@ -60,7 +60,7 @@ export function FormatBar({ editor, notes = false, onAddImage, onScan, onSketch 
       {linking !== null && (
         // A div, not a form: this sits inside the composer's form.
         <div className="flex items-center gap-2 border-b px-3 py-1.5">
-          <Icon name="link" tone="muted" className="size-4" />
+          <Icon name="link" tone="muted" size="sm" />
           <input
             aria-label="Link address"
             className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -100,18 +100,18 @@ export function FormatBar({ editor, notes = false, onAddImage, onScan, onSketch 
       <div className={cn("flex items-center gap-0.5 overflow-x-auto px-2 py-1", notes && "max-md:pr-24")} onMouseDown={(e) => e.preventDefault()}>
         {notes && (
           <>
-            <Mark icon="title" label="Heading" pressed={state.heading} onPressedChange={() => chain().toggleHeading({ level: 2 }).run()} />
-            <Mark icon="checklist" label="Checklist" pressed={state.task} onPressedChange={() => chain().toggleTaskList().run()} />
+            <Mark icon="heading" label="Heading" pressed={state.heading} onPressedChange={() => chain().toggleHeading({ level: 2 }).run()} />
+            <Mark icon="list--checked" label="Checklist" pressed={state.task} onPressedChange={() => chain().toggleTaskList().run()} />
             {/* Starts [[ so the note picker opens: easier than finding brackets on a phone keyboard. */}
-            <Mark icon="add_link" label="Link to a note" pressed={false} onPressedChange={() => chain().insertContent("[[").run()} />
-            {onAddImage && <Mark icon="add_photo_alternate" label="Add image" pressed={false} onPressedChange={onAddImage} />}
-            {onScan && <Mark icon="document_scanner" label="Scan a document" pressed={false} onPressedChange={onScan} />}
-            {onSketch && <Mark icon="draw" label="Sketch" pressed={false} onPressedChange={onSketch} />}
+            <Mark icon="link" label="Link to a note" pressed={false} onPressedChange={() => chain().insertContent("[[").run()} />
+            {onAddImage && <Mark icon="image" label="Add image" pressed={false} onPressedChange={onAddImage} />}
+            {onScan && <Mark icon="scan--alt" label="Scan a document" pressed={false} onPressedChange={onScan} />}
+            {onSketch && <Mark icon="pen" label="Sketch" pressed={false} onPressedChange={onSketch} />}
             <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
           </>
         )}
-        <Mark icon="format_bold" label="Bold" shortcut={`${mod}B`} pressed={state.bold} onPressedChange={() => chain().toggleBold().run()} />
-        <Mark icon="format_italic" label="Italic" shortcut={`${mod}I`} pressed={state.italic} onPressedChange={() => chain().toggleItalic().run()} />
+        <Mark icon="text--bold" label="Bold" shortcut={`${mod}B`} pressed={state.bold} onPressedChange={() => chain().toggleBold().run()} />
+        <Mark icon="text--italic" label="Italic" shortcut={`${mod}I`} pressed={state.italic} onPressedChange={() => chain().toggleItalic().run()} />
         <Mark
           icon="link"
           label="Link"
@@ -119,10 +119,10 @@ export function FormatBar({ editor, notes = false, onAddImage, onScan, onSketch 
           onPressedChange={() => setLinking(linking !== null ? null : ((editor.getAttributes("link").href as string | undefined) ?? ""))}
         />
         <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-        <Mark icon="format_list_bulleted" label="Bulleted list" pressed={state.bullet} onPressedChange={() => chain().toggleBulletList().run()} />
-        <Mark icon="format_list_numbered" label="Numbered list" pressed={state.ordered} onPressedChange={() => chain().toggleOrderedList().run()} />
-        <Mark icon="format_quote" label="Quote" pressed={state.quote} onPressedChange={() => chain().toggleBlockquote().run()} />
-        {notes && <Mark icon="code_blocks" label="Code block" pressed={state.code} onPressedChange={() => chain().toggleCodeBlock().run()} />}
+        <Mark icon="list--bulleted" label="Bulleted list" pressed={state.bullet} onPressedChange={() => chain().toggleBulletList().run()} />
+        <Mark icon="list--numbered" label="Numbered list" pressed={state.ordered} onPressedChange={() => chain().toggleOrderedList().run()} />
+        <Mark icon="quotes" label="Quote" pressed={state.quote} onPressedChange={() => chain().toggleBlockquote().run()} />
+        {notes && <Mark icon="code" label="Code block" pressed={state.code} onPressedChange={() => chain().toggleCodeBlock().run()} />}
       </div>
     </div>
   )

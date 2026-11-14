@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Field, FieldLabel, Input } from "@unicron/ui"
+import { Icon, Button, Field, FieldLabel, Input, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useSignatures, useTemplates } from "@/core/queries"
 import type { Account, Template } from "@/core/types"
@@ -47,7 +46,7 @@ export function WritingSettings() {
           <ul className="flex flex-col divide-y rounded-xl border" aria-label="Templates">
             {templates.map((t) => (
               <li key={t.id} className="flex items-center gap-3 px-3 py-2.5">
-                <Icon name="article" tone="muted" className="size-5" />
+                <Icon name="document" tone="muted" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-medium">{t.name}</span>
                   <span className="truncate text-xs text-muted-foreground">{t.subject || htmlToText(t.html).slice(0, 80)}</span>
@@ -67,7 +66,7 @@ export function WritingSettings() {
                     })
                   }}
                 >
-                  <Icon name="delete" />
+                  <Icon name="trash-can" />
                 </Button>
               </li>
             ))}

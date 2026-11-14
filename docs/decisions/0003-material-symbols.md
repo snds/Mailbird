@@ -1,6 +1,6 @@
 # ADR-0003 · Material Symbols as the icon system
 
-- **Status:** Accepted
+- **Status:** Accepted; superseded by [ADR-0082](0082-unicron-1-0.md) (unicron 1.0: IBM Carbon icons, drawn inline, and no icon font)
 - **Date:** 2026-10-13
 
 ## Decision

@@ -23,7 +23,7 @@ import { ContactEditor } from "@/features/contacts/contact-editor"
 import { QuickNote } from "@/features/notes/quick-note"
 import { SplitEditor } from "@/features/mail/splits"
 import { MailView } from "@/features/mail"
-import { Composer, OutboxWatcher } from "@/features/mail/composer"
+import { ComposeMail, OutboxWatcher } from "@/features/mail/composer"
 import { NotesView } from "@/features/notes"
 import { ImageTextRunner } from "@/features/notes/image-text-runner"
 import { ImageViewer } from "@/features/notes/image-viewer"
@@ -75,7 +75,7 @@ function Root() {
           <View key={active} />
         </div>
       </AppShell>
-      <Composer />
+      <ComposeMail />
       <EventEditor />
       <ContactEditor />
       <SplitEditor />

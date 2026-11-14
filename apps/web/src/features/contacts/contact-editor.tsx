@@ -1,9 +1,8 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi, type ContactEditorState } from "@/app/ui-store"
 import { EditorFrame, EditorHeader } from "@/components/editor-frame"
-import { Icon, Button, NativeSelect, NativeSelectOption, Chip, ChipRemove } from "@unicron/ui"
+import { Icon, Button, NativeSelect, NativeSelectOption, Chip, ChipRemove, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContactLabels, usePimAction } from "@/core/queries"
 import type { ContactField, ContactInput } from "@/core/types"
@@ -52,7 +51,7 @@ function PhotoField({ name, value, onChange }: { name: string; value: string | n
       <PersonAvatar contact={{ fullName: name || "?", photo: value }} className="size-16 text-lg" />
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" render={<label />}>
-          <Icon name="add_a_photo" data-icon="inline-start" /> {value ? "Change photo" : "Add photo"}
+          <Icon name="camera" data-icon="inline-start" /> {value ? "Change photo" : "Add photo"}
           <input type="file" accept="image/*" aria-label={value ? "Change photo" : "Add photo"} className="sr-only" onChange={(e) => (pick(e.target.files), (e.target.value = ""))} />
         </Button>
         {value && (
@@ -138,13 +137,13 @@ function FieldList({ kind, values, onChange, labels }: { kind: "email" | "phone"
           />
           {rows.length > 1 && (
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${noun} ${i + 1}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
-              <Icon name="do_not_disturb_on" />
+              <Icon name="subtract--alt" />
             </Button>
           )}
         </div>
       ))}
-      <button type="button" className="flex h-10 w-full items-center gap-2 px-4 text-sm text-primary hover:bg-muted/50" onClick={() => onChange([...rows, { label: labels[0]!, value: "" }])}>
-        <Icon name="add_circle" className="size-4" /> Add {noun}
+      <button type="button" className="flex h-10 w-full items-center gap-2 px-4 text-sm text-foreground hover:bg-state-hover" onClick={() => onChange([...rows, { label: labels[0]!, value: "" }])}>
+        <Icon name="add--alt" size="sm" /> Add {noun}
       </button>
     </div>
   )
@@ -249,8 +248,8 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
               </div>
             </div>
           ) : (
-            <button type="button" className="flex h-11 w-full items-center gap-2 border-b px-4 text-sm text-primary hover:bg-muted/50" onClick={() => setPasting(true)}>
-              <Icon name="content_paste" className="size-4" /> Paste a signature to fill this in
+            <button type="button" className="flex h-11 w-full items-center gap-2 border-b px-4 text-sm text-foreground hover:bg-state-hover" onClick={() => setPasting(true)}>
+              <Icon name="paste" size="sm" /> Paste a signature to fill this in
             </button>
           ))}
         <PhotoField name={fullName} value={photo} onChange={setPhoto} />
@@ -282,7 +281,7 @@ function ContactForm({ state, onDone }: { state: ContactEditorState; onDone: () 
       </div>
       {error && (
         <p role="alert" className="flex items-center gap-2 border-t bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          <Icon name="error" className="size-4" /> {error}
+          <Icon name="warning" size="sm" /> {error}
         </p>
       )}
     </form>

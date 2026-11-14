@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
+import { Button, Icon, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useThread } from "@/core/queries"
 import { toBase64 } from "@/lib/base64"
@@ -49,7 +48,7 @@ export function OwnerFiles({ shareId, threadId }: { shareId: string; threadId: s
         return (
           <Item key={a.id} variant="outline" size="xs" data-role="team-file">
             <ItemMedia variant="icon">
-              <Icon name="attach_file" tone="muted" />
+              <Icon name="attachment" tone="muted" />
             </ItemMedia>
             <ItemContent>
               <ItemTitle>{a.filename}</ItemTitle>
@@ -94,7 +93,7 @@ export function TeammateFiles({ shareId }: { shareId: string }) {
       {shared.map((a) => (
         <Item key={a.id} variant="outline" size="xs" data-role="team-file">
           <ItemMedia variant="icon">
-            <Icon name="attach_file" tone="muted" />
+            <Icon name="attachment" tone="muted" />
           </ItemMedia>
           <ItemContent>
             <ItemTitle>{a.name}</ItemTitle>

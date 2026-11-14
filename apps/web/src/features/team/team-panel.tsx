@@ -46,7 +46,7 @@ export function TeamPanel({
     <section aria-label="Team" className="flex flex-col gap-4 rounded-2xl border px-4 py-4" data-role="team-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-sm font-medium [&_svg]:size-4 [&_svg]:text-muted-foreground">
-          <Icon name="group" /> Team
+          <Icon name="user--multiple" /> Team
         </h3>
         {shareId && <PeopleHere shareId={shareId} />}
       </div>
@@ -118,7 +118,7 @@ export function CommentList({
               </div>
               {!readOnly && c.mine && (
                 <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  <IconButton icon="delete" label={`Delete ${label.toLowerCase()}`} size="icon-sm" variant="ghost-muted" onClick={() => onRemove(c.id)} />
+                  <IconButton icon="trash-can" label={`Delete ${label.toLowerCase()}`} size="icon-sm" variant="ghost-muted" onClick={() => onRemove(c.id)} />
                 </span>
               )}
             </li>

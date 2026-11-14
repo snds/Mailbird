@@ -1,8 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { toast } from "sonner"
 
 import { useUi, type ComposerDraft } from "@/app/ui-store"
-import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions } from "@unicron/ui"
+import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore, useLocalTimes, useMailPrefs, useSignatures, useTemplates } from "@/core/queries"
 import type { Draft, LocalTime, OutgoingAttachment, Template } from "@/core/types"
@@ -69,7 +68,7 @@ const firstField = () => document.querySelector<HTMLElement>("[data-composer-foc
 /** Undo can reopen the composer while its close is still finishing; don't hand focus back to the page then. */
 const returnFocus = () => useUi.getState().composer === null
 
-export function Composer() {
+export function ComposeMail() {
   const draft = useUi((s) => s.composer)
   const close = useUi((s) => s.closeComposer)
   const tabletUp = useIsTabletUp()
@@ -331,16 +330,16 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         <h2 className="flex-1 truncate text-center text-sm font-semibold">{subject.trim() || "New message"}</h2>
         <ButtonGroup>
           <Button type="submit" disabled={sending || accounts.length === 0 || totalBytes > MAX_ATTACHMENTS} aria-keyshortcuts="Control+Enter Meta+Enter">
-            <Icon name={sendAt === null ? "send" : "schedule_send"} data-icon="inline-start" /> {sendAt === null ? "Send" : "Schedule"}
+            <Icon name={sendAt === null ? "send--alt" : "time"} data-icon="inline-start" /> {sendAt === null ? "Send" : "Schedule"}
           </Button>
           <SendLaterMenu onPick={setSendAt} theirs={theirs} trigger={<Button type="button" size="icon" aria-label="Send later" disabled={sending || accounts.length === 0} />}>
-            <Icon name="keyboard_arrow_down" />
+            <Icon name="chevron--down" />
           </SendLaterMenu>
         </ButtonGroup>
       </header>
       {sendAt !== null && (
         <p className="flex items-center gap-2 border-b bg-accent/50 px-4 py-2 text-sm">
-          <Icon name="schedule_send" tone="muted" className="size-4" />
+          <Icon name="time" tone="muted" size="sm" />
           <span className="flex-1">Sends {longTime(sendAt)}</span>
           <Button type="button" variant="ghost" size="sm" onClick={() => setSendAt(null)}>
             Send now instead
@@ -350,7 +349,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
 
       {accounts.length > 1 && (
         <Row label="From" htmlFor="composer-from">
-          <NativeSelect id="composer-from" value={accountId} onChange={(e) => setAccountId(e.target.value)} className="border-0 shadow-none">
+          <NativeSelect id="composer-from" size="sm" value={accountId} onChange={(e) => setAccountId(e.target.value)} className="border-0 shadow-none">
             {accounts.map((a) => (
               <NativeSelectOption key={a.id} value={a.id}>
                 {a.displayName} · {a.address}
@@ -375,14 +374,14 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
       {late && (
         // Outside their working hours: say so, and offer their morning (ADR-0041).
         <p data-slot="recipient-local-time" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/40 px-4 py-2 text-sm">
-          <Icon name={late.day === "Night there" ? "bedtime" : "schedule"} tone="muted" className="size-4" />
+          <Icon name={late.day === "Night there" ? "moon" : "time"} tone="muted" size="sm" />
           {/* On phones the sentence gets the line and the offer drops under it, aligned with the text. */}
           <span className="min-w-0 flex-1 max-sm:basis-[calc(100%-1.5rem)]">
             It's {timeThere(late.t.offset, now)} for {firstName(late.t)} <span className="text-muted-foreground">· {late.day} · {utcLabel(late.t.offset)}</span>
           </span>
           {sendAt === null && theirs[0] && theirs[0].offset === late.t.offset && (
             <Button type="button" variant="outline" size="sm" className="max-sm:ml-6" onClick={() => setSendAt(theirs[0]!.at)}>
-              <Icon name="schedule_send" data-icon="inline-start" /> Send {theirs[0].label}
+              <Icon name="time" data-icon="inline-start" /> Send {theirs[0].label}
             </Button>
           )}
         </p>
@@ -393,7 +392,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
 
       {error && (
         <p role="alert" className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          <Icon name="error" className="size-4" /> {error}
+          <Icon name="warning" size="sm" /> {error}
         </p>
       )}
 
@@ -402,7 +401,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         <ul className="flex flex-wrap gap-2 border-t px-4 py-2" aria-label="Attachments">
           {files.map((f, i) => (
             <li key={`${f.filename}-${i}`} className="flex max-w-full items-center gap-1.5 rounded-lg border bg-muted/40 py-1 pr-1 pl-2 text-xs">
-              <Icon name="attach_file" tone="muted" className="size-4" />
+              <Icon name="attachment" tone="muted" size="sm" />
               <span className="max-w-48 truncate font-medium">{f.filename}</span>
               <span className="text-muted-foreground">{formatSize(bytesOf(f))}</span>
               <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${f.filename}`} onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}>
@@ -416,11 +415,11 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
       <footer className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground">
         <input ref={picker} type="file" multiple hidden onChange={(e) => (void addFiles(e.target.files), (e.target.value = ""))} />
         <Button type="button" variant="ghost" size="icon" aria-label="Attach files" onClick={() => picker.current?.click()}>
-          <Icon name="attach_file" />
+          <Icon name="attachment" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="Templates" />}>
-            <Icon name="article" />
+            <Icon name="document" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
             {templates.length > 0 && (
@@ -428,7 +427,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
                 <DropdownMenuLabel>Insert a template</DropdownMenuLabel>
                 {templates.map((t) => (
                   <DropdownMenuItem key={t.id} onClick={() => insertTemplate(t)}>
-                    <Icon name="article" />
+                    <Icon name="document" />
                     <span className="truncate">{t.name}</span>
                   </DropdownMenuItem>
                 ))}
@@ -440,12 +439,12 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
               Save as template…
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openSettings("writing")}>
-              <Icon name="edit_note" />
+              <Icon name="edit" />
               Signatures and templates…
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuCheckboxItem checked={receipt} onCheckedChange={(on) => setReceipt(on)}>
-              <Icon name="mark_email_read" />
+              <Icon name="email" />
               Ask for a read receipt
             </DropdownMenuCheckboxItem>
           </DropdownMenuContent>
@@ -455,7 +454,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
           onChange={setFollowUp}
           trigger={<Button type="button" variant={followUp ? "secondary" : "ghost"} size={followUp ? "sm" : "icon"} aria-label="Remind me if no reply" />}
         >
-          <Icon name={followUp ? "notifications_active" : "notifications"} data-icon={followUp ? "inline-start" : undefined} />
+          <Icon name={followUp ? "notification--filled" : "notification"} data-icon={followUp ? "inline-start" : undefined} />
           {followUp ? `Remind in ${FOLLOW_UP_OPTIONS.find((o) => o.after === followUp)?.label ?? "a while"}` : null}
         </FollowUpAfterMenu>
         {totalBytes > MAX_ATTACHMENTS ? (
@@ -464,7 +463,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
           <span className="hidden sm:inline">Until then, change or cancel it in Scheduled.</span>
         ) : (
           <span className="hidden items-center gap-1 sm:flex">
-            <Icon name="undo" className="size-4" />
+            <Icon name="undo" size="sm" />
             You can undo for {UNDO_SECONDS} seconds after sending.
           </span>
         )}

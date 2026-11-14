@@ -22,7 +22,7 @@ export function SnoozeMenu({
         <DropdownMenuLabel>Snooze until…</DropdownMenuLabel>
         {options.map((o) => (
           <DropdownMenuItem key={o.label} onClick={() => onSnooze(o.until, o.label)}>
-            <Icon name="schedule" />
+            <Icon name="time" />
             <span className="flex-1">{o.label}</span>
             <span className="text-xs text-muted-foreground">{o.detail}</span>
           </DropdownMenuItem>

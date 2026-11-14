@@ -1,9 +1,8 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { ListRow } from "@/components/list-row"
-import { Avatar, AvatarFallback, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, Field, FieldError, FieldLabel, Icon, Input, Skeleton } from "@unicron/ui"
+import { EntryRow } from "@/components/list-row"
+import { Avatar, AvatarFallback, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, Field, FieldError, FieldLabel, Icon, Input, Skeleton, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useMailPrefs, useTeamThreads } from "@/core/queries"
 import type { TeamThread } from "@/core/types"
@@ -32,10 +31,10 @@ export function TeamList() {
     <>
       {list.length === 0 ? (
         <div className="py-16">
-        <Empty>
+        <Empty size="sm">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Icon name="group" />
+              <Icon name="user--multiple" />
             </EmptyMedia>
             <EmptyTitle>Write replies with your team</EmptyTitle>
             <EmptyDescription>Share a conversation from its toolbar, and teammates comment and write the reply with you. Conversations shared with you show up here too.</EmptyDescription>
@@ -52,12 +51,12 @@ export function TeamList() {
           <ul aria-label="Team" className="flex flex-col">
             {list.map((t) => (
               <li key={t.id}>
-                <ListRow
+                <EntryRow
                   selected={open === t.id}
                   onSelect={() => setOpen(t.id)}
                   leading={
                     <Avatar>
-                      <AvatarFallback>{t.role === "owner" ? <Icon name="group" /> : initials({ name: t.from, email: t.from ?? "?" })}</AvatarFallback>
+                      <AvatarFallback>{t.role === "owner" ? <Icon name="user--multiple" /> : initials({ name: t.from, email: t.from ?? "?" })}</AvatarFallback>
                     </Avatar>
                   }
                   title={t.title || "(no subject)"}
@@ -140,7 +139,7 @@ export function TeamThreadView({ id }: { id: string }) {
         <div className="flex shrink-0 gap-2">
           {owner && !t.revoked && t.threadId && (
             <Button variant="outline" size="sm" onClick={() => setSharing(true)}>
-              <Icon name="group_add" data-icon="inline-start" /> Sharing
+              <Icon name="user--follow" data-icon="inline-start" /> Sharing
             </Button>
           )}
           {(!owner || t.revoked) && (
@@ -153,7 +152,7 @@ export function TeamThreadView({ id }: { id: string }) {
 
       {t.revoked && !owner && (
         <div role="status" className="flex items-center gap-3 rounded-2xl border bg-muted/40 px-4 py-3 text-sm [&>svg]:size-5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground">
-          <Icon name="link_off" />
+          <Icon name="unlink" />
           <span>{t.from ?? "The owner"} stopped sharing. This is your copy, as it was then; only you can see it.</span>
         </div>
       )}

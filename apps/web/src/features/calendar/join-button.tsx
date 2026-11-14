@@ -53,7 +53,7 @@ export function JoinButton({
       }}
       className={cn(buttonVariants({ size, variant }), className)}
     >
-      <Icon name="videocam" data-icon="inline-start" /> {long ? `Join ${service}` : "Join"}
+      <Icon name="video" data-icon="inline-start" /> {long ? `Join ${service}` : "Join"}
     </a>
   )
 }

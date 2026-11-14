@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
 import { useNoteAction, useNoteFolders, useNoteTags } from "@/core/queries"
 import { NOTE_COLORS, type NoteColor, type NoteFolder, type NoteFolderInput } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -27,14 +26,14 @@ export function NoteFolderChips({ active, onPick }: { active: string | null; onP
           shape="pill"
           onClick={() => onPick(active === f.id ? null : f.id)}
         >
-          <Icon name="folder_special" data-icon="inline-start" className="text-vertical-notes-text" />
+          <Icon name="folder" data-icon="inline-start" />
           {f.name}
           <span className="text-muted-foreground tabular-nums">{f.count}</span>
         </Button>
       ))}
       {current ? (
         <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit smart folder" onClick={() => setEditing({ folder: current })}>
-          <Icon name="tune" />
+          <Icon name="settings--adjust" />
         </Button>
       ) : (
         <Button size="xs" variant="ghost-muted" shape="pill" onClick={() => setEditing({})}>
@@ -109,9 +108,9 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
           Has any of these tags
           <div className="flex flex-wrap gap-1.5">
             {choices.map((t) => (
-              <Button key={t} type="button" size="xs" variant={picked.includes(t) ? "secondary" : "outline"} aria-pressed={picked.includes(t)} shape="pill" onClick={() => toggle(t)}>
+              <Toggle key={t} type="button" size="sm" variant="outline" pressed={picked.includes(t)} onPressedChange={() => toggle(t)}>
                 #{t}
-              </Button>
+              </Toggle>
             ))}
           </div>
         </div>
@@ -133,12 +132,12 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
       <div role="group" aria-label="Color" className="flex flex-col gap-1.5 text-sm">
         Color
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button type="button" size="xs" variant={color === null ? "secondary" : "outline"} aria-pressed={color === null} shape="pill" onClick={() => setColor(null)}>
+          <Toggle type="button" size="sm" variant="outline" pressed={color === null} onPressedChange={() => setColor(null)}>
             Any or none
-          </Button>
-          <Button type="button" size="xs" variant={color === "any" ? "secondary" : "outline"} aria-pressed={color === "any"} shape="pill" onClick={() => setColor("any")}>
+          </Toggle>
+          <Toggle type="button" size="sm" variant="outline" pressed={color === "any"} onPressedChange={() => setColor("any")}>
             Any color
-          </Button>
+          </Toggle>
           {NOTE_COLORS.map((c: NoteColor) => (
             <button
               key={c}

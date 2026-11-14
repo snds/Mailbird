@@ -1,7 +1,6 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions } from "@unicron/ui"
+import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogAction, DialogActions, toast } from "@unicron/ui"
 import { useMailAction } from "@/core/queries"
 import type { MessageDetail, Unsubscribe, UnsubscribeMethod } from "@/core/types"
 
@@ -30,7 +29,7 @@ export function UnsubscribeAction({ message, onArchive }: { message: MessageDeta
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Icon name="unsubscribe" data-icon="inline-start" /> Unsubscribe
+        Unsubscribe
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent size="md">

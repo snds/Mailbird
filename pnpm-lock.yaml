@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
+  '@unicron/tokens': file:vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
   '@tiptap/extension-bubble-menu': 3.31.3
   '@tiptap/extension-floating-menu': 3.31.3
 
@@ -25,9 +25,6 @@ importers:
       '@base-ui/react':
         specifier: ^1.9.0
         version: 1.9.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@fontsource-variable/inter':
-        specifier: ^5.3.0
-        version: 5.3.0
       '@hocuspocus/provider':
         specifier: 4.7.0
         version: 4.7.0(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
@@ -74,11 +71,11 @@ importers:
         specifier: 3.0.9
         version: 3.0.9(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6)(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
       '@unicron/tokens':
-        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
-        version: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
+        specifier: file:../../vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
+        version: file:vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
       '@unicron/ui':
-        specifier: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz
-        version: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: file:../../vendor/unicron/unicron-ui-1.0.0-pre.2.tgz
+        version: file:vendor/unicron/unicron-ui-1.0.0-pre.2.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       chrono-node:
         specifier: 2.10.1
         version: 2.10.1
@@ -94,9 +91,6 @@ importers:
       dompurify:
         specifier: ^3.4.17
         version: 3.4.17
-      material-symbols:
-        specifier: ^0.48.0
-        version: 0.48.0
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -109,9 +103,6 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.3.0(react@19.3.0)
-      sonner:
-        specifier: ^2.0.8
-        version: 2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
@@ -228,8 +219,11 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@fontsource-variable/inter@5.3.0':
-    resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
+  '@fontsource-variable/geist-mono@5.3.0':
+    resolution: {integrity: sha512-vBbuwDEo9AkrqADMXOrlAR3DFcJi4/JxeuU43FoiQERnNwsfXNnvxvReZG02cQKmyk4DZkZdBZX3oTDvy2zBAw==}
+
+  '@fontsource-variable/geist@5.3.0':
+    resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
 
   '@hocuspocus/common@4.7.1':
     resolution: {integrity: sha512-+N4t8AdBIWBUK+yHsuBvCcBm96eV2E3quIewma9+TYomqVMXhrovAf3dA6XFbYHRM7ggtXklHt2mFqTcpiMdAQ==}
@@ -1034,13 +1028,14 @@ packages:
   '@types/use-sync-external-store@0.0.6':
     resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
 
-  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz':
-    resolution: {integrity: sha512-dv1SRnTIjU/wxa0N/IuWsyWG86zHEN0BlCtmuNyP+4j+MZPvrVV19/tfeVQiUyfLSQtcdo+qQsOMnfwNhFX2Zg==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz}
-    version: 0.16.0
+  '@unicron/tokens@file:vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz':
+    resolution: {integrity: sha512-7iWzdjXYGG0kIexvFFnG2y8JWGun/TBxCmt/0qpbCPZZMEQeykDp9Z/TNnu0bjFaLOjOBhtQeBOBD2z46DhBhw==, tarball: file:vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz}
+    version: 1.0.0-pre.2
 
-  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz':
-    resolution: {integrity: sha512-iYgt1fuz3EBhqIQvPLv/cLMW1KwGNJxqHu7dix5H5US5wTvz4fSQ/lM0iiRL7Qvdj9+z6s0ZF6PVfJiIbC08TQ==, tarball: https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz}
-    version: 0.24.0
+  '@unicron/ui@file:vendor/unicron/unicron-ui-1.0.0-pre.2.tgz':
+    resolution: {integrity: sha512-oBb3Kh3VqT9EfDv7z1Kr8JJsG5NfJsXmQrnT2ycrs0f/r2x0aO/PkxbGu9GtdzUI+oXQjuZoySB/NFca+KPcTw==, tarball: file:vendor/unicron/unicron-ui-1.0.0-pre.2.tgz}
+    version: 1.0.0-pre.2
+    hasBin: true
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -1357,9 +1352,6 @@ packages:
     engines: {node: '>= 20'}
     hasBin: true
 
-  material-symbols@0.48.0:
-    resolution: {integrity: sha512-onKVWr4wcIWRbm+u+vkICQkw68KLqR2NRNhI0eafWvkE1FnHXHsQ8yUuSpkmVeARhbgVB0G/5ItfMSresLsBFw==}
-
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
@@ -1476,6 +1468,9 @@ packages:
 
   prosemirror-view@1.42.6:
     resolution: {integrity: sha512-3g25f6hKV2bBxo3puH3EcYWmmVNSH0iWmNsMVT7sugDSpA025jgpOLarcDWr39SdzPjYMaiYtRdNtXialPSjEQ==}
+
+  qrcode-generator@2.0.4:
+    resolution: {integrity: sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==}
 
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
@@ -1768,7 +1763,9 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@fontsource-variable/inter@5.3.0': {}
+  '@fontsource-variable/geist-mono@5.3.0': {}
+
+  '@fontsource-variable/geist@5.3.0': {}
 
   '@hocuspocus/common@4.7.1':
     dependencies:
@@ -2431,18 +2428,19 @@ snapshots:
 
   '@types/use-sync-external-store@0.0.6': {}
 
-  '@unicron/tokens@https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz': {}
+  '@unicron/tokens@file:vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz': {}
 
-  '@unicron/ui@https://github.com/snds/unicron/releases/download/%40unicron%2Fui%400.24.0/unicron-ui-0.24.0.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@unicron/ui@file:vendor/unicron/unicron-ui-1.0.0-pre.2.tgz(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@fontsource-variable/inter': 5.3.0
-      '@unicron/tokens': https://github.com/snds/unicron/releases/download/%40unicron%2Ftokens%400.16.0/unicron-tokens-0.16.0.tgz
+      '@fontsource-variable/geist': 5.3.0
+      '@fontsource-variable/geist-mono': 5.3.0
+      '@unicron/tokens': file:vendor/unicron/unicron-tokens-1.0.0-pre.2.tgz
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       cmdk: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      material-symbols: 0.48.0
       next-themes: 0.4.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      qrcode-generator: 2.0.4
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
       react-resizable-panels: 4.14.8(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -2683,8 +2681,6 @@ snapshots:
 
   marked@17.0.6: {}
 
-  material-symbols@0.48.0: {}
-
   merge2@1.4.1: {}
 
   micromatch@4.0.8:
@@ -2824,6 +2820,8 @@ snapshots:
       prosemirror-model: 1.25.12
       prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.2
+
+  qrcode-generator@2.0.4: {}
 
   queue-microtask@1.2.3: {}
 

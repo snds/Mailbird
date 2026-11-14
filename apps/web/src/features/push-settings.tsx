@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { toast } from "sonner"
 
-import { Icon, Badge, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from "@unicron/ui"
+import { Icon, Badge, Button, Field, FieldDescription, FieldGroup, FieldLabel, Input, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import type { PushAccount, PushMode, PushSettings } from "@/core/types"
 import { cn } from "@/lib/utils"
@@ -57,9 +56,9 @@ export function PushSettingsSection() {
         {CHOICES.map((c) => (
           <label
             key={c.mode}
-            className={cn("flex cursor-pointer gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors hover:bg-accent", chosen === c.mode && "border-primary bg-accent/60")}
+            className={cn("flex cursor-pointer gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors hover:bg-accent", chosen === c.mode && "border-foreground bg-accent/60")}
           >
-            <input type="radio" name="push-mode" value={c.mode} checked={chosen === c.mode} onChange={() => setMode(c.mode)} className="mt-1 accent-primary" />
+            <input type="radio" name="push-mode" value={c.mode} checked={chosen === c.mode} onChange={() => setMode(c.mode)} className="mt-1 accent-foreground" />
             <span className="flex flex-col gap-0.5">
               <span className="font-medium">{c.title}</span>
               <span className="text-xs text-muted-foreground">{c.text}</span>
@@ -96,7 +95,7 @@ export function PushSettingsSection() {
           </ul>
           <div className="flex justify-end">
             <Button variant="outline" size="sm" onClick={() => test.mutate()} disabled={test.isPending}>
-              <Icon name="notifications_active" data-icon="inline-start" /> Send a test
+              <Icon name="notification--filled" data-icon="inline-start" /> Send a test
             </Button>
           </div>
         </>

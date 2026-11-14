@@ -1,0 +1,53 @@
+/*
+ * Mail: what only the mail area adds to Vale's layer (see shell.css for the
+ * rules). The knobs the composer shares with notes are in shell.css.
+ */
+
+/* Composer body (Tiptap). Preflight strips list and quote styling, so the
+   editor puts back just what an email needs. */
+@layer components {
+  .composer-body {
+    & > * + * {
+      margin-top: 0.25em;
+    }
+    & ul {
+      list-style: disc;
+      padding-left: 1.5em;
+    }
+    & ol {
+      list-style: decimal;
+      padding-left: 1.5em;
+    }
+    & blockquote {
+      border-left: 2px solid var(--c-composer-quote-border);
+      color: var(--c-composer-quote-text);
+      padding-left: 0.75em;
+    }
+    & a {
+      color: var(--c-composer-link);
+      text-decoration: underline;
+    }
+    & a.wikilink {
+      color: var(--c-note-wikilink-text);
+      background: var(--c-note-wikilink-bg);
+      border-radius: 0.25em;
+      padding: 0 0.2em;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    & a.wikilink.ProseMirror-selectednode {
+      outline: 2px solid var(--c-note-wikilink-text);
+    }
+    & code {
+      font-family: var(--font-mono);
+      font-size: 0.9em;
+    }
+    & p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder);
+      float: left;
+      height: 0;
+      pointer-events: none;
+      color: var(--c-composer-placeholder);
+    }
+  }
+}

@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
 
 import { pendingJump, useUi } from "@/app/ui-store"
-import { Icon, Button, Checkbox, AdaptiveSheetContent, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem } from "@unicron/ui"
+import { Icon, Button, Checkbox, AdaptiveSheetContent, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem, toast } from "@unicron/ui"
 import { useAccounts, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
 import type { Collection, Occurrence } from "@/core/types"
 import { useIsTabletUp } from "@/hooks/use-media-query"
@@ -50,7 +49,7 @@ export function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) 
   return (
     <form className="flex flex-col gap-1 px-4 pb-3" onSubmit={(e) => (e.preventDefault(), void submit())} data-slot="quick-add">
       <div className="flex h-10 items-center gap-2 rounded-xl bg-muted/70 px-3 focus-within:ring-3 focus-within:ring-ring/50">
-        <Icon name="add" tone="muted" className="size-5" />
+        <Icon name="add" tone="muted" />
         <input
           aria-label="Quick add event"
           placeholder="Lunch with Ana tomorrow 1pm"
@@ -62,7 +61,7 @@ export function QuickAdd({ calendars }: { calendars: Map<string, Collection> }) 
       </div>
       {parsed && (
         <p className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground" aria-live="polite" data-slot="quick-add-preview">
-          <Icon name={parsed.dated ? "event" : "schedule"} className="size-3.5" />
+          <Icon name={parsed.dated ? "calendar" : "time"} size={14} />
           <span className="truncate">
             <strong className="font-medium text-foreground">{parsed.title}</strong>
             {" · "}
@@ -89,7 +88,7 @@ function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection
     <div className="flex flex-col gap-3 px-4 pb-4" data-slot="calendar-list">
       {failing.map((a) => (
         <p key={a.id} role="status" className="flex gap-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
-          <Icon name="sync_problem" className="size-4" />
+          <Icon name="warning--alt" size="sm" />
           <span>
             {a.displayName}: calendars didn't sync. {a.davError}
           </span>
@@ -103,14 +102,11 @@ function CalendarList({ calendars, onOpen }: { calendars: Map<string, Collection
             .filter((c) => groupOf(c) === g)
             .map((c) => (
               <label key={c.id} className="flex h-9 items-center gap-2.5 rounded-lg px-1 text-sm hover:bg-accent/50">
-                <Checkbox
-                  checked={!c.hidden}
-                  onCheckedChange={(on) => toggle.mutate({ id: c.id, hidden: !on })}
-                  style={{ "--primary": calendarColor(c), borderColor: calendarColor(c) } as React.CSSProperties}
-                  aria-label={`Show ${c.name}`}
-                />
+                <Checkbox checked={!c.hidden} onCheckedChange={(on) => toggle.mutate({ id: c.id, hidden: !on })} aria-label={`Show ${c.name}`} />
+                {/* The calendar's own color, as a small square: unicron 1.0's checkbox is ink, so it no longer carries it. */}
+                <span aria-hidden className="event-dot size-2 shrink-0" style={{ "--event": calendarColor(c) } as React.CSSProperties} />
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                {!c.writable && <Icon name="lock" tone="muted" className="size-3.5" label="Read-only" />}
+                {!c.writable && <Icon name="locked" tone="muted" size={14} label="Read-only" />}
               </label>
             ))}
         </section>
@@ -220,7 +216,7 @@ export function CalendarView() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <aside className="hidden w-(--c-shell-list-width) shrink-0 flex-col overflow-y-auto border-r bg-surface-chrome md:flex" aria-label="Calendars">
+      <aside className="hidden w-(--c-shell-list-width) shrink-0 flex-col overflow-y-auto border-r bg-surface-ground md:flex" aria-label="Calendars">
         <header className="flex items-center justify-between px-4 pt-4 pb-3">
           <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
         </header>
@@ -229,14 +225,14 @@ export function CalendarView() {
         <CalendarList calendars={calendars} onOpen={openEvent} />
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col bg-surface-canvas md:bg-background">
+      <section className="flex min-w-0 flex-1 flex-col bg-surface-raised md:bg-background">
         <header className="flex shrink-0 flex-col gap-2 px-4 pt-4 pb-2 md:border-b md:py-2">
           <div className="flex items-center gap-2 md:hidden">
             <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold tracking-tight" aria-live="polite">
               {view === "agenda" ? "Calendar" : title}
             </h1>
             <Button variant="ghost" size="icon" aria-label="Calendars" onClick={() => setListOpen(true)}>
-              <Icon name="stacks" />
+              <Icon name="layers" />
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-1">
@@ -244,10 +240,10 @@ export function CalendarView() {
               Today
             </Button>
             <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view === "agenda" ? "days" : view}`} onClick={() => step(-1)}>
-              <Icon name="chevron_left" />
+              <Icon name="chevron--left" />
             </Button>
             <Button variant="ghost" size="icon-sm" aria-label={`Next ${view === "agenda" ? "days" : view}`} onClick={() => step(1)}>
-              <Icon name="chevron_right" />
+              <Icon name="chevron--right" />
             </Button>
             <h2 className="ml-2 hidden min-w-0 flex-1 truncate text-base font-semibold md:block" aria-live="polite">
               {title}
@@ -311,7 +307,7 @@ export function CalendarView() {
             <SheetTitle className="sr-only">Event</SheetTitle>
             <div className="flex h-14 shrink-0 items-center px-2">
               <Button variant="ghost" size="icon" onClick={() => setSelected(null)} aria-label="Back">
-                <Icon name="arrow_back" className="size-5" />
+                <Icon name="arrow--left" className="size-5" />
               </Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">{detail}</div>

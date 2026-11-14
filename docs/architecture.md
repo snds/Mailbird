@@ -1,6 +1,6 @@
 # Architecture
 
-**One web UI, one Rust core, several thin shells.** The interface is a mobile-first React app built on shadcn/ui and Material Symbols. Everything that touches a network protocol, a credential, or the local database lives in a Rust core. Each platform wraps the same UI and calls the same core.
+**One web UI, one Rust core, several thin shells.** The interface is a mobile-first React app built on unicron, the shared design system (shadcn/ui anatomy, IBM Carbon icons). Everything that touches a network protocol, a credential, or the local database lives in a Rust core. Each platform wraps the same UI and calls the same core.
 
 ```
                 ┌──────────────────────────────────────────────┐
@@ -46,15 +46,17 @@ All three come from `AppShell` + `MasterDetail` (`apps/web/src/app/shell.tsx`, `
 
 ## Design system
 
-- **Shared system:** the primitives and core tokens come from **unicron**, the design system Vale shares with Synapse and Lockdown ([ADR-0047](decisions/0047-unicron.md)). `apps/web` installs `@unicron/ui` and `@unicron/tokens` as versioned packages from unicron's release tarballs ([ADR-0052](decisions/0052-unicron-packages.md)).
-- **Components:** shadcn/ui source on **Base UI** primitives, **Nova** style, owned in unicron (`@unicron/ui`). unicron's `tools/shadcn-material` (`pnpm regen`) swaps every Lucide icon for a Material Symbol ([ADR-0003](decisions/0003-material-symbols.md)).
+- **Shared system:** the primitives and core tokens come from **unicron**, the design system Vale shares with Warpcore, Lockdown and Synapse ([ADR-0047](decisions/0047-unicron.md)). `apps/web` installs `@unicron/ui` and `@unicron/tokens` as versioned packages ([ADR-0052](decisions/0052-unicron-packages.md)). Until unicron 1.0 is released they are the pre-release tarballs in `vendor/unicron/` ([ADR-0082](decisions/0082-unicron-1-0.md)).
+- **Theme:** two axes, both on `<html>`. `data-theme="vale"` (set once, in `index.html`) picks Vale's identity color, its live color and its tinted neutrals. The ground is the `dark` class: on is graphite, off is stone. `next-themes` sets it from the person's choice in Settings → Appearance (System, Stone or Graphite). `theme-color` follows the ground at run time (`src/lib/theme-color.ts`).
+- **Components:** shadcn/ui source on **Base UI** primitives, restyled to the 2026-11 direction and owned in unicron (`@unicron/ui`).
 - **Tokens,** in three tiers:
-  - **Global** (`--g-*`): raw OKLCH ramps, radius, motion, and note-card hues (unicron core).
-  - **Semantic**: shadcn's contract (`--background`, `--primary`, …), in the core, plus Vale's app roles such as `--surface-chrome` and `--vertical-mail` in `apps/web/src/styles/app-extension.css`. Only this tier changes between light and dark.
-  - **Component** (`--c-*`): icon axes and the adaptive sheet in the core; shell sizes, list-row anatomy, notes, and calendar in the app extension.
+  - **Global** (`--g-*`): the theme slots per app and ground, the older ramps, radius, motion, and note-card hues (unicron core).
+  - **Semantic**: the roles named as in Figma (`--surface-ground`, `--text-body`, `--primary-fill`, …) and shadcn's contract as aliases of them (`--background`, `--primary`, …), in the core. Vale adds one role of its own, `--unread`. Vale has one identity color, the core's primary: no hue per area, and no pane roles of its own.
+  - **Component** (`--c-*`): unicron's knobs in the core; shell sizes, list-row anatomy, notes, and calendar in Vale's layer.
+- **Vale's layer** is `apps/web/src/styles/`, one file per area so each area's owner edits its own: `shell.css` (the rules for the layer, and what every area shares), `mail.css`, `calendar.css`, `contacts.css`, `notes.css`, `settings.css`. `index.css` imports unicron's stylesheet, then these.
+- **Type:** Geist and Geist Mono, loaded by unicron's stylesheet as font files.
 - **Measured:** `dsa` (design-system analytics) scans `apps/web/src`, and CI's ratchet fails if `className`/style overrides, spread props, or look-alikes of unicron components grow.
-- **Icons:** the `Icon` component (`@unicron/ui`) renders the Material Symbols variable font inside an `<svg>`. Its four axes are tier-3 tokens (`--c-icon-fill/wght/grad/opsz`), registered with `@property` so they animate. A nav item fills its icon on selection, and dark mode drops grade by 25.
-- **Vertical wayfinding:** each app area has one accent hue (Mail blue, Calendar coral, Contacts green, Notes amber), used sparingly on the active icon and on data markers.
+- **Icons:** the `Icon` component (`@unicron/ui`) draws IBM Carbon glyphs as inline SVG, 20 px by default and 16 px inside compact controls. There is no icon font. A glyph Carbon lacks is registered in `src/app/icons.ts` (one today, the forward arrow).
 
 ## Data and sync
 
@@ -161,3 +163,4 @@ docs/                   research, stack, decisions (ADRs)
 | [0079](decisions/0079-screenshots.md) | `pnpm shots` (`tools/screenshots`): builds `apps/web`, serves `dist` locally, `playwright-core` 1.63.0 drives Chromium through 75 scenes on the demo data, desktop 1440 × 900 and phone 390 × 844, light and dark (296 PNGs); fixed clock and zone, motion off, waits until still; any off-machine request or page error fails the picture; output ignored by git, not in CI |
 | [0080](decisions/0080-unicron-0-24.md) | `@unicron/ui` 0.24.0 / `@unicron/tokens` 0.16.0 (adds `react-resizable-panels`); three `p-0` dialogs → `[--c-dialog-padding:0]`; `Spinner aria-hidden` inside a status that speaks; selects 16 px on touch, so the swipe selects are `shrink-0` and the time zone select `max-w-[70%] pointer-fine:max-w-[60%]`; ratchet flat |
 | [0081](decisions/0081-harness-and-scenarios.md) | `tools/screenshots/scenes/` one file per lane (a scene lives with the lane that owns its screen; shared steps in `helpers.mjs`); sizes medium 768 × 1024 and landscape 844 × 390 (touch), per-scene `sizes`/`viewport`; scene `scenario`, `offline`, `loading`, `assert`; `-g` repeats; `--demo`; `--sean` (2×, `<kind>/<area>--<screen>__<size>__<graphite\|stone>.png`); `core/demo-scenarios.ts` registry, one file per area, read once by the demo client from `sessionStorage["vale.demo.scenario"]`; `demoFlags` in `client.ts` (`member`, `gatewayOwner`, `desktopApp` → `isDesktopApp()`); first scenario `member` |
+| [0082](decisions/0082-unicron-1-0.md) | `@unicron/ui` and `@unicron/tokens` 1.0.0-pre.2 from `vendor/unicron/` (`file:` paths; swap to the release URLs and delete the folder when 1.0 is out; the gateway `Dockerfile` copies `vendor/`); `data-theme="vale"`, `dark` class = graphite; `theme-color` at run time from `--surface-ground`; Settings → Appearance: THEME chips System · Stone · Graphite on `next-themes`' store, and three "Theme: …" commands; Carbon icons by codemod, one registered glyph (`vale--forward`); one identity color (`--vertical-*`, `--surface-chrome/canvas/selected` removed); `toast` from `@unicron/ui`; chosen states as `Toggle` / `FilterChip`; `styles/` split per area; local names that collide with 1.0 exports renamed; Inter, `material-symbols`, `sonner` dropped; the 2026-10-15 baton rules superseded (proposal, DC8); ratchet 208 → 137, style 2 → 1 |

@@ -3,7 +3,7 @@ import { useDeferredValue, useEffect, useState } from "react"
 import { pendingJump, useUi } from "@/app/ui-store"
 
 import { Icon, Button, Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
-import { ListRow, SearchField } from "@/components/list-row"
+import { EntryRow, ListSearch } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { useAccounts, useCollections, useContactLabels, useContacts, useDeletedContacts, useDuplicates, useSmartGroups } from "@/core/queries"
 import type { ContactSummary } from "@/core/types"
@@ -75,19 +75,19 @@ export function ContactsView() {
 
   return (
     <MasterDetail
-      emptyIcon="person"
+      emptyIcon="user"
       emptyLabel="Select a person to see their details and the mail you've exchanged."
       onBack={() => setSelected(null)}
       header={
         <>
           <PaneHeader title="Contacts">
             <Button size="icon" variant="ghost" aria-label="Restore contacts" onClick={() => setRestoring(Math.floor(Date.now() / 1000))}>
-              <Icon name="history" />
+              <Icon name="recently-viewed" />
             </Button>
           </PaneHeader>
           <RestoreContactsDialog openedAt={restoring} onClose={() => setRestoring(null)} />
           <div className="px-4 pb-3">
-            <SearchField placeholder="Search people" value={search} onChange={setSearch} />
+            <ListSearch placeholder="Search people" value={search} onChange={setSearch} />
             {labels.length > 0 && (
               <div role="group" aria-label="Labels" className="-mx-4 no-scrollbar mt-3 flex gap-1.5 overflow-x-auto px-4">
                 {[{ name: null, count: 0 } as const, ...labels].map((l) => (
@@ -108,7 +108,7 @@ export function ContactsView() {
             <div className="px-3 pb-2">
               <Item variant="muted" render={<button type="button" data-selected={selected?.kind === "duplicates"} onClick={() => setSelected({ kind: "duplicates" })} />}>
                 <ItemMedia>
-                  <Icon name="group" className="text-vertical-contacts-text" />
+                  <Icon name="user--multiple" />
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle>
@@ -117,7 +117,7 @@ export function ContactsView() {
                   <ItemDescription>Review and merge</ItemDescription>
                 </ItemContent>
                 <ItemActions>
-                  <Icon name="chevron_right" tone="muted" />
+                  <Icon name="chevron--right" tone="muted" />
                 </ItemActions>
               </Item>
             </div>
@@ -135,10 +135,10 @@ export function ContactsView() {
           )}
           {sections.map((s) => (
             <section key={s.letter} aria-label={s.letter}>
-              <h3 className="sticky top-0 z-10 bg-surface-chrome/95 px-4 py-1 text-xs font-semibold text-muted-foreground backdrop-blur">{s.letter}</h3>
+              <h3 className="sticky top-0 z-10 bg-surface-ground/95 px-4 py-1 text-xs font-semibold text-muted-foreground backdrop-blur">{s.letter}</h3>
               {s.items.map((c) => (
                 <div role="listitem" key={c.id}>
-                  <ListRow
+                  <EntryRow
                     selected={selected?.kind === "contact" && selected.id === c.id}
                     onSelect={() => setSelected({ kind: "contact", id: c.id })}
                     leading={<PersonAvatar contact={c} />}
@@ -154,12 +154,12 @@ export function ContactsView() {
             <div className="p-3 text-muted-foreground">
               <Item render={<button type="button" data-selected={selected?.kind === "deleted"} onClick={() => setSelected({ kind: "deleted" })} />}>
                 <ItemMedia>
-                  <Icon name="delete" />
+                  <Icon name="trash-can" />
                 </ItemMedia>
                 <ItemContent>Recently deleted</ItemContent>
                 <ItemActions>
                   <span className="tabular-nums">{gone.length}</span>
-                  <Icon name="chevron_right" />
+                  <Icon name="chevron--right" />
                 </ItemActions>
               </Item>
             </div>

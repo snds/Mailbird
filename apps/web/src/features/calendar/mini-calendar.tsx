@@ -62,7 +62,7 @@ export function MiniCalendar() {
           <p className="text-xs font-semibold tracking-wide text-(--c-calendar-today-text) uppercase">{today.toLocaleDateString(undefined, { weekday: "long" })}</p>
           <h1 className="text-lg font-semibold">{today.toLocaleDateString(undefined, { month: "long", day: "numeric" })}</h1>
         </div>
-        <IconButton label="Open Vale" icon="open_in_new" onClick={() => void open(null)} />
+        <IconButton label="Open Vale" icon="launch" onClick={() => void open(null)} />
       </header>
 
       <section aria-label="Next up" className="px-3 pt-2">

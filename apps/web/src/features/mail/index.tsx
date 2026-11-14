@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 
 import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon, Avatar, AvatarFallback, AvatarImage, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, NativeSelect, NativeSelectOption, Skeleton, Tabs, TabsList, TabsTrigger } from "@unicron/ui"
-import { ListRow } from "@/components/list-row"
+import { EntryRow } from "@/components/list-row"
 import { MasterDetail, PaneHeader } from "@/components/master-detail"
 import { VirtualList } from "@/components/virtual-list"
 import { isMember } from "@/core/client"
@@ -20,8 +20,8 @@ import { displayName, initials } from "./format"
 import { ScheduledList } from "./scheduled-list"
 import { TeamList, TeamThreadView } from "../team/team-view"
 import { BundleRow, SplitChips } from "./splits"
-import { SwipeRow } from "./swipe-row"
-import { useMailVerbs } from "./vocabulary"
+import { RowSwipe } from "./swipe-row"
+import { PRIMARY, useMailVerbs } from "./vocabulary"
 import { useMailShortcuts } from "./use-shortcuts"
 
 export function MailView() {
@@ -117,7 +117,7 @@ export function MailView() {
 
   return (
     <MasterDetail
-      emptyIcon="mail"
+      emptyIcon="email"
       emptyLabel="Choose a conversation to read it here."
       onBack={() => (tab === "team" ? setTeamOpen(null) : setSelected(null))}
       header={
@@ -125,7 +125,7 @@ export function MailView() {
           <PaneHeader title={accountId ? (accounts.find((a) => a.id === accountId)?.displayName ?? "Inbox") : "All inboxes"}>
             {/* Phones have no nav rail, so accounts live here. */}
             <Button variant="ghost" size="icon" aria-label="Accounts and settings" className="md:hidden" onClick={() => openSettings()}>
-              <Icon name="manage_accounts" />
+              <Icon name="user--settings" />
             </Button>
             {multiAccount && (
               <NativeSelect
@@ -145,7 +145,7 @@ export function MailView() {
             )}
             {core?.kind === "native" && (
               <Button variant="ghost" size="icon" aria-label="Check for new mail" onClick={() => sync.mutate()} disabled={sync.isPending}>
-                <Icon name="sync" className={sync.isPending ? "animate-spin" : undefined} />
+                <Icon name="renew" className={sync.isPending ? "animate-spin" : undefined} />
               </Button>
             )}
           </PaneHeader>
@@ -178,7 +178,7 @@ export function MailView() {
                     <TabsTrigger key={l.id} value={l.id}>
                       {l.label}
                       {l.id === "screener" && !!screener?.waiting && (
-                        <span className="ml-1 rounded-full bg-vertical-mail-text px-1.5 text-[11px] leading-4 font-semibold text-background" aria-label={`${screener.waiting} waiting`}>
+                        <span className="ml-1 rounded-full bg-foreground px-1.5 text-[11px] leading-4 font-semibold text-background" aria-label={`${screener.waiting} waiting`}>
                           {screener.waiting}
                         </span>
                       )}
@@ -218,10 +218,10 @@ export function MailView() {
         ) : isPending ? (
           <ListSkeleton />
         ) : accounts.length === 0 ? (
-          <Empty className="py-16">
+          <Empty size="sm" className="py-16">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Icon name="alternate_email" />
+                <Icon name="at" />
               </EmptyMedia>
               <EmptyTitle>Add your first account</EmptyTitle>
               <EmptyDescription>Gmail, Outlook, iCloud, Fastmail, or any IMAP account.</EmptyDescription>
@@ -233,10 +233,10 @@ export function MailView() {
         ) : list.length === 0 && bundling && overview?.bundle ? (
           <BundleRow accountId={accountId} onOpen={() => (setCategory("newsletters"), setSelected(null))} />
         ) : list.length === 0 ? (
-          <Empty className="py-16">
+          <Empty size="sm" className="py-16">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Icon name={deferredSearch ? "search_off" : "done_all"} />
+                <Icon name={deferredSearch ? "search" : "checkmark--double"} />
               </EmptyMedia>
               <EmptyTitle>{deferredSearch ? "No matches" : emptyText}</EmptyTitle>
               {deferredSearch && <EmptyDescription>Nothing in {laneInfo.label} matches “{deferredSearch}”.</EmptyDescription>}
@@ -252,13 +252,13 @@ export function MailView() {
             onEnd={loadMore}
             label={laneInfo.label}
             render={(m) => (
-              <SwipeRow
+              <RowSwipe
                 // Your mapping (ADR-0025); Apple Mail's until changed: right toggles read, left archives.
                 // In the Screener: right lets the sender in, left screens them out.
                 {...(tab === "screener"
                   ? {
-                      start: { icon: "how_to_reg", label: "Let in", tone: "bg-vertical-mail", onCommit: () => senderActions.decide(m.from, "allowed") },
-                      end: { icon: "block", label: "Screen out", tone: "bg-destructive", onCommit: () => senderActions.decide(m.from, "screened_out") },
+                      start: { icon: "user--admin", label: "Let in", tone: PRIMARY, onCommit: () => senderActions.decide(m.from, "allowed") },
+                      end: { icon: "user--minus", label: "Screen out", tone: "bg-critical-fill text-critical-on-fill", onCommit: () => senderActions.decide(m.from, "screened_out") },
                     }
                   : {
                       start: verb(swipes.right, m),
@@ -275,7 +275,7 @@ export function MailView() {
                   onSelect={() => setSelected(m)}
                   account={multiAccount && !accountId ? accounts.find((a) => a.id === m.accountId)?.displayName : undefined}
                 />
-              </SwipeRow>
+              </RowSwipe>
             )}
           />
           </>
@@ -326,20 +326,20 @@ function MessageRow({
   const nudged = lane === "inbox" && m.followUpAt != null && m.followUpAt <= now
   const meta =
     lane === "snoozed" && m.snoozedUntil ? (
-      <span className="inline-flex items-center gap-1 text-vertical-notes-text">
-        <Icon name="snooze" className="size-3.5" />
+      <span className="inline-flex items-center gap-1">
+        <Icon name="time" size={14} />
         {shortTime(m.snoozedUntil)}
       </span>
     ) : lane === "waiting" && m.followUpAt ? (
-      <span className="inline-flex items-center gap-1 text-vertical-mail-text">
-        <Icon name="notifications" className="size-3.5" />
+      <span className="inline-flex items-center gap-1">
+        <Icon name="notification" size={14} />
         {shortTime(m.followUpAt)}
       </span>
     ) : (
       shortTime(nudged ? Math.max(m.followUpAt!, m.sortAt) : m.sortAt)
     )
   return (
-    <ListRow
+    <EntryRow
         selected={selected}
         onSelect={onSelect}
         emphasized={!m.seen}
@@ -363,8 +363,8 @@ function MessageRow({
         supporting={
           <>
             {nudged && (
-              <span className="mr-1.5 inline-flex items-center gap-1 rounded-md bg-vertical-mail/10 px-1.5 text-xs font-medium text-vertical-mail-text">
-                <Icon name="notifications_active" className="size-3.5" /> No reply yet
+              <span className="mr-1.5 inline-flex items-center gap-1 rounded-md bg-accent px-1.5 text-xs font-medium text-foreground">
+                <Icon name="notification--filled" size={14} /> No reply yet
               </span>
             )}
             <span className="text-foreground">{m.subject || "(no subject)"}</span>
@@ -373,8 +373,8 @@ function MessageRow({
         }
         trailing={
           <span className="mt-0.5 flex shrink-0 flex-col items-end gap-1">
-            {m.flagged && <Icon name="star" fill className="size-4 text-vertical-notes-text" label="Starred" />}
-            {m.hasAttachments && <Icon name="attach_file" tone="muted" className="size-4" label="Has attachments" />}
+            {m.flagged && <Icon name="star--filled" size="sm" label="Starred" />}
+            {m.hasAttachments && <Icon name="attachment" tone="muted" size="sm" label="Has attachments" />}
             {account && <span className="text-[11px] text-muted-foreground">{account}</span>}
           </span>
         }

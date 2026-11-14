@@ -1,7 +1,6 @@
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, type IconName, Badge, Button, Item, ItemActions, ItemContent, Skeleton, ItemMain, ItemTitle, ItemDescription } from "@unicron/ui"
+import { Icon, type IconName, Badge, Button, Item, ItemActions, ItemContent, Skeleton, ItemMain, ItemTitle, ItemDescription, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCollections, useContact, useContactActivity, useContactCopies, usePimAction } from "@/core/queries"
 import type { ContactActivity, MessageSummary, Occurrence } from "@/core/types"
@@ -116,8 +115,8 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
       </div>
       {/* Quick actions turn the card into a launcher (Cardhop). */}
       <div className="flex flex-wrap justify-center gap-2">
-        <Action icon="mail" label="Email" disabled={!email} onClick={() => openComposer({ to: [{ name: c.fullName, email }] })} />
-        <Action icon="call" label="Call" href={phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : undefined} disabled={!phone} />
+        <Action icon="email" label="Email" disabled={!email} onClick={() => openComposer({ to: [{ name: c.fullName, email }] })} />
+        <Action icon="phone" label="Call" href={phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : undefined} disabled={!phone} />
         <Action icon="chat" label="Message" href={phone ? `sms:${phone.replace(/[^\d+]/g, "")}` : undefined} disabled={!phone} />
         <ShareContact contact={c} className={ACTION} />
       </div>
@@ -137,7 +136,7 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
           <div key={`p-${p.value}`} className="flex flex-col px-4 py-2.5">
             <dt className="text-xs text-muted-foreground capitalize">{p.label ?? "phone"}</dt>
             <dd>
-              <a href={`tel:${p.value.replace(/[^\d+]/g, "")}`} className="text-primary hover:underline">
+              <a href={`tel:${p.value.replace(/[^\d+]/g, "")}`} className="text-primary-text hover:underline">
                 {p.value}
               </a>
             </dd>
@@ -185,12 +184,12 @@ export function ContactDetailPane({ id, onDeleted }: { id: string; onDeleted: ()
             <Icon name="edit" data-icon="inline-start" /> Edit
           </Button>
           <Button variant="outline" onClick={() => void del()} disabled={remove.isPending}>
-            <Icon name="delete" data-icon="inline-start" /> Delete
+            <Icon name="trash-can" data-icon="inline-start" /> Delete
           </Button>
         </div>
       ) : (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Icon name="lock" className="size-4" /> This address book is read-only.
+          <Icon name="locked" size="sm" /> This address book is read-only.
         </p>
       )}
 

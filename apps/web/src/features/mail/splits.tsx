@@ -1,8 +1,7 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Item, ItemMain, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions } from "@unicron/ui"
+import { Icon, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Item, ItemMain, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useInboxOverview, useMailAction, useSplits } from "@/core/queries"
 import type { Split, SplitInput } from "@/core/types"
@@ -37,7 +36,7 @@ export function SplitChips({ accountId, onPick }: { accountId: string | null; on
       })}
       {active && splits.some((s) => s.id === active) ? (
         <Button size="icon-xs" variant="ghost" shape="pill" aria-label="Edit split" onClick={() => open({ id: active, initial: splits.find((s) => s.id === active)! })}>
-          <Icon name="tune" />
+          <Icon name="settings--adjust" />
         </Button>
       ) : (
         <Button size="icon-xs" variant="ghost" shape="pill" aria-label="New split" onClick={() => open({ initial: {} })}>
@@ -183,7 +182,7 @@ export function BundleRow({ accountId, onOpen }: { accountId: string | null; onO
     <Item variant="outline" size="sm" className="mx-3 mb-1 w-auto rounded-xl bg-muted/40" render={<section aria-label="Newsletters bundle" />}>
       <ItemMain onClick={onOpen}>
         <ItemMedia variant="icon">
-          <Icon name="newspaper" tone="muted" />
+          <Icon name="blog" tone="muted" />
         </ItemMedia>
         <ItemContent>
           <ItemTitle className={b.unread ? "font-semibold" : undefined}>
@@ -195,7 +194,7 @@ export function BundleRow({ accountId, onOpen }: { accountId: string | null; onO
       <ItemActions>
         {b.unread > 0 && (
           <Button size="icon-sm" variant="ghost" aria-label="Mark all newsletters read" disabled={read.isPending} onClick={() => read.mutate(undefined, { onError: fail })}>
-            <Icon name="done_all" />
+            <Icon name="checkmark--double" />
           </Button>
         )}
         <Button size="icon-sm" variant="ghost" aria-label="Archive all newsletters" disabled={archive.isPending} onClick={() => void clear()}>

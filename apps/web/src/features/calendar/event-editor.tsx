@@ -1,9 +1,8 @@
 import { useState } from "react"
-import { toast } from "sonner"
 
 import { useUi, type EventEditorState } from "@/app/ui-store"
 import { EditorFrame, EditorHeader } from "@/components/editor-frame"
-import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove } from "@unicron/ui"
+import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove, toast } from "@unicron/ui"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
 import type { EventInput, Repeat } from "@/core/types"
 import { meetingInfo, meetingLink } from "@/lib/meeting-info"
@@ -167,25 +166,25 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
             {!found && (
               // A Jitsi room needs no account and no sign-up: anyone with the link joins (ADR-0030).
               <Button type="button" variant="ghost-muted" size="sm" onClick={() => setLocation(location.trim() ? `${location.trim()} · ${jitsiRoom()}` : jitsiRoom())}>
-                <Icon name="video_call" data-icon="inline-start" /> Add video call
+                <Icon name="video--add" data-icon="inline-start" /> Add video call
               </Button>
             )}
           </div>
           {found && (
             <p className="flex items-center gap-1.5 pb-1 text-xs text-muted-foreground" data-slot="meeting-found">
-              <Icon name="videocam" className="size-3.5" /> {meetingService(found)} call · Join shows on the event{foundId ? ` · Meeting ID ${foundId}` : ""}
+              <Icon name="video" size={14} /> {meetingService(found)} call · Join shows on the event{foundId ? ` · Meeting ID ${foundId}` : ""}
             </p>
           )}
         </div>
         {eventId && initial.repeat && initial.repeat !== "none" && (
           <p className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground" data-slot="scope-note">
-            <Icon name="repeat" className="size-4" />
+            <Icon name="repeat" size="sm" />
             {scope === "this" ? "Changes apply to this event only." : scope === "following" ? "Changes apply to this and following events." : "Changes apply to every event in this series."}
           </p>
         )}
         {guestOf && (
           <p className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
-            <Icon name="info" className="size-4" /> {guestOf} organizes this event. Your changes stay on your calendar.
+            <Icon name="information" size="sm" /> {guestOf} organizes this event. Your changes stay on your calendar.
           </p>
         )}
         <label className={row}>
@@ -321,7 +320,7 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
       </div>
       {error && (
         <p role="alert" className="flex items-center gap-2 border-t bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          <Icon name="error" className="size-4" /> {error}
+          <Icon name="warning" size="sm" /> {error}
         </p>
       )}
     </form>

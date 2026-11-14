@@ -31,7 +31,7 @@ export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLab
     <div className="flex min-h-0 flex-1">
       <section
         className={cn(
-          "flex min-w-0 flex-1 flex-col bg-surface-chrome",
+          "flex min-w-0 flex-1 flex-col bg-surface-ground",
           !wide && "md:w-(--c-shell-list-width) md:flex-none md:border-r",
           hasDetail && "hidden md:flex"
         )}
@@ -49,13 +49,13 @@ export function MasterDetail({ header, list, detail, onBack, emptyIcon, emptyLab
           <>
             <div className={cn("flex h-14 shrink-0 items-center gap-1 px-2", !listFills && "md:hidden")}>
               <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
-                <Icon name="arrow_back" className="size-5" />
+                <Icon name="arrow--left" className="size-5" />
               </Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">{detail}</div>
           </>
         ) : (
-          <Empty className="flex-1">
+          <Empty size="sm" className="flex-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <Icon name={emptyIcon} />

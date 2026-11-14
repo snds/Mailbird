@@ -1,7 +1,6 @@
-import { toast } from "sonner"
 
 import { useUi } from "@/app/ui-store"
-import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@unicron/ui"
+import { Icon, Button, Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, toast } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useScheduled } from "@/core/queries"
 import type { OutboxItem } from "@/core/types"
@@ -16,10 +15,10 @@ export function ScheduledList() {
   if (isPending) return null
   if (items.length === 0) {
     return (
-      <Empty className="py-16">
+      <Empty size="sm" className="py-16">
         <EmptyHeader>
           <EmptyMedia variant="icon">
-            <Icon name="schedule_send" />
+            <Icon name="time" />
           </EmptyMedia>
           <EmptyTitle>Nothing scheduled</EmptyTitle>
           <EmptyDescription>Use the arrow next to Send to send a message later.</EmptyDescription>
@@ -52,8 +51,8 @@ function ScheduledRow({ item }: { item: OutboxItem }) {
     <li className="flex flex-col gap-2 px-(--c-list-row-padding-x) py-(--c-list-row-padding-y)">
       <div className="flex items-baseline gap-2">
         <span className="truncate text-sm font-medium">To {to}</span>
-        <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-vertical-mail-text">
-          <Icon name="schedule_send" className="size-3.5" />
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-foreground">
+          <Icon name="time" size={14} />
           {longTime(item.sendAt)}
         </span>
       </div>
@@ -63,13 +62,13 @@ function ScheduledRow({ item }: { item: OutboxItem }) {
       </p>
       <div className="-ml-2 flex flex-wrap gap-1">
         <Button variant="ghost" size="sm" onClick={() => run(async () => (await getCoreClient()).rescheduleSend(item.id, null), "Sending now")}>
-          <Icon name="send" data-icon="inline-start" /> Send now
+          <Icon name="send--alt" data-icon="inline-start" /> Send now
         </Button>
         <SendLaterMenu
           onPick={(at) => void run(async () => (await getCoreClient()).rescheduleSend(item.id, at), `Moved to ${longTime(at)}`)}
           trigger={<Button variant="ghost" size="sm" />}
         >
-          <Icon name="schedule" data-icon="inline-start" /> Change time
+          <Icon name="time" data-icon="inline-start" /> Change time
         </SendLaterMenu>
         <Button
           variant="ghost"
@@ -91,7 +90,7 @@ function ScheduledRow({ item }: { item: OutboxItem }) {
             })
           }
         >
-          <Icon name="delete" />
+          <Icon name="trash-can" />
         </Button>
       </div>
     </li>
