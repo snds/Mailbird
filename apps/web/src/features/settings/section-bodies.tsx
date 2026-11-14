@@ -3,7 +3,6 @@ import { AccountsSection } from "@/features/accounts"
 import { AdvancedMail } from "@/features/advanced-mail"
 import { AiSettingsForm } from "@/features/ai-settings"
 import { AppearanceSettings } from "@/features/appearance-settings"
-import { SecondZonePicker } from "@/features/calendar/second-zone"
 import { GatewayUpdatesSection } from "@/features/gateway-updates"
 import { ShortcutSettings } from "@/features/grammar"
 import { MeetingSettingsSection } from "@/features/meeting-settings"
@@ -14,6 +13,7 @@ import { Members } from "@/features/team-members"
 import { AboutSection } from "@/features/updates/about-section"
 import { WritingSettings } from "@/features/writing-settings"
 
+import { SecondZoneRow } from "./second-zone-row"
 import { SettingsHeading } from "./section-header"
 
 /**
@@ -82,7 +82,7 @@ export function CalendarBody() {
       {/* The menu bar is the desktop's; the demo stands in for it. */}
       {!remote && <MenuBarSettingsSection />}
       {/* A choice for this device, beside the hours of the week and the day (it was in the calendar's side list). */}
-      <SecondZonePicker />
+      <SecondZoneRow />
     </>
   )
 }

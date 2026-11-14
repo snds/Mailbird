@@ -69,6 +69,30 @@ export const scenes = [
       await conversation(app, /Token audit/)
       await press(app, button(app.page, "Snooze"))
     },
+    // The presets, then any date and time (ADR-0088; brief M8).
+    assert: async ({ page }) => ensure(await page.getByRole("menuitem", { name: "Pick date and time…" }).isVisible(), "the snooze menu has no custom time"),
+  },
+  {
+    // Snooze until any date and time: the shared picker, titled for the job, with its one primary.
+    name: "mail-snooze-time",
+    run: async (app) => {
+      await conversation(app, /Token audit/)
+      await press(app, button(app.page, "Snooze"))
+      await press(app, app.page.getByRole("menuitem", { name: "Pick date and time…" }))
+      const picker = app.page.getByRole("dialog", { name: "Snooze" })
+      // Tomorrow, at the hour it opens on: the conversation leaves the inbox until then.
+      await press(app, picker.getByRole("gridcell", { name: /^Friday, November 13/ }))
+      await press(app, picker.getByRole("button", { name: "Snooze", exact: true }))
+      ensure(!(await picker.count()), "Snooze did not close the picker")
+      await toasts(app.page).filter({ hasText: /Snoozed/ }).first().waitFor()
+      await toastGone(app)
+      // The picture: the picker again, on another conversation.
+      await conversation(app, /Cabin weekend/)
+      await press(app, button(app.page, "Snooze"))
+      await press(app, app.page.getByRole("menuitem", { name: "Pick date and time…" }))
+      await app.page.mouse.move(0, 0)
+    },
+    assert: async ({ page }) => ensure(await page.getByRole("dialog", { name: "Snooze" }).getByRole("button", { name: "Snooze", exact: true }).isVisible(), "the snooze picker has no Snooze button"),
   },
   {
     name: "mail-archived-toast", // a toast with Undo, taken while it shows
@@ -174,6 +198,7 @@ export const scenes = [
       const dialog = await compose(app)
       await press(app, dialog.getByRole("button", { name: "Send later" }))
       await press(app, app.page.getByRole("menuitem", { name: "Pick a time…" }))
+      await app.page.mouse.move(0, 0)
     },
   },
   {

@@ -6,6 +6,7 @@ import { pendingJump, useUi } from "@/app/ui-store"
 import { Icon, AppFrameColumn, Button, Sheet, SheetContent, SheetTitle, ToggleGroup, ToggleGroupItem, toast, useAppFrame, useViewport } from "@unicron/ui"
 import { DemoBar } from "@/app/demo-bar"
 import { useRefresh, useScreenFact, useScreenPlace, useScreenRoot } from "@/app/screen"
+import { MonthGrid as MonthPicker, type DayMark } from "@/components/month-grid"
 import { ScreenHead } from "@/components/page"
 import { useAccounts, useKeyBindings, useOccurrences, usePimAction } from "@/core/queries"
 import type { Collection, Occurrence } from "@/core/types"
@@ -17,7 +18,6 @@ import { CalendarNav } from "./calendar-nav"
 import { SaveSetDialog } from "./calendar-sets"
 import { DAY, addDays, addMonths, dateInput, fmt, fromSecs, secs, startOfDay, startOfWeek, timeInput } from "./dates"
 import { EventDetailPane } from "./event-detail"
-import { MiniMonth } from "./mini-month"
 import { useCalendars } from "./use-calendars"
 import { MonthGrid } from "./month-grid"
 import { parseQuickAdd, quickToInput } from "./quick-add"
@@ -127,10 +127,10 @@ export function CalendarView() {
     view === "agenda" ? [focus, addDays(focus, agendaDays)] : view === "month" ? [monthStart, addDays(monthStart, 42)] : [days[0]!, addDays(days.at(-1)!, 1)]
   const { data: occurrences = [], refetch } = useOccurrences(secs(from), secs(to))
 
-  // Busy dots for the mini month (six visible weeks).
+  // The marks of the list column's month (six visible weeks): a square on a day with events, and their count in its name.
   const gridStart = startOfWeek(new Date(month.getFullYear(), month.getMonth(), 1))
   const { data: monthOcc = [] } = useOccurrences(secs(gridStart), secs(addDays(gridStart, 42)))
-  const busy = (d: Date) => monthOcc.some((o) => o.start < secs(d) + DAY && o.end > secs(d))
+  const busy = (d: Date): DayMark => ({ events: monthOcc.filter((o) => o.start < secs(d) + DAY && o.end > secs(d)).length })
 
   const step = (n: number) => {
     const next = view === "week" ? addDays(focus, 7 * n) : view === "day" ? addDays(focus, n) : view === "month" ? addMonths(focus, n) : addDays(focus, agendaDays * n)
@@ -145,6 +145,11 @@ export function CalendarView() {
   const pick = (d: Date) => {
     setFocus(startOfDay(d))
     if (view === "agenda" && tabletUp) setView("day")
+  }
+  // The same from the list column's month, which then shows the month of the day picked.
+  const pickDay = (d: Date) => {
+    pick(d)
+    setMonth(d)
   }
 
   const title =
@@ -237,7 +242,10 @@ export function CalendarView() {
       {sideColumn && (
         <aside className="flex w-(--c-shell-list-width) shrink-0 flex-col overflow-y-auto border-r bg-surface-ground" aria-label={tool ?? "Go to a date"}>
           <QuickAdd calendars={calendars} />
-          <MiniMonth month={month} onMonth={setMonth} selected={focus} onPick={pick} busy={busy} />
+          {/* The shared month grid (ADR-0088), until the calendar lane makes it "Go to date". */}
+          <div className="px-4 pb-4">
+            <MonthPicker month={month} onMonthChange={setMonth} selected={focus} onPick={pickDay} marks={busy} />
+          </div>
           {panel && <div className="px-4 pb-4">{panel}</div>}
         </aside>
       )}
@@ -288,6 +296,7 @@ export function CalendarView() {
             calendars={calendars}
             selected={selectedKey}
             onSelect={select}
+            onPickDay={pick}
             onDay={(d) => {
               setFocus(startOfDay(d))
               setView("day")

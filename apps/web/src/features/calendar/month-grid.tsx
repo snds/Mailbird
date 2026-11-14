@@ -1,39 +1,86 @@
 import { useState } from "react"
 
+import { SectionHeader, useAppFrame } from "@unicron/ui"
+import { MonthGrid as MonthPicker } from "@/components/month-grid"
 import type { Collection, Occurrence } from "@/core/types"
+import { calendarSwatches, eventSwatch, type SwatchNumber } from "@/lib/swatches"
 import { cn } from "@/lib/utils"
 
 import { eventStyle } from "./colors"
-import { DAY, addDays, fmt, sameDay, secs, startOfWeek } from "./dates"
+import { DAY, addDays, dayLabel, fmt, sameDay, secs, startOfWeek } from "./dates"
 import { occurrenceKey } from "./layout"
+import { OccurrenceCard } from "./occurrence-card"
 
 /** Chips per day before "+N more"; the rest are a tap away in the day view. */
 const PER_DAY = 3
 
-/**
- * Six weeks around a month. Each day lists its events (all-day first, then
- * by time) as compact chips; a day's number opens that day.
- */
-export function MonthGrid({
-  month,
-  occurrences,
-  calendars,
-  selected,
-  onSelect,
-  onDay,
-}: {
+interface MonthProps {
+  /** The day in focus: its month shows, and on a phone it is the picked day. */
   month: Date
   occurrences: Occurrence[]
   calendars: Map<string, Collection>
   selected: string | null
   onSelect: (o: Occurrence) => void
+  /** Opens a day in the day view. */
   onDay: (d: Date) => void
-}) {
+  /** Picks a day without leaving the month (the phone's Month). */
+  onPickDay: (d: Date) => void
+}
+
+const eventsOn = (occurrences: Occurrence[], d: Date) => occurrences.filter((o) => o.start < secs(d) + DAY && (o.end > secs(d) || (o.end === o.start && o.start >= secs(d))))
+
+/**
+ * Six weeks around a month. On a desktop each day lists its events (all-day
+ * first, then by time) as compact chips, and a day's number opens that day.
+ * On a phone the month is the shared month grid (ADR-0088; brief C1).
+ */
+export function MonthGrid(props: MonthProps) {
+  return useAppFrame().phone ? <PhoneMonth {...props} /> : <DesktopMonth {...props} />
+}
+
+/**
+ * The phone's Month (brief C1): the month grid with up to three swatch
+ * squares a day. Pressing a day picks it and lists its events under the grid.
+ */
+function PhoneMonth({ month, occurrences, calendars, selected, onSelect, onPickDay }: MonthProps) {
+  const swatches = calendarSwatches(calendars.values())
+  const list = eventsOn(occurrences, month)
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6" data-slot="month-grid">
+      <div className="shrink-0">
+      <MonthPicker
+        variant="month"
+        paging={false}
+        month={month}
+        // The page head pages the month; a key that leaves it moves the picked day with it.
+        onMonthChange={onPickDay}
+        selected={month}
+        onPick={onPickDay}
+        marks={(d) => {
+          const on = eventsOn(occurrences, d)
+          // One square a calendar, in the order of the day; an event of a calendar with no color adds none.
+          const seen = [...new Set(on.map((o) => swatches.get(o.calendarId)).filter((s): s is SwatchNumber => !!s))]
+          return { events: on.length, swatches: seen }
+        }}
+      />
+      </div>
+      <section className="flex shrink-0 flex-col gap-2" aria-label={dayLabel(month)}>
+        <SectionHeader title={dayLabel(month)} count={list.length} />
+        {list.length === 0 && <p className="type-body text-text-secondary">Nothing planned</p>}
+        {list.map((o) => (
+          <OccurrenceCard key={occurrenceKey(o)} occurrence={o} swatch={eventSwatch(swatches.get(o.calendarId))} selected={selected === occurrenceKey(o)} onOpen={() => onSelect(o)} />
+        ))}
+      </section>
+    </div>
+  )
+}
+
+function DesktopMonth({ month, occurrences, calendars, selected, onSelect, onDay }: MonthProps) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1)
   const start = startOfWeek(first)
   const days = Array.from({ length: 42 }, (_, i) => addDays(start, i))
   const [now] = useState(() => new Date())
-  const on = (d: Date) => occurrences.filter((o) => o.start < secs(d) + DAY && (o.end > secs(d) || (o.end === o.start && o.start >= secs(d))))
+  const on = (d: Date) => eventsOn(occurrences, d)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-slot="month-grid">

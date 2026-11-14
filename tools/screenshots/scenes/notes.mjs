@@ -36,6 +36,28 @@ export const scenes = [
     },
   },
   { name: "notes-note", run: (app) => note(app, /Cabin packing list/) }, // a checklist, linked to an event, in a color
+  {
+    // A reminder at any date and time (ADR-0088; brief N2): the shared picker from the note's bell.
+    name: "notes-remind-time",
+    run: async (app) => {
+      await note(app, /Cabin packing list/)
+      await press(app, button(app.page, "Remind me"))
+      await press(app, app.page.getByRole("menuitem", { name: "Pick a date and time…" }))
+      const picker = app.page.getByRole("dialog", { name: "Remind me" })
+      await press(app, picker.getByRole("gridcell", { name: /^Friday, November 13/ }))
+      await press(app, picker.getByRole("button", { name: "Set reminder", exact: true }))
+      ensure(!(await picker.count()), "Set reminder did not close the picker")
+      // The bell now says when; the picker opens from it again.
+      await press(app, app.page.getByRole("button", { name: /^Reminder: Tomorrow, 11:00/ }))
+      await press(app, app.page.getByRole("menuitem", { name: "Pick a date and time…" }))
+      await app.page.mouse.move(0, 0)
+    },
+    assert: async ({ page }) => {
+      const picker = page.getByRole("dialog", { name: "Remind me" })
+      ensure(await picker.getByRole("button", { name: "Set reminder", exact: true }).isVisible(), "the reminder picker has no Set reminder button")
+      ensure((await picker.getByRole("gridcell", { name: /^Friday, November 13/ }).getAttribute("aria-selected")) === "true", "the picker did not open on the reminder already set")
+    },
+  },
   { name: "notes-note-actions", run: (app) => noteAction(app) },
   { name: "notes-share", run: (app) => noteAction(app, "Share…") },
   { name: "notes-lock", run: (app) => noteAction(app, "Lock note") },

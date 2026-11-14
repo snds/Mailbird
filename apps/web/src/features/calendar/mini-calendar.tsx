@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 
 import { Badge, IconButton, Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@unicron/ui"
+import { MonthGrid } from "@/components/month-grid"
 import { getCoreClient, type AppJump } from "@/core/client"
 import { useCoreEvents, useOccurrences } from "@/core/queries"
 import type { Occurrence } from "@/core/types"
@@ -13,7 +14,6 @@ import { QuickAdd } from "./index"
 import { JoinButton } from "./join-button"
 import { occurrenceKey } from "./layout"
 import { placeLabel } from "./meeting"
-import { MiniMonth } from "./mini-month"
 import { AHEAD, nextUp, whenLabel } from "./next-up"
 import { useCalendars } from "./use-calendars"
 
@@ -36,7 +36,12 @@ export function MiniCalendar() {
   const { data: dayOcc = [] } = useOccurrences(secs(picked), secs(addDays(picked, 1)))
   const gridStart = startOfWeek(new Date(month.getFullYear(), month.getMonth(), 1))
   const { data: monthOcc = [] } = useOccurrences(secs(gridStart), secs(addDays(gridStart, 42)))
-  const busyDays = useMemo(() => new Set(monthOcc.flatMap((o) => daysOf(o))), [monthOcc])
+  // Events per day, for the month's marks and the days' names.
+  const busyDays = useMemo(() => {
+    const count = new Map<number, number>()
+    for (const day of monthOcc.flatMap((o) => daysOf(o))) count.set(day, (count.get(day) ?? 0) + 1)
+    return count
+  }, [monthOcc])
   const next = nextUp(soon, now)
 
   // The desktop brings its main window forward; a browser (the gateway) has
@@ -87,8 +92,8 @@ export function MiniCalendar() {
         )}
       </section>
 
-      <div className="pt-2">
-        <MiniMonth month={month} onMonth={setMonth} selected={picked} onPick={setPicked} busy={(d) => busyDays.has(startOfDay(d).getTime())} />
+      <div className="px-3 pt-2 pb-2">
+        <MonthGrid variant="compact" month={month} onMonthChange={setMonth} selected={picked} onPick={setPicked} marks={(d) => ({ events: busyDays.get(startOfDay(d).getTime()) ?? 0 })} />
       </div>
 
       <section aria-label={dayLabel(picked, today)} className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
@@ -119,7 +124,7 @@ export function MiniCalendar() {
   )
 }
 
-/** The local midnights an occurrence touches, for the month's busy dots. */
+/** The local midnights an occurrence touches, for the month's marks. */
 function daysOf(o: Occurrence): number[] {
   const out: number[] = []
   const end = o.end > o.start ? o.end - 1 : o.start

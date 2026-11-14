@@ -1,7 +1,9 @@
 import { useState } from "react"
 
 import { useUi, type EventEditorState } from "@/app/ui-store"
+import { DatePicker } from "@/components/date-picker"
 import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { ZonePicker } from "@/components/zone-picker"
 import { Icon, Button, NativeSelect, NativeSelectOption, Switch, Chip, ChipRemove, toast } from "@unicron/ui"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
 import type { EventInput, Repeat } from "@/core/types"
@@ -14,7 +16,7 @@ import { addDays, dateInput, deviceTimeZone, fromInputs, timeInput } from "./dat
 import { FindATime } from "./find-a-time"
 import { REMINDER_PRESETS, reminderLabel, travelLabel } from "./reminders"
 import { meetingService } from "./meeting"
-import { deviceZone, zoneAbbr, zoneCity, zonedDate, zonedInput, zones } from "./zones"
+import { deviceZone, zoneCity, zoneLabel, zonedDate, zonedInput } from "./zones"
 
 /** A fresh Jitsi room: unguessable, readable in a link. */
 function jitsiRoom() {
@@ -61,7 +63,28 @@ function nextHalfHour() {
 const label = "w-20 shrink-0 text-sm text-muted-foreground"
 const row = "flex min-h-12 items-center gap-3 border-b"
 const bare = "h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-const picker = "h-9 rounded-lg border bg-transparent px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+// The platform's time input, as tall as the date button beside it.
+const picker = "h-10 rounded-lg border bg-transparent px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+
+/** A date field (brief C3): a button that shows "Fri 11.20", is named "Start date, Friday, November 20, 2026", and opens the month grid. */
+function DateField({ name, value, onPick, min }: { name: string; value: string; onPick: (date: string) => void; min?: string }) {
+  const d = fromInputs(value)
+  const two = (n: number) => String(n).padStart(2, "0")
+  return (
+    <DatePicker
+      title={name}
+      value={value}
+      onPick={onPick}
+      min={min}
+      align="end"
+      trigger={
+        <Button type="button" variant="outline" aria-label={`${name}, ${d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}`}>
+          {`${d.toLocaleDateString(undefined, { weekday: "short" })} ${two(d.getMonth() + 1)}.${two(d.getDate())}`}
+        </Button>
+      }
+    />
+  )
+}
 
 function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => void }) {
   const { initial, eventId, guestOf } = state
@@ -187,14 +210,14 @@ function EventForm({ state, onDone }: { state: EventEditorState; onDone: () => v
         <div className={row}>
           <span className={label}>Starts</span>
           <div className="ml-auto flex flex-wrap justify-end gap-2 py-1.5">
-            <input type="date" aria-label="Start date" className={picker} value={startDate} onChange={(ev) => ev.target.value && moveStart(ev.target.value, startTime)} />
+            <DateField name="Start date" value={startDate} onPick={(date) => moveStart(date, startTime)} />
             {!allDay && <input type="time" aria-label="Start time" className={picker} value={startTime} onChange={(ev) => ev.target.value && moveStart(startDate, ev.target.value)} />}
           </div>
         </div>
         <div className={row}>
           <span className={label}>Ends</span>
           <div className="ml-auto flex flex-wrap justify-end gap-2 py-1.5">
-            <input type="date" aria-label="End date" className={picker} value={endDate} min={startDate} onChange={(ev) => setEndDate(ev.target.value)} />
+            <DateField name="End date" value={endDate} min={startDate} onPick={setEndDate} />
             {!allDay && <input type="time" aria-label="End time" className={picker} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} />}
           </div>
         </div>
@@ -324,29 +347,29 @@ function ZoneRow({ zone, onZone, start, end }: { zone: string; onZone: (z: strin
   const mine = deviceZone()
   const at = zonedDate(start[0], start[1], zone)
   const until = zonedDate(end[0], end[1], zone)
-  const name = (z: string) => `${zoneCity(z)} (${zoneAbbr(z, at)})`
-  const rest = zones().filter((z) => z !== mine && z !== zone)
   const time = (d: Date) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
   const sameDay = at.toDateString() === until.toDateString()
+  const valid = !Number.isNaN(at.getTime())
   return (
     <>
       <div className={row}>
-        <label htmlFor="event-zone" className={label}>
-          Time zone
-        </label>
-        <NativeSelect id="event-zone" value={zone} onChange={(ev) => onZone(ev.target.value)} className="ml-auto max-w-[70%] pointer-fine:max-w-[60%]">
-          <NativeSelectOption value={mine}>{`Yours · ${name(mine)}`}</NativeSelectOption>
-          {zone !== mine && <NativeSelectOption value={zone}>{name(zone)}</NativeSelectOption>}
-          <optgroup label="Other zones">
-            {rest.map((z) => (
-              <NativeSelectOption key={z} value={z}>
-                {`${z.replace(/_/g, " ")} (${zoneAbbr(z, at)})`}
-              </NativeSelectOption>
-            ))}
-          </optgroup>
-        </NativeSelect>
+        <span className={label}>Time zone</span>
+        <span className="ml-auto min-w-0 truncate text-sm" data-slot="event-zone">
+          {zoneLabel(zone, valid ? at : undefined)}
+        </span>
+        {/* Every zone, found by typing (brief C3): "Yours" first. */}
+        <ZonePicker
+          value={zone}
+          onPick={(z) => onZone(z ?? mine)}
+          at={valid ? at : undefined}
+          trigger={
+            <Button type="button" variant="ghost" size="sm" aria-label="Change time zone">
+              Change
+            </Button>
+          }
+        />
       </div>
-      {zone !== mine && !Number.isNaN(at.getTime()) && (
+      {zone !== mine && valid && (
         <p className="border-b py-2 text-xs text-muted-foreground" data-slot="zone-note">
           {`That's ${at.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${time(at)}–${sameDay ? "" : `${until.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, `}${time(until)} your time (${zoneCity(mine)}).`}
         </p>

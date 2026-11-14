@@ -49,3 +49,152 @@
     );
   }
 }
+
+/* ── The month grid (components/month-grid.tsx; ADR-0088) ────────────────────
+   Weekday initials over six weeks of plain cells. A day is its whole cell, as
+   the drawn week strip's day is (Mobile / 08): the picked day is the primary
+   block, today has the 2 px edge under it, a day outside the month is faint. */
+:root,
+.light,
+.dark,
+[data-theme] {
+  /* A day's height: 40 under a pointer, 48 under a finger. Its width is a seventh of the grid's. */
+  --c-month-grid-cell: calc(var(--spacing) * 10);
+  --c-month-grid-cell-touch: calc(var(--spacing) * 12);
+  /* The phone's Month: room for the swatch squares under the date. */
+  --c-month-grid-cell-month: calc(var(--spacing) * 12);
+  /* The menu-bar window. */
+  --c-month-grid-cell-compact: calc(var(--spacing) * 9);
+  /* The "has events" square. */
+  --c-month-grid-busy: var(--spacing);
+}
+
+@layer components {
+  .month-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title paging"
+      "days days";
+    align-items: center;
+    row-gap: calc(var(--spacing) * 2);
+  }
+  .month-grid-title {
+    grid-area: title;
+    color: var(--text-secondary);
+  }
+  .month-grid-paging {
+    grid-area: paging;
+    display: flex;
+  }
+  .month-grid-days {
+    grid-area: days;
+    display: grid;
+  }
+  .month-grid-week {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .month-grid-weekday {
+    display: grid;
+    place-items: center;
+    height: calc(var(--spacing) * 6);
+  }
+  .month-grid-day {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: var(--c-month-grid-cell);
+    border-radius: var(--radius);
+    color: var(--text-body);
+    outline: none;
+    cursor: default;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-variant-numeric: tabular-nums;
+    &[data-outside],
+    &[aria-disabled="true"] {
+      color: var(--text-faint);
+    }
+    /* A day that cannot be picked (before a range's start) is struck through, so it is not taken for a day of another month. */
+    &[aria-disabled="true"] {
+      text-decoration: line-through;
+    }
+    &[data-pick] {
+      cursor: pointer;
+    }
+    /* Under a pointer only: a finger leaves no hover behind. */
+    @media (hover: hover) {
+      &[data-pick]:hover {
+        background: var(--state-hover);
+      }
+    }
+    &[data-pick]:active {
+      background: var(--state-pressed);
+    }
+    /* Today, while another day is picked: its own ink, and the edge under it. */
+    &[data-today] {
+      box-shadow: inset 0 calc(var(--stroke-emphasis) * -1) 0 0 var(--primary-fill);
+    }
+    /* The picked day; today where no day can be picked. */
+    &[data-block],
+    &[data-block]:hover,
+    &[data-block]:active {
+      background: var(--primary-fill);
+      color: var(--primary-on-fill);
+      box-shadow: none;
+    }
+    &:focus-visible {
+      outline: var(--stroke-emphasis) solid var(--ring);
+      outline-offset: var(--stroke-emphasis);
+      z-index: 1;
+    }
+  }
+  /* The mark sits under the date without moving it. */
+  .month-grid-marks {
+    position: absolute;
+    inset-inline: 0;
+    bottom: var(--spacing);
+    display: flex;
+    justify-content: center;
+    gap: calc(var(--spacing) * 0.5);
+  }
+  .month-grid-busy {
+    width: var(--c-month-grid-busy);
+    height: var(--c-month-grid-busy);
+    background: var(--text-label);
+  }
+  .month-grid-day[data-outside] .month-grid-busy {
+    background: var(--text-faint);
+  }
+  .month-grid-day[data-block] .month-grid-busy {
+    background: var(--primary-on-fill);
+  }
+  .month-grid[data-variant="month"] .month-grid-day {
+    height: var(--c-month-grid-cell-month);
+    justify-content: flex-start;
+    padding-top: var(--spacing);
+  }
+  .month-grid[data-variant="month"] .month-grid-marks {
+    bottom: calc(var(--spacing) * 2);
+    align-items: center;
+    height: calc(var(--spacing) * 2);
+  }
+  .month-grid[data-variant="compact"] .month-grid-day {
+    height: var(--c-month-grid-cell-compact);
+  }
+  .month-grid[data-variant="compact"] .month-grid-marks {
+    bottom: calc(var(--spacing) * 0.5);
+  }
+  /* A finger gets a day of 48, whatever the variant: above the touch minimum, and on the 4 px grid. */
+  @media (pointer: coarse) {
+    .month-grid .month-grid-day {
+      height: var(--c-month-grid-cell-touch);
+    }
+    .month-grid[data-variant="compact"] .month-grid-marks {
+      bottom: var(--spacing);
+    }
+  }
+}

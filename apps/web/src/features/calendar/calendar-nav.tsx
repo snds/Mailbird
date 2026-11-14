@@ -4,7 +4,7 @@ import { IconButton, NavItem, NavSection, Skeleton } from "@unicron/ui"
 import { useAccounts, useCollections, usePimAction } from "@/core/queries"
 import type { Collection } from "@/core/types"
 
-import { calendarSwatches } from "./swatches"
+import { calendarSwatches } from "@/lib/swatches"
 import { openAddCalendars } from "./open-add-calendars"
 import { useCalendars } from "./use-calendars"
 import { openSaveSet, useSets } from "./use-sets"

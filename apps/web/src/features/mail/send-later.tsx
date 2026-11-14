@@ -1,8 +1,8 @@
 import { useState, type ReactElement, type ReactNode } from "react"
 
-import { Icon, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldDescription, FieldLabel, Input, DialogAction, DialogActions } from "@unicron/ui"
-import { useNowSecs } from "@/hooks/use-now"
-import { FOLLOW_UP_OPTIONS, fromLocalInput, longTime, sendLaterOptions, snoozeOptions, toLocalInput } from "@/lib/time"
+import { Icon, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@unicron/ui"
+import { DateTimePicker, MenuAnchor } from "@/components/date-picker"
+import { FOLLOW_UP_OPTIONS, longTime, sendLaterOptions, snoozeOptions } from "@/lib/time"
 
 /** "9:00 AM for Priya", and when that is for you. */
 export interface TheirMorning {
@@ -29,9 +29,17 @@ export function SendLaterMenu({
 }) {
   const [custom, setCustom] = useState(false)
   return (
-    <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>
+        {/* The picker stands where the menu did: both open from the one button (ADR-0088). */}
+        <DateTimePicker
+          open={custom}
+          onOpenChange={(open) => !open && setCustom(false)}
+          trigger={<MenuAnchor menu={<DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>} />}
+          title="Send later"
+          note="If the desktop app is closed then, it sends when it next opens. A gateway sends on time."
+          action="Schedule"
+          onPick={onPick}
+        />
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Send later…</DropdownMenuLabel>
@@ -65,15 +73,6 @@ export function SendLaterMenu({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <PickTimeDialog
-        open={custom}
-        onOpenChange={setCustom}
-        title="Send later"
-        description="Vale sends it at this time. The desktop app sends it the next time it runs if it's closed then; a gateway sends it on time."
-        action="Schedule"
-        onPick={onPick}
-      />
-    </>
   )
 }
 
@@ -110,9 +109,16 @@ export function FollowUpAfterMenu({ trigger, children, value, onChange }: { trig
 export function FollowUpAtMenu({ trigger, children, onPick }: { trigger: ReactElement; children: ReactNode; onPick: (at: number, label: string) => void }) {
   const [custom, setCustom] = useState(false)
   return (
-    <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>
+        <DateTimePicker
+          open={custom}
+          onOpenChange={(open) => !open && setCustom(false)}
+          trigger={<MenuAnchor menu={<DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>} />}
+          title="Remind me if no reply"
+          note="If nobody has replied by then, the conversation comes back to the top of your inbox."
+          action="Set reminder"
+          onPick={(at) => onPick(at, longTime(at))}
+        />
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Remind me if no reply…</DropdownMenuLabel>
@@ -131,72 +137,5 @@ export function FollowUpAtMenu({ trigger, children, onPick }: { trigger: ReactEl
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <PickTimeDialog
-        open={custom}
-        onOpenChange={setCustom}
-        title="Remind me if no reply"
-        description="If nobody has replied by then, the conversation comes back to the top of your inbox."
-        action="Set reminder"
-        onPick={(at) => onPick(at, longTime(at))}
-      />
-    </>
-  )
-}
-
-export function PickTimeDialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  action,
-  onPick,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description: string
-  action: string
-  onPick: (at: number) => void
-}) {
-  // Starts an hour out, on the hour.
-  const [value, setValue] = useState(() => toLocalInput(Math.ceil(Date.now() / 3_600_000 + 1) * 3600))
-  const at = fromLocalInput(value)
-  const now = useNowSecs(15_000)
-  const tooSoon = at !== null && at <= now + 60
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <form
-          className="flex flex-col gap-4"
-          // React events cross portals: keep these from reaching a composer form around the menu.
-          onKeyDown={(e) => e.stopPropagation()}
-          onSubmit={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            if (at === null || tooSoon) return
-            onOpenChange(false)
-            onPick(at)
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>{description}</DialogDescription>
-          </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="pick-time">Date and time</FieldLabel>
-            <Input id="pick-time" type="datetime-local" required value={value} onChange={(e) => setValue(e.target.value)} />
-            {tooSoon && <FieldDescription className="text-destructive">Pick a time at least a minute from now.</FieldDescription>}
-          </Field>
-          <DialogActions>
-            <DialogAction kind="cancel" type="button" onClick={() => onOpenChange(false)}>
-              Cancel
-            </DialogAction>
-            <DialogAction type="submit" disabled={at === null || tooSoon}>
-              {action}
-            </DialogAction>
-          </DialogActions>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }

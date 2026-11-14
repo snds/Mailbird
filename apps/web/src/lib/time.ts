@@ -93,19 +93,6 @@ export const FOLLOW_UP_OPTIONS: FollowUpOption[] = [
   { label: "1 week", after: 7 * 86_400 },
 ]
 
-/** A time as the value of an `<input type="datetime-local">`, in local time. */
-export function toLocalInput(secs: number) {
-  const d = toDate(secs)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-/** The inverse of `toLocalInput`; null when the field is empty or invalid. */
-export function fromLocalInput(value: string): number | null {
-  const t = new Date(value).getTime()
-  return Number.isNaN(t) ? null : Math.floor(t / 1000)
-}
-
 /** A reminder's time, as short as it can be without being vague:
  * "Today, 3:00 PM", "Tomorrow, 8:00 AM", "Tue, 8:00 AM", "Oct 21, 8:00 AM". */
 export function reminderLabel(secs: number, now = new Date()) {

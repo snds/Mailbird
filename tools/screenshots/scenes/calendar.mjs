@@ -1,5 +1,6 @@
 // Calendar: every view, an event and its editor, the calendars list, booking links, and the menu-bar window.
 import { area, button, ensure, formLayer, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer, toastGone } from "./helpers.mjs"
+import { compose } from "./mail.mjs"
 import { settings } from "./settings.mjs"
 
 /** Opens Calendar in one view (Agenda, Day, Week, Month). */
@@ -163,7 +164,7 @@ export const scenes = [
     sizes: ["phone", "desktop", "medium"],
     run: async (app) => {
       await settings(app, "Calendar")
-      ensure(await app.page.getByRole("combobox", { name: "Second time zone" }).isVisible(), "Settings › Calendar has no second time zone")
+      ensure(await app.page.getByRole("group", { name: "Second time zone" }).isVisible(), "Settings › Calendar has no second time zone")
       await area(app, "Calendar")
       await pick(app, "Booking links")
     },
@@ -174,5 +175,143 @@ export const scenes = [
       if (await sidebar(page).locator('[aria-label="Booking links"]').count()) ensure((await oneCurrent(sidebar(page), "the sidebar")) === "Booking links", "Booking links is not the sidebar's current place")
     },
   },
-  { name: "mini-calendar", path: "/?mini" }, // the menu-bar calendar's own small window (ADR-0054)
+  {
+    // The menu-bar calendar's own small window (ADR-0054). Its month is the shared month grid (ADR-0088).
+    name: "mini-calendar",
+    path: "/?mini",
+    assert: async ({ page }) => {
+      const grid = page.getByRole("grid", { name: "November 2026" })
+      ensure(await grid.getByRole("gridcell", { name: /^Thursday, November 12, today, \d+ events?$/ }).getAttribute("aria-selected") === "true", "today is not the picked day, named with its events")
+      ensure((await grid.getByRole("gridcell").count()) === 42, "the month is not six weeks")
+    },
+  },
+  {
+    // The date-and-time picker and the month grid's keys (ADR-0088; briefs M8 and C3), from the
+    // composer's Send later: a popover on a desktop, a sheet on a phone. It ends on Friday the 20th
+    // picked, so the picture shows the block, and today's edge under the 12th.
+    name: "picker-keys",
+    sean: { kind: "undrawn", area: "mail", screen: "pick-date-time" },
+    run: async (app) => {
+      const { page } = app
+      const message = await compose(app)
+      const open = async () => {
+        // (Held as an element: an open menu hides the form behind it from roles.)
+        const later = await message.getByRole("button", { name: "Send later" }).elementHandle()
+        await later.click()
+        await app.settle()
+        // The one button opens the menu and anchors the picker: it says the menu's state, not the picker's.
+        ensure((await later.getAttribute("aria-expanded")) === "true" && (await later.getAttribute("aria-haspopup")) === "menu", "Send later does not say its menu is open")
+        await press(app, page.getByRole("menuitem", { name: "Pick a time…" }))
+        ensure((await later.getAttribute("aria-expanded")) === "false", "Send later says its menu is open under the picker")
+        return page.getByRole("dialog", { name: "Send later" })
+      }
+      let picker = await open()
+      // Esc closes the picker, and only the picker.
+      await page.keyboard.press("Escape")
+      await app.settle()
+      ensure(!(await picker.count()), "Esc did not close the picker")
+      ensure(await message.isVisible(), "Esc in the picker closed the message too")
+      picker = await open()
+      const box = await picker.boundingBox()
+      if (app.phone) ensure(Math.round(box.width) === app.viewport.width && Math.round(box.y + box.height) === app.viewport.height, "on a phone the picker is not a sheet at the foot")
+      else ensure(Math.round(box.width) === 320, `the picker's popover is ${Math.round(box.width)} wide, not 320`)
+      const focused = () => page.evaluate(() => `${document.activeElement?.getAttribute("role")}: ${document.activeElement?.getAttribute("aria-label")}`)
+      const grid = (month) => picker.getByRole("grid", { name: month })
+      const day = (name) => picker.getByRole("gridcell", { name })
+      // It opens on the picked day: today.
+      ensure(/^gridcell: Thursday, November 12/.test(await focused()), `the picker opened on "${await focused()}", not on its day`)
+      ensure((await day(/^Thursday, November 12/).getAttribute("aria-selected")) === "true", "today is not the picked day")
+      ensure((await day(/^Thursday, November 12/).getAttribute("aria-current")) === "date", "today is not marked as today")
+      // Arrows move a day, and a week.
+      await page.keyboard.press("ArrowRight")
+      ensure(/November 13/.test(await focused()), `ArrowRight went to "${await focused()}"`)
+      await page.keyboard.press("ArrowDown")
+      ensure(/November 20/.test(await focused()), `ArrowDown went to "${await focused()}"`)
+      ensure((await day(/^Thursday, November 12/).getAttribute("aria-selected")) === "true", "moving with the arrows picked a day")
+      // Enter picks.
+      await page.keyboard.press("Enter")
+      ensure((await day(/^Friday, November 20/).getAttribute("aria-selected")) === "true", "Enter did not pick the day")
+      ensure(await picker.isVisible(), "Enter in the grid closed the picker")
+      // Page Down and Page Up move a month; the grid is named for it.
+      await page.keyboard.press("PageDown")
+      await app.settle()
+      ensure(await grid("December 2026").isVisible(), "Page Down did not show December")
+      ensure(/December 20/.test(await focused()), `Page Down went to "${await focused()}"`)
+      await page.keyboard.press("PageUp")
+      await app.settle()
+      ensure(await grid("November 2026").isVisible(), "Page Up did not return to November")
+      // Home and End: the week's ends.
+      await page.keyboard.press("Home")
+      ensure(/Sunday, November 15/.test(await focused()), `Home went to "${await focused()}"`)
+      await page.keyboard.press("End")
+      ensure(/Saturday, November 21/.test(await focused()), `End went to "${await focused()}"`)
+      // An arrow off the month's edge shows the next month.
+      for (let i = 0; i < 2; i++) await page.keyboard.press("ArrowDown")
+      await app.settle()
+      ensure(await grid("December 2026").isVisible() && /December 5/.test(await focused()), `two weeks down went to "${await focused()}"`)
+      // The paging buttons.
+      await press(app, picker.getByRole("button", { name: "Previous month" }))
+      ensure(await grid("November 2026").isVisible(), "Previous month did not return to November")
+      // A time in the past is the field's error, and the primary does not schedule.
+      const error = picker.getByText("Pick a time at least a minute from now.")
+      ensure(!(await error.count()), "the picker shows the error before a past time is picked")
+      await press(app, day(/^Wednesday, November 11/))
+      ensure(await error.isVisible(), "a past time shows no error")
+      ensure((await picker.getByRole("textbox", { name: "Time" }).getAttribute("aria-invalid")) === "true", "the Time field is not marked invalid")
+      await press(app, picker.getByRole("button", { name: "Schedule", exact: true }))
+      ensure(await picker.isVisible(), "a past time was scheduled")
+      // Back on a day ahead, the error goes.
+      await press(app, day(/^Friday, November 20/))
+      ensure(!(await error.count()), "the error stayed after a day ahead was picked")
+      await page.mouse.move(0, 0)
+    },
+    assert: async ({ page }) => {
+      const picker = page.getByRole("dialog", { name: "Send later" })
+      ensure((await picker.getByRole("button", { name: "Schedule", exact: true }).count()) === 1, "the picker does not have its one primary")
+      ensure((await picker.getByRole("gridcell").count()) === 42, "the month is not six weeks")
+      ensure((await picker.getByRole("columnheader").count()) === 7, "the month has no weekday initials")
+    },
+  },
+  {
+    // The time-zone picker (ADR-0088; brief C3), from a new event: "Yours" first, found by typing.
+    name: "zone-picker",
+    run: async (app) => {
+      const { page } = app
+      const form = await newEvent(app)
+      const open = async () => {
+        await press(app, form.getByRole("button", { name: "Change time zone" }))
+        return page.getByRole("dialog", { name: "Time zone" })
+      }
+      let picker = await open()
+      const options = picker.getByRole("option")
+      ensure(/^Yours \/\/ Los Angeles/.test((await options.first().innerText()).trim()), `the first zone is "${await options.first().innerText()}", not yours`)
+      const all = await options.count()
+      ensure(all > 300, `the list has ${all} zones`)
+      const search = picker.getByRole("combobox", { name: "Search time zones" })
+      await search.fill("lisb")
+      await app.settle()
+      const found = await options.allInnerTexts()
+      ensure(found.length === 1 && /^Lisbon/.test(found[0].trim()), `"lisb" found: ${found.join(" | ")}`)
+      // By short name too, and by region.
+      await search.fill("PST")
+      await app.settle()
+      ensure(/^Yours/.test((await options.first().innerText()).trim()), "your zone is not found by its short name")
+      await search.fill("europe")
+      await app.settle()
+      ensure((await options.count()) > 20 && (await options.count()) < all, `"europe" found ${await options.count()} zones`)
+      await search.fill("zzzz")
+      await app.settle()
+      ensure(await picker.getByText("No time zone like that.").isVisible(), "nothing found says nothing")
+      await search.fill("lisbon")
+      await app.settle()
+      await press(app, options.first())
+      ensure(!(await picker.count()), "picking a zone did not close the picker")
+      ensure(/^Lisbon \(/.test((await form.locator('[data-slot="event-zone"]').innerText()).trim()), "the event does not show Lisbon")
+      ensure(/your time \(Los Angeles\)/.test(await form.locator('[data-slot="zone-note"]').innerText()), "the event does not say what that is on your clock")
+      // The picture: the list open again, narrowed, with the picked zone marked.
+      picker = await open()
+      await picker.getByRole("combobox", { name: "Search time zones" }).fill("lis")
+      await app.settle()
+    },
+  },
 ]

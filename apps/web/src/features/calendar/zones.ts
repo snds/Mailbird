@@ -52,6 +52,12 @@ export function zoneAbbr(zone: string, at: Date) {
   return new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: "short" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? zoneCity(zone)
 }
 
+/** "Yours // Los Angeles (PST)", or "Lisbon (WET)" for any other zone: how a row shows the zone it holds. */
+export function zoneLabel(zone: string, at = new Date()) {
+  const name = `${zoneCity(zone)} (${zoneAbbr(zone, at)})`
+  return zone === deviceZone() ? `Yours // ${name}` : name
+}
+
 /** The wall time in `zone` at the instant `at`: "3 PM", or "3:30 PM" for half-hour zones. */
 export function zoneHour(zone: string, at: Date) {
   const minute = Number(new Intl.DateTimeFormat("en-US", { timeZone: zone, minute: "numeric" }).format(at))
