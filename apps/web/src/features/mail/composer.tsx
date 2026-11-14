@@ -1,12 +1,13 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { useUi, type ComposerDraft } from "@/app/ui-store"
-import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, Sheet, SheetContent, SheetTitle, DialogAction, DialogActions, toast, useAppFrame } from "@unicron/ui"
-import { FormStrip } from "@/app/status"
+import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { Icon, Button, ButtonGroup, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Field, FieldLabel, Input, NativeSelect, NativeSelectOption, DialogAction, DialogActions, toast, useAppFrame } from "@unicron/ui"
 import { getCoreClient } from "@/core/client"
 import { useAccounts, useCore, useLocalTimes, useMailPrefs, useSignatures, useTemplates } from "@/core/queries"
 import type { Draft, LocalTime, OutgoingAttachment, Template } from "@/core/types"
 import { useNowSecs } from "@/hooks/use-now"
+import { useLeaveGuard } from "@/lib/leave-guard"
 import { FOLLOW_UP_OPTIONS, longTime, nextLocalHour, partOfDay, timeThere, utcLabel } from "@/lib/time"
 
 import { UNDO_SECONDS, formatRecipients, formatSize, parseRecipients } from "./format"
@@ -62,57 +63,31 @@ function theirMornings(times: LocalTime[], now: number): (TheirMorning & { offse
   return out
 }
 
-/** Mounted once at the app root; opens whenever `useUi().composer` is set. */
-/** The form marks its first field (To, or the body for replies); the dialog focuses it once open. */
-const firstField = () => document.querySelector<HTMLElement>("[data-composer-focus]") ?? true
 /** Undo can reopen the composer while its close is still finishing; don't hand focus back to the page then. */
 const returnFocus = () => useUi.getState().composer === null
 
+/**
+ * Mounted once at the app root; opens whenever `useUi().composer` is set.
+ * The form layer at its compose size (ADR-0087): a dialog from medium width
+ * up, the whole screen in the phone's shells. The form marks its first field
+ * (To, or the body for replies); the layer focuses it once open.
+ */
 export function ComposeMail() {
   const draft = useUi((s) => s.composer)
   const close = useUi((s) => s.closeComposer)
-  // A dialog from medium width up; a full-screen sheet in the phone's shells (the frame's width class, ADR-0083).
-  const tabletUp = !useAppFrame().phone
-  const open = draft !== null
   // Loaded while closed, so a new message opens with its signature in place.
   useSignatures()
   useTemplates()
-
-  const body = open ? <ComposerForm key={JSON.stringify(draft)} initial={draft} onDone={close} /> : null
-
-  if (tabletUp) {
-    return (
-      <Dialog open={open} onOpenChange={(o) => !o && close()}>
-        <DialogContent size="xl" className="flex max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-0 [--c-dialog-padding:0]" showCloseButton={false} initialFocus={firstField} finalFocus={returnFocus}>
-          <DialogTitle className="sr-only">New message</DialogTitle>
-          {body}
-        </DialogContent>
-      </Dialog>
-    )
-  }
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && close()}>
-      {/* Full-screen on phones, like Apple Mail and Gmail. */}
-      {/* Above the keyboard on iOS too, which covers the page instead of resizing it. */}
-      <SheetContent
-        side="bottom"
-        fullscreen
-        className="data-[side=bottom]:bottom-(--keyboard-inset) data-[side=bottom]:h-[calc(100dvh-var(--keyboard-inset))]"
-        showCloseButton={false}
-        initialFocus={firstField}
-        finalFocus={returnFocus}
-      >
-        <SheetTitle className="sr-only">New message</SheetTitle>
-        {body}
-        <FormStrip />
-      </SheetContent>
-    </Sheet>
+    <FormLayer open={draft !== null} onClose={close} size="compose" finalFocus={returnFocus}>
+      {draft !== null && <ComposerForm key={JSON.stringify(draft)} initial={draft} onDone={close} />}
+    </FormLayer>
   )
 }
 
 function Row({ label, children, htmlFor }: { label: string; children: ReactNode; htmlFor?: string }) {
   return (
-    <div className="flex min-h-11 items-center gap-2 border-b px-4">
+    <div className="flex min-h-11 items-center gap-2 border-b">
       <label htmlFor={htmlFor} className="w-14 shrink-0 text-sm text-muted-foreground">
         {label}
       </label>
@@ -130,6 +105,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
   const { data: templates = [] } = useTemplates()
   const openComposer = useUi((s) => s.openComposer)
   const openSettings = useUi((s) => s.openSettings)
+  const phone = useAppFrame().phone
   const [chosenAccount, setAccountId] = useState(initial.accountId ?? "")
   // Default to the first account without an effect (accounts may load after open).
   const accountId = chosenAccount || accounts[0]?.id || ""
@@ -293,17 +269,36 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
     }
   }
 
+  // Closing asks whenever the message holds a recipient, a subject, text or a file (brief X6): a reply
+  // and a message reopened by Undo send always do. The signature alone is not writing.
+  useLeaveGuard(() => {
+    if (to.trim() || (showCc && cc.trim()) || subject.trim() || files.length) return true
+    const html = editor.isEmpty ? "" : editor.getHTML()
+    return htmlToText(shownBlock.current ? html.replace(shownBlock.current, "") : html).trim() !== ""
+  })
+  const cannotSend = accounts.length === 0 || totalBytes > MAX_ATTACHMENTS
+  const sendLater = (
+    <SendLaterMenu onPick={setSendAt} theirs={theirs} trigger={<Button type="button" variant={phone ? "ghost" : "default"} size="icon" aria-label="Send later" disabled={sending || accounts.length === 0} />}>
+      <Icon name={phone ? "time" : "chevron--down"} />
+    </SendLaterMenu>
+  )
+
   return (
-    <form
+    <FormLayerForm
       ref={formRef}
-      className="flex min-h-0 flex-1 flex-col"
-      onSubmit={(e) => (e.preventDefault(), void send())}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-          e.preventDefault()
-          void send()
-        }
-      }}
+      overline="New message"
+      title={subject.trim() || "New message"}
+      primary={{ label: sendAt === null ? "Send" : "Schedule", icon: sendAt === null ? "send--alt" : "time", disabled: cannotSend, loading: sending }}
+      primaryControl={
+        <ButtonGroup>
+          <Button type="submit" disabled={cannotSend} loading={sending} aria-keyshortcuts="Control+Enter Meta+Enter">
+            <Icon name={sendAt === null ? "send--alt" : "time"} data-icon="inline-start" /> {sendAt === null ? "Send" : "Schedule"}
+          </Button>
+          {sendLater}
+        </ButtonGroup>
+      }
+      error={error}
+      onSubmit={() => void send()}
       // Drop files anywhere on the composer to attach them.
       onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
       onDrop={(e) => {
@@ -311,23 +306,70 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         e.preventDefault()
         void addFiles(e.dataTransfer.files)
       }}
+      footerStart={
+        <>
+          <input ref={picker} type="file" multiple hidden onChange={(e) => (void addFiles(e.target.files), (e.target.value = ""))} />
+            {phone && sendLater}
+          <Button type="button" variant="ghost" size="icon" aria-label="Attach files" onClick={() => picker.current?.click()}>
+              <Icon name="attachment" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="Templates" />}>
+                <Icon name="document" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                {templates.length > 0 && (
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Insert a template</DropdownMenuLabel>
+                    {templates.map((t) => (
+                      <DropdownMenuItem key={t.id} onClick={() => insertTemplate(t)}>
+                        <Icon name="document" />
+                        <span className="truncate">{t.name}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                )}
+                {templates.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onClick={() => setSavingTemplate(true)} disabled={editor.isEmpty}>
+                  <Icon name="save" />
+                  Save as template…
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openSettings("writing")}>
+                  <Icon name="edit" />
+                  Signatures and templates…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem checked={receipt} onCheckedChange={(on) => setReceipt(on)}>
+                  <Icon name="email" />
+                  Ask for a read receipt
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <FollowUpAfterMenu
+              value={followUp}
+              onChange={setFollowUp}
+              trigger={<Button type="button" variant={followUp ? "secondary" : "ghost"} size={followUp ? "sm" : "icon"} aria-label="Remind me if no reply" />}
+            >
+              <Icon name={followUp ? "notification--filled" : "notification"} data-icon={followUp ? "inline-start" : undefined} />
+              {followUp ? `Remind in ${FOLLOW_UP_OPTIONS.find((o) => o.after === followUp)?.label ?? "a while"}` : null}
+            </FollowUpAfterMenu>
+            {totalBytes > MAX_ATTACHMENTS ? (
+              <span className="text-xs text-destructive">Attachments total {formatSize(totalBytes)} — over the 25 MB most servers accept.</span>
+            ) : sendAt !== null ? (
+              <span className="hidden text-xs text-muted-foreground sm:inline">Until then, change or cancel it in Scheduled.</span>
+            ) : (
+              <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
+                <Icon name="undo" size="sm" />
+                You can undo for {UNDO_SECONDS} seconds after sending.
+              </span>
+            )}
+            {core?.kind === "demo" && <span className="text-xs text-muted-foreground">Sample mode — nothing really leaves.</span>}
+        </>
+      }
     >
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2">
-        <Button type="button" variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-        <h2 className="flex-1 truncate text-center text-sm font-semibold">{subject.trim() || "New message"}</h2>
-        <ButtonGroup>
-          <Button type="submit" disabled={sending || accounts.length === 0 || totalBytes > MAX_ATTACHMENTS} aria-keyshortcuts="Control+Enter Meta+Enter">
-            <Icon name={sendAt === null ? "send--alt" : "time"} data-icon="inline-start" /> {sendAt === null ? "Send" : "Schedule"}
-          </Button>
-          <SendLaterMenu onPick={setSendAt} theirs={theirs} trigger={<Button type="button" size="icon" aria-label="Send later" disabled={sending || accounts.length === 0} />}>
-            <Icon name="chevron--down" />
-          </SendLaterMenu>
-        </ButtonGroup>
-      </header>
+      <div className="flex min-h-0 flex-1 flex-col">
       {sendAt !== null && (
-        <p className="flex items-center gap-2 border-b bg-accent/50 px-4 py-2 text-sm">
+        <p className="flex items-center gap-2 border-b bg-accent/50 px-2 py-2 text-sm">
           <Icon name="time" tone="muted" size="sm" />
           <span className="flex-1">Sends {longTime(sendAt)}</span>
           <Button type="button" variant="ghost" size="sm" onClick={() => setSendAt(null)}>
@@ -362,7 +404,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
       )}
       {late && (
         // Outside their working hours: say so, and offer their morning (ADR-0041).
-        <p data-slot="recipient-local-time" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/40 px-4 py-2 text-sm">
+        <p data-slot="recipient-local-time" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/40 px-2 py-2 text-sm">
           <Icon name={late.day === "Night there" ? "moon" : "time"} tone="muted" size="sm" />
           {/* On phones the sentence gets the line and the offer drops under it, aligned with the text. */}
           <span className="min-w-0 flex-1 max-sm:basis-[calc(100%-1.5rem)]">
@@ -379,15 +421,13 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         <input id="composer-subject" className={bare} value={subject} onChange={(e) => setSubject(e.target.value)} />
       </Row>
 
-      {error && (
-        <p role="alert" className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          <Icon name="warning" size="sm" /> {error}
-        </p>
-      )}
 
-      <RichEditor editor={editor} />
+      {/* The editor pads its own text: out by that much, it lines up with the fields. */}
+      <div className="-mx-4 flex min-h-0 flex-1 flex-col">
+        <RichEditor editor={editor} />
+      </div>
       {files.length > 0 && (
-        <ul className="flex flex-wrap gap-2 border-t px-4 py-2" aria-label="Attachments">
+        <ul className="flex flex-wrap gap-2 border-t py-2" aria-label="Attachments">
           {files.map((f, i) => (
             <li key={`${f.filename}-${i}`} className="flex max-w-full items-center gap-1.5 rounded-lg border bg-muted/40 py-1 pr-1 pl-2 text-xs">
               <Icon name="attachment" tone="muted" size="sm" />
@@ -401,63 +441,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         </ul>
       )}
       <FormatBar editor={editor} />
-      <footer className="flex shrink-0 items-center gap-2 border-t px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground">
-        <input ref={picker} type="file" multiple hidden onChange={(e) => (void addFiles(e.target.files), (e.target.value = ""))} />
-        <Button type="button" variant="ghost" size="icon" aria-label="Attach files" onClick={() => picker.current?.click()}>
-          <Icon name="attachment" />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="Templates" />}>
-            <Icon name="document" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            {templates.length > 0 && (
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Insert a template</DropdownMenuLabel>
-                {templates.map((t) => (
-                  <DropdownMenuItem key={t.id} onClick={() => insertTemplate(t)}>
-                    <Icon name="document" />
-                    <span className="truncate">{t.name}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            )}
-            {templates.length > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuItem onClick={() => setSavingTemplate(true)} disabled={editor.isEmpty}>
-              <Icon name="save" />
-              Save as template…
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openSettings("writing")}>
-              <Icon name="edit" />
-              Signatures and templates…
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem checked={receipt} onCheckedChange={(on) => setReceipt(on)}>
-              <Icon name="email" />
-              Ask for a read receipt
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <FollowUpAfterMenu
-          value={followUp}
-          onChange={setFollowUp}
-          trigger={<Button type="button" variant={followUp ? "secondary" : "ghost"} size={followUp ? "sm" : "icon"} aria-label="Remind me if no reply" />}
-        >
-          <Icon name={followUp ? "notification--filled" : "notification"} data-icon={followUp ? "inline-start" : undefined} />
-          {followUp ? `Remind in ${FOLLOW_UP_OPTIONS.find((o) => o.after === followUp)?.label ?? "a while"}` : null}
-        </FollowUpAfterMenu>
-        {totalBytes > MAX_ATTACHMENTS ? (
-          <span className="text-destructive">Attachments total {formatSize(totalBytes)} — over the 25 MB most servers accept.</span>
-        ) : sendAt !== null ? (
-          <span className="hidden sm:inline">Until then, change or cancel it in Scheduled.</span>
-        ) : (
-          <span className="hidden items-center gap-1 sm:flex">
-            <Icon name="undo" size="sm" />
-            You can undo for {UNDO_SECONDS} seconds after sending.
-          </span>
-        )}
-        {core?.kind === "demo" && <span className="ml-auto">Sample mode — nothing really leaves.</span>}
-      </footer>
+      </div>
       <SaveTemplateDialog
         open={savingTemplate}
         onOpenChange={setSavingTemplate}
@@ -465,7 +449,7 @@ function ComposerForm({ initial, onDone }: { initial: ComposerDraft; onDone: () 
         // A template is the message itself, without the signature.
         html={() => (shownBlock.current ? editor.getHTML().replace(shownBlock.current, "") : editor.getHTML())}
       />
-    </form>
+    </FormLayerForm>
   )
 }
 

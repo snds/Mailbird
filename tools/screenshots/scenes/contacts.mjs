@@ -1,5 +1,5 @@
 // Contacts: the list, a person, editing, groups, sharing, duplicates and restore.
-import { area, button, ensure, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer } from "./helpers.mjs"
+import { area, button, ensure, formLayer, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer } from "./helpers.mjs"
 
 /** Opens a person from the Contacts list by name. */
 export const person = async (app, name) => {
@@ -22,6 +22,26 @@ export const scenes = [
     run: async (app) => {
       await area(app, "Contacts")
       await press(app, button(app.page, "New contact"))
+    },
+  },
+  {
+    // A contact in the form layer (ADR-0087): still a dialog on a desktop until it is edited in the pane.
+    name: "form-layer-contact",
+    sizes: ["desktop", "phone", "medium"],
+    run: async (app) => {
+      const { page } = app
+      const open = async () => {
+        await area(app, "Contacts")
+        await press(app, button(page, "New contact"))
+        return page.getByRole("dialog", { name: "New contact" })
+      }
+      const write = (form) => form.getByRole("textbox", { name: "Name", exact: true }).fill("Noor Haddad")
+      await formLayer(app, { open, write, primary: "Add" })
+      const toast = page.locator("[data-sonner-toast]").first()
+      await toast.waitFor()
+      await page.mouse.move(0, 0)
+      await toast.waitFor({ state: "detached", timeout: 15_000 })
+      await write(await open())
     },
   },
   {

@@ -1,6 +1,6 @@
 // The shell: its chrome (sidebar, rail, top and bottom rows, tab bar), the scrolled state, quick
 // create, the limited shells (a team member, the demo), and the ways around the app.
-import { area, button, ensure, groups, oneCurrent, press, settingsButton, sidebar, switcher, switcherLayer, tabBar } from "./helpers.mjs"
+import { area, button, closeForm, ensure, groups, oneCurrent, press, settingsButton, sidebar, switcher, switcherLayer, tabBar } from "./helpers.mjs"
 import { send } from "./mail.mjs"
 import { noteAction } from "./notes.mjs"
 
@@ -48,11 +48,8 @@ const rest = async (page) => {
   await page.getByRole("tooltip").waitFor({ state: "detached" })
   await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "detached" })
 }
-/** Leaves whatever a create flow opened: a form closes on Escape; a new note is a pushed screen or a pane. */
-const leave = async (app) => {
-  await app.page.keyboard.press("Escape")
-  await app.settle()
-}
+/** Leaves whatever a create flow opened: a form closes on Escape, and asks first once it holds writing (ADR-0087); a new note is a pushed screen or a pane. */
+const leave = closeForm
 /** The section showing, as the shell names it: the breadcrumb's first part, or the phone's active tab. */
 const showing = async ({ page }) =>
   (await sidebar(page).count()) ? (await crumbs(page).getByRole("listitem").first().textContent()).trim() : await tabBar(page).getByRole("tab", { selected: true }).getAttribute("aria-label")

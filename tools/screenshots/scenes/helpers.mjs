@@ -89,3 +89,61 @@ export const goBack = async (app) => {
 export const ensure = (ok, message) => {
   if (!ok) throw new Error(message)
 }
+
+/** "Discard changes?" (ADR-0087): what a form asks before it drops writing. A dialog on a desktop, a sheet on a phone. */
+export const discardQuestion = (page) => page.getByRole("dialog", { name: "Discard changes?" })
+/** Closes a form the scene wrote in: Escape, then DISCARD if it asks. */
+export const closeForm = async (app) => {
+  await app.page.keyboard.press("Escape")
+  await app.settle()
+  if (await discardQuestion(app.page).count()) await press(app, discardQuestion(app.page).getByRole("button", { name: "Discard", exact: true }))
+}
+/** The primary of a form in the form layer: its footer's last button on a desktop, the top row's float button on a phone. */
+export const formPrimary = (form, name) => form.getByRole("button", { name, exact: true })
+
+/**
+ * A form in the form layer (ADR-0087; brief 3.2), checked the same way in every section:
+ * its parts at this size, Esc closes it untouched, it asks once it holds writing, and
+ * Ctrl+Enter runs its primary. `open` opens it and returns its dialog; `write` fills in
+ * enough to save; `primary` is the primary's word. Leaves the form closed and saved.
+ */
+export const formLayer = async (app, { open, write, primary, width = 640 }) => {
+  const { page } = app
+  let form = await open(app)
+  const box = await form.boundingBox()
+  if (app.phone) {
+    ensure(Math.round(box.width) === app.viewport.width && Math.round(box.y + box.height) === app.viewport.height, `on a phone the form is ${Math.round(box.width)} wide and ends at ${Math.round(box.y + box.height)}, not the whole screen`)
+    const row = form.locator('[data-slot="top-bar"]')
+    ensure(await row.getByRole("button", { name: "Close", exact: true }).isVisible(), "the form's top row has no close button")
+    ensure(await row.locator('[data-slot="top-bar-title"]').isVisible(), "the form's top row has no title")
+    ensure(await row.locator('[data-slot="top-bar-actions"]').getByRole("button", { name: primary, exact: true }).isVisible(), `the form's top row has no ${primary} button`)
+    ensure(!(await form.getByRole("button", { name: "Cancel", exact: true }).count()), "the phone's form has a Cancel besides its close button")
+  } else {
+    ensure(Math.round(box.width) === width, `the form is ${Math.round(box.width)} wide, not ${width}`)
+    ensure(await form.locator('[data-slot="dialog-overline"]').isVisible(), "the form's header has no overline")
+    ensure(await form.locator('[data-slot="dialog-title"]').isVisible(), "the form's header has no title")
+    ensure(await form.getByRole("button", { name: "Close", exact: true }).isVisible(), "the form's header has no close button")
+    const footer = form.locator('[data-slot="dialog-footer"]').getByRole("button")
+    const words = (await footer.allInnerTexts()).map((w) => w.trim().toLowerCase()).filter(Boolean)
+    const cancelAt = words.indexOf("cancel")
+    ensure(cancelAt >= 0 && words[cancelAt + 1] === primary.toLowerCase(), `the form's footer reads ${words.join(", ")}: not Cancel, then ${primary}`)
+  }
+  // Untouched, Esc closes it at once.
+  await page.keyboard.press("Escape")
+  await app.settle()
+  ensure(!(await discardQuestion(page).count()), "an untouched form asked before closing")
+  ensure(!(await form.count()), "Esc did not close the form")
+  // Holding writing, it asks first; KEEP EDITING is the no.
+  form = await open(app)
+  await write(form)
+  await page.keyboard.press("Escape")
+  await app.settle()
+  ensure(await discardQuestion(page).isVisible(), "a form with writing closed without asking")
+  await press(app, discardQuestion(page).getByRole("button", { name: "Keep editing", exact: true }))
+  ensure(await form.isVisible(), "Keep editing closed the form")
+  // Ctrl+Enter runs the primary from inside a field.
+  await page.keyboard.press("Control+Enter")
+  await form.waitFor({ state: "detached" })
+  await app.settle()
+  ensure(!(await discardQuestion(page).count()), "saving asked about discarding")
+}

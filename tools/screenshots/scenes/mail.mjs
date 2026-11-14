@@ -1,5 +1,5 @@
 // Mail: the lanes, a conversation, reading and writing. Search is in search.mjs.
-import { area, button, ensure, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, switcher, switcherLayer, toastGone } from "./helpers.mjs"
+import { area, button, closeForm, discardQuestion, ensure, formLayer, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, switcher, switcherLayer, toastGone } from "./helpers.mjs"
 import { settings } from "./settings.mjs"
 
 /** Opens a conversation in the Inbox list by its subject. */
@@ -96,8 +96,8 @@ export const scenes = [
         ensure((await bars(page)) <= 2, `the foot holds ${await bars(page)} bars`)
         // The send is taken back, so the slot is free and the toast that waited takes it.
         await press(app, strip(page).getByRole("button", { name: "Undo", exact: true }))
-        await page.keyboard.press("Escape")
-        await app.settle()
+        // The message is back with its recipient and subject, so closing it asks first (ADR-0087).
+        await closeForm(app)
       } else await archive(app, /Cabin weekend/)
       await toasts(page).filter({ hasText: "Archived" }).first().waitFor()
       await page.mouse.move(0, 0)
@@ -174,6 +174,115 @@ export const scenes = [
       const dialog = await compose(app)
       await press(app, dialog.getByRole("button", { name: "Send later" }))
       await press(app, app.page.getByRole("menuitem", { name: "Pick a time…" }))
+    },
+  },
+  {
+    // "Discard changes?" (ADR-0087; brief X6): a message asks whenever it holds a recipient, a subject,
+    // text or a file, one reopened by Undo send too. KEEP EDITING is the no and takes focus.
+    name: "discard-question",
+    sean: { kind: "undrawn", area: "shell", screen: "discard-question" },
+    run: async (app) => {
+      const { page } = app
+      const question = discardQuestion(page)
+      const message = page.getByRole("dialog", { name: "New message" })
+      const discard = question.getByRole("button", { name: "Discard", exact: true })
+      const keep = question.getByRole("button", { name: "Keep editing", exact: true })
+      const esc = async () => {
+        await page.keyboard.press("Escape")
+        await app.settle()
+      }
+      // Empty, it closes at once: the signature alone is not writing.
+      await compose(app)
+      await esc()
+      ensure(!(await question.count()), "an empty message asked before closing")
+      ensure(!(await message.count()), "Esc did not close an empty message")
+      // With text, Esc asks. Focus starts on KEEP EDITING, so Enter never discards by accident.
+      await compose(app)
+      await message.getByRole("textbox", { name: "Message" }).click()
+      await page.keyboard.type("The 08:15 crossing is booked.")
+      await esc()
+      ensure(await question.isVisible(), "a message with text closed without asking")
+      ensure(await keep.evaluate((el) => el === document.activeElement), "focus is not on Keep editing")
+      const box = await question.boundingBox()
+      if (app.phone) ensure(Math.round(box.width) === app.viewport.width && Math.round(box.y + box.height) === app.viewport.height, "on a phone the question is not a sheet at the foot")
+      else ensure(Math.round(box.width) === 480, `the question is ${Math.round(box.width)} wide, not 480`)
+      // Esc in the question keeps editing: it answers the question and leaves the message alone.
+      await esc()
+      ensure(!(await question.count()) && (await message.isVisible()), "Esc in the question did not keep the message")
+      // The close button asks too (Cancel on a desktop does the same).
+      await press(app, message.getByRole("button", { name: app.phone ? "Close" : "Cancel", exact: true }))
+      ensure(await question.isVisible(), "closing a message with text by its button did not ask")
+      // DISCARD closes it.
+      await press(app, discard)
+      ensure(!(await message.count()) && !(await question.count()), "Discard did not close the message")
+      // A message reopened by Undo send holds its recipient and subject, so it asks as well.
+      await send(app, "Saturday ferry")
+      await page.evaluate(() => document.activeElement?.blur())
+      await page.keyboard.press("Control+KeyZ")
+      await app.settle()
+      const subject = message.getByRole("textbox", { name: "Subject" })
+      ensure((await subject.inputValue()) === "Saturday ferry", "Undo did not reopen the message")
+      await subject.focus()
+      await esc()
+      ensure(await question.isVisible(), "a message reopened by Undo closed without asking")
+      // KEEP EDITING keeps it, as it was.
+      await press(app, keep)
+      ensure((await message.isVisible()) && (await subject.inputValue()) === "Saturday ferry", "Keep editing did not keep the message")
+      await message.getByRole("textbox", { name: "Message" }).click()
+      await page.keyboard.type("The 08:15 crossing is booked. Shall we meet at the pier at 7:45?")
+      // The picture: the question over the message.
+      await esc()
+      ensure(await keep.evaluate((el) => el === document.activeElement), "focus is not on Keep editing the second time")
+    },
+  },
+  {
+    // The form layer at its compose size (ADR-0087; brief 3.2): a dialog of 720 with the subject as its
+    // title; the whole screen on a phone, with Send as the top row's float button.
+    name: "form-layer-compose",
+    sizes: ["desktop", "phone", "medium"],
+    sean: { kind: "undrawn", area: "shell", screen: "form-layer-compose" },
+    run: async (app) => {
+      const { page } = app
+      const message = page.getByRole("dialog", { name: "New message" })
+      const write = async (form) => {
+        await form.getByRole("combobox", { name: "To" }).pressSequentially("Marcus")
+        await press(app, form.getByRole("option", { name: /Marcus Lee/ }))
+        await form.getByRole("textbox", { name: "Subject" }).fill("Saturday ferry")
+        await form.getByRole("textbox", { name: "Message" }).click()
+        await page.keyboard.type("The 08:15 crossing is booked. Shall we meet at the pier at 7:45?")
+      }
+      // Ctrl+Enter from the message's own text sends it.
+      await formLayer(app, { open: compose, write, primary: "Send", width: 720 })
+      // Sent: take it back, so the picture is the form as it was written.
+      await page.evaluate(() => document.activeElement?.blur())
+      await page.keyboard.press("Control+KeyZ")
+      await app.settle()
+      ensure((await message.getByRole("textbox", { name: "Subject" }).inputValue()) === "Saturday ferry", "Ctrl+Enter did not send the message, or Undo did not bring it back")
+      if (!app.phone) ensure(/Saturday ferry/.test(await message.locator('[data-slot="dialog-title"]').innerText()), "the header does not show the subject as typed")
+      // Send later is still there: beside Send on a desktop, in the tools on a phone.
+      ensure(await message.getByRole("button", { name: "Send later", exact: true }).isVisible(), "Send later is not reachable from the form")
+    },
+  },
+  {
+    // A split in the form layer; editing one adds DELETE at the start of the footer.
+    name: "form-layer-split",
+    sizes: ["desktop", "phone", "medium"],
+    run: async (app) => {
+      const { page } = app
+      const show = page.getByRole("group", { name: "Show" })
+      const open = async () => {
+        await press(app, show.getByRole("button", { name: "New split" }))
+        return page.getByRole("dialog", { name: "New split" })
+      }
+      const write = async (form) => {
+        await form.getByRole("textbox", { name: "Name" }).fill("Bills")
+        await form.getByRole("textbox", { name: "Subject contains" }).fill("invoice")
+      }
+      await formLayer(app, { open, write, primary: "Add split" })
+      await toastGone(app)
+      ensure(await show.getByRole("button", { name: "Bills" }).isVisible(), "Ctrl+Enter did not add the split")
+      await press(app, show.getByRole("button", { name: "Edit split" }))
+      ensure(await page.getByRole("dialog", { name: "Edit split" }).getByRole("button", { name: "Delete split", exact: true }).isVisible(), "an edited split has no Delete")
     },
   },
   { name: "mail-newsletters", run: (app) => press(app, app.page.getByRole("group", { name: "Show" }).getByRole("button", { name: "Newsletters" })) },

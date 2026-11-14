@@ -29,7 +29,7 @@ export function FindATime({ date, minutes, onPick }: { date: string; minutes: nu
     }
   }
   return (
-    <div className="flex flex-col gap-2 border-b px-4 py-2" data-slot="find-a-time">
+    <div className="flex flex-col gap-2 border-b py-2" data-slot="find-a-time">
       <div className="flex items-center gap-2">
         <Button type="button" variant="ghost" size="sm" className="-ml-2" disabled={busy} onClick={() => void find()}>
           <Icon name="event--schedule" data-icon="inline-start" /> {slots ? "Find again" : "Find a time"}

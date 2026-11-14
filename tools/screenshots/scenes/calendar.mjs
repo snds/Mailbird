@@ -1,5 +1,5 @@
 // Calendar: every view, an event and its editor, the calendars list, booking links, and the menu-bar window.
-import { area, button, ensure, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer, toastGone } from "./helpers.mjs"
+import { area, button, ensure, formLayer, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer, toastGone } from "./helpers.mjs"
 import { settings } from "./settings.mjs"
 
 /** Opens Calendar in one view (Agenda, Day, Week, Month). */
@@ -37,6 +37,19 @@ export const scenes = [
     run: async (app) => {
       const dialog = await newEvent(app)
       await dialog.getByRole("textbox", { name: "Title" }).fill("Pick up the rental car")
+    },
+  },
+  {
+    // An event in the form layer (ADR-0087; brief 3.2): the title as typed in the header, Cancel then Add.
+    name: "form-layer-event",
+    sizes: ["desktop", "phone", "medium"],
+    run: async (app) => {
+      const write = (form) => form.getByRole("textbox", { name: "Title" }).fill("Pick up the rental car")
+      await formLayer(app, { open: newEvent, write, primary: "Add" })
+      await toastGone(app)
+      const form = await newEvent(app)
+      await write(form)
+      if (!app.phone) ensure(/Pick up the rental car/.test(await form.locator('[data-slot="dialog-title"]').innerText()), "the header does not show the title as typed")
     },
   },
   {

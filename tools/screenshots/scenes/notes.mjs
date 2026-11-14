@@ -1,5 +1,5 @@
 // Notes: the list, cards and map, a note and its menu, folders, import, sync and the quick note.
-import { area, button, ensure, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer } from "./helpers.mjs"
+import { area, button, ensure, formLayer, goBack, groups, headTitle, leaveLayer, oneCurrent, pick, press, sidebar, switcherLayer } from "./helpers.mjs"
 
 /** Opens a note from the Notes list by its title. */
 export const note = async (app, name) => {
@@ -58,6 +58,30 @@ export const scenes = [
     run: async (app) => {
       await area(app, "Notes")
       await pick(app, "New smart folder…")
+    },
+  },
+  {
+    // A smart folder in the form layer (ADR-0087).
+    name: "form-layer-smart-folder",
+    sizes: ["desktop", "phone", "medium"],
+    run: async (app) => {
+      const { page } = app
+      const open = async () => {
+        await area(app, "Notes")
+        await pick(app, "New smart folder…")
+        return page.getByRole("dialog", { name: "New smart folder" })
+      }
+      // A folder needs a rule as well as a name.
+      const write = async (form) => {
+        await form.getByRole("textbox", { name: "Contains the words" }).fill("agenda")
+        await form.getByRole("textbox", { name: "Name" }).fill("This week")
+      }
+      await formLayer(app, { open, write, primary: "Add folder" })
+      const toast = page.locator("[data-sonner-toast]").first()
+      await toast.waitFor()
+      await page.mouse.move(0, 0)
+      await toast.waitFor({ state: "detached", timeout: 15_000 })
+      await write(await open())
     },
   },
   { name: "notes-import", run: (app) => notesMenu(app, "Import notes…") },

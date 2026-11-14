@@ -1,9 +1,11 @@
 import { useState } from "react"
 
 import { useUi } from "@/app/ui-store"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, NativeSelect, NativeSelectOption, Switch, DialogAction, DialogActions, Toggle, toast } from "@unicron/ui"
+import { FormLayer, FormLayerForm } from "@/components/editor-frame"
+import { Button, NativeSelect, NativeSelectOption, Switch, Toggle, toast } from "@unicron/ui"
 import { useNoteAction, useNoteTags } from "@/core/queries"
 import { NOTE_COLORS, type NoteColor, type NoteFolder, type NoteFolderInput } from "@/core/types"
+import { useLeaveGuard } from "@/lib/leave-guard"
 import { cn } from "@/lib/utils"
 
 import { NOTE_COLOR_LABEL, noteEdge, noteFill } from "./note-color"
@@ -21,20 +23,18 @@ export function NoteFolderEditor() {
   const editing = useNoteFolderEditor((s) => s.editing)
   const close = () => useNoteFolderEditor.setState({ editing: null })
   return (
-    <Dialog open={editing !== null} onOpenChange={(o) => !o && close()}>
-      <DialogContent size="md">
-        {editing && (
-          <NoteFolderForm
-            key={editing.folder?.id ?? "new"}
-            folder={editing.folder}
-            onDone={(id) => {
-              close()
-              if (id !== undefined) useUi.getState().setNotesFolder(id ? { kind: "folder", id } : { kind: "all" })
-            }}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+    <FormLayer open={editing !== null} onClose={close}>
+      {editing && (
+        <NoteFolderForm
+          key={editing.folder?.id ?? "new"}
+          folder={editing.folder}
+          onDone={(id) => {
+            close()
+            if (id !== undefined) useUi.getState().setNotesFolder(id ? { kind: "folder", id } : { kind: "all" })
+          }}
+        />
+      )}
+    </FormLayer>
   )
 }
 
@@ -49,17 +49,24 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
   const [hasOpenTasks, setHasOpenTasks] = useState(folder?.hasOpenTasks ?? false)
   const save = useNoteAction((c, input: NoteFolderInput) => c.saveNoteFolder(folder?.id ?? null, input))
   const remove = useNoteAction<void>((c) => c.deleteNoteFolder(folder!.id))
+  // Closing asks first once a value differs from when the form opened (ADR-0087).
+  const values = JSON.stringify([name, picked, words, linked, color, hasReminder, hasOpenTasks])
+  const [opened] = useState(values)
+  useLeaveGuard(values !== opened)
   // Tags in use plus any this folder names that no note carries right now.
   const choices = [...new Set([...tags.map((t) => t.tag), ...picked])]
   const toggle = (t: string) => setPicked((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]))
 
+  const [error, setError] = useState<string | null>(null)
   const submit = async () => {
+    setError(null)
     try {
       const f = await save.mutateAsync({ name, tags: picked, words: words.trim() || null, linked, color, hasReminder, hasOpenTasks })
       toast.success(folder ? `Updated “${f.name}”` : `Added “${f.name}”: ${noteCount(f.count)} so far`, { duration: 2500 })
       onDone(f.id)
     } catch (e) {
-      fail(e)
+      // The form stays open with the server's words above its actions.
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
   const del = async () => {
@@ -74,14 +81,24 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
   const field = "h-9 w-full rounded-lg border bg-transparent px-2.5 text-sm dark:bg-input/30"
   const swatch = "size-7 rounded-full border ring-offset-2 ring-offset-popover aria-pressed:ring-2 aria-pressed:ring-foreground"
   return (
-    <form className="flex flex-col gap-4" onSubmit={(e) => (e.preventDefault(), void submit())}>
-      <DialogHeader>
-        <DialogTitle>{folder ? "Edit smart folder" : "New smart folder"}</DialogTitle>
-        <DialogDescription>Notes come and go by themselves as you write. Fill in what applies: they must match all of it.</DialogDescription>
-      </DialogHeader>
+    <FormLayerForm
+      overline={folder ? "Edit smart folder" : "New smart folder"}
+      title={name.trim() || (folder ? "Edit smart folder" : "New smart folder")}
+      primary={{ label: folder ? "Save" : "Add folder", loading: save.isPending }}
+      error={error}
+      onSubmit={() => void submit()}
+      footerStart={
+        folder && (
+          <Button type="button" variant="ghost-destructive" onClick={() => void del()}>
+            Delete folder
+          </Button>
+        )
+      }
+    >
+      <p className="text-sm text-muted-foreground">Notes come and go by themselves as you write. Fill in what applies: they must match all of it.</p>
       <label className="flex flex-col gap-1 text-sm">
         Name
-        <input id="folder-name" className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="To do, This week, Recipes…" autoFocus />
+        <input id="folder-name" className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="To do, This week, Recipes…" data-form-focus="" />
       </label>
       {choices.length > 0 && (
         <div role="group" aria-label="Has any of these tags" className="flex flex-col gap-1.5 text-sm">
@@ -140,19 +157,6 @@ function NoteFolderForm({ folder, onDone }: { folder?: NoteFolder; onDone: (pick
         Has to-dos left
         <Switch checked={hasOpenTasks} onCheckedChange={setHasOpenTasks} aria-label="Has to-dos left" />
       </label>
-      <DialogActions>
-        {folder && (
-          <DialogAction kind="destructive" type="button" onClick={() => void del()}>
-            Delete folder
-          </DialogAction>
-        )}
-        <DialogAction kind="cancel" type="button" onClick={() => onDone()}>
-          Cancel
-        </DialogAction>
-        <DialogAction type="submit" disabled={save.isPending}>
-          {folder ? "Save" : "Add folder"}
-        </DialogAction>
-      </DialogActions>
-    </form>
+    </FormLayerForm>
   )
 }

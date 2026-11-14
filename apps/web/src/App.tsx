@@ -6,6 +6,7 @@ import { AppShell } from "@/app/shell"
 import { useUi } from "@/app/ui-store"
 import { type VerticalId } from "@/app/verticals"
 import { Toaster, TooltipProvider } from "@unicron/ui"
+import { LeaveQuestion } from "@/components/editor-frame"
 import { type AppJump, getCoreClient, isMember } from "@/core/client"
 import { queryClient, useCoreEvents } from "@/core/queries"
 import { APP_JUMP_KEY } from "@/lib/app-jump"
@@ -118,6 +119,8 @@ function Root() {
       <ImageViewer />
       <CommandPalette onCreate={create} />
       <OutboxWatcher />
+      {/* "Discard changes?" for a form in the pane: every move away waits for it (ADR-0087). */}
+      <LeaveQuestion />
       {/* Reminders, notes, and shared links are the owner's; a team member has mail (ADR-0063). */}
       {!isMember() && (
         <>

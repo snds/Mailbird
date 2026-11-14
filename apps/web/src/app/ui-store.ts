@@ -4,6 +4,7 @@ import { create } from "zustand"
 import type { Category, ContactInput, Draft, EditScope, EventInput, MessageSummary, SplitInput } from "@/core/types"
 
 import type { MailTab } from "@/features/mail/lanes"
+import { guardPlaces } from "@/lib/leave-guard"
 import type { SettingsSection } from "@/features/settings/sections"
 
 import type { CalendarPlace, ContactsPlace, NotesPlace, SearchPlace, SearchScope } from "./places"
@@ -176,7 +177,15 @@ const FIRST_PLACES = {
   notesPlace: { folder: { kind: "all" }, tag: null },
 } satisfies Partial<UiState>
 
-export const useUi = create<UiState>((set, get) => ({
+/**
+ * What says where you are, for the forms that ask before they drop writing
+ * (ADR-0087): a change to any of these is a move away from a form in the
+ * pane. A jump only counts when one is made, not when a view takes it.
+ */
+const PLACE_KEYS = ["vertical", "settings", "search", "mailTab", "mailAccount", "mailCategory", "mailSplit", "teamOpen", "calendarPlace", "contactsPlace", "notesPlace", "openNote"] as const satisfies readonly (keyof UiState)[]
+const movesAway = (next: UiState, prev: UiState) => (next.jump !== null && next.jump !== prev.jump) || PLACE_KEYS.some((k) => JSON.stringify(next[k]) !== JSON.stringify(prev[k]))
+
+export const useUi = create<UiState>(guardPlaces(movesAway, (set, get) => ({
   vertical: "mail",
   setVertical: (vertical) => set({ vertical, settings: null, search: null, jump: null, openNote: null, ...FIRST_PLACES }),
   sidebarCollapsed: sidebarCollapsed(),
@@ -282,7 +291,7 @@ export const useUi = create<UiState>((set, get) => ({
   splitEditor: null,
   openSplitEditor: (splitEditor) => set({ splitEditor }),
   setMailSplit: (mailSplit) => set({ mailSplit, mailCategory: null }),
-}))
+})))
 
 /** The jump a view should open on mount, if it's for that view. Read-only; clear it with `takeJump`. */
 export function pendingJump(kind: Jump["kind"]): Jump | null {
