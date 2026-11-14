@@ -14,6 +14,7 @@ import { createDemoAi } from "./demo-ai"
 import { createDemoTeam } from "./demo-team"
 import { createDemoNotes } from "./demo-notes"
 import { createDemoPim, type DemoInviteSeed } from "./demo-pim"
+import { withDemoScenario } from "./demo-scenarios"
 import { signatureFromMessage } from "./demo-signature"
 import { downloadVcard } from "@/lib/download"
 
@@ -433,7 +434,7 @@ export function createDemoClient(): CoreClient {
     }
     return [...rows.values()].slice(0, 5)
   }
-  return {
+  return withDemoScenario({
     kind: "demo",
     remote: false,
     providerCapabilities: async (p) => CAPABILITIES[p],
@@ -865,5 +866,5 @@ export function createDemoClient(): CoreClient {
       listeners.get(event)!.add(handler)
       return () => listeners.get(event)!.delete(handler)
     },
-  }
+  }, { ...state, outbox })
 }
